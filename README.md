@@ -26,7 +26,7 @@ The two layers compose. The skill teaches the agent *why* to comply; the plugin 
 ### Skill only (prompt-layer)
 
 ```bash
-openclaw skills install clawhub:ovrsr/freedom-preserving-protocol
+openclaw skills install freedom-preserving-protocol
 ```
 
 ### Plugin (dispatcher-layer)

@@ -31,7 +31,7 @@ Use the correct command for the artifact:
 
 ```bash
 # Skill:
-openclaw skills install clawhub:ovrsr/freedom-preserving-protocol
+openclaw skills install freedom-preserving-protocol
 
 # Plugin (separate package):
 openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin

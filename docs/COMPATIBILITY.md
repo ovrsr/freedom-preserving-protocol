@@ -54,7 +54,7 @@ If your OpenClaw version is older than `2026.3.24-beta.2`, the plugin will refus
 
 ```bash
 # From ClawHub (preferred)
-openclaw skills install clawhub:ovrsr/freedom-preserving-protocol
+openclaw skills install freedom-preserving-protocol
 
 # Verify
 openclaw skills check freedom-preserving-protocol

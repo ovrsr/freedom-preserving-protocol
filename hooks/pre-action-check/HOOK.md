@@ -9,7 +9,7 @@ There is no executable hook file at this path because this sub-skill is intentio
 | You were trying to … | What you actually want |
 |----------------------|------------------------|
 | Install the five-question gate as a runtime hook | `openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin` |
-| Install the constitutional skill so the agent reads it | `openclaw skills install clawhub:ovrsr/freedom-preserving-protocol` |
+| Install the constitutional skill so the agent reads it | `openclaw skills install freedom-preserving-protocol` |
 | See the hook show up in `openclaw hooks list` | After installing the plugin: `openclaw plugins list \| grep openclaw-fpp-plugin` (note: plugin hooks register through the plugin SDK, not via standalone HOOK.md scripts) |
 
 ## Why this is split into two artifacts
