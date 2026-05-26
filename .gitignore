@@ -7,3 +7,6 @@ plugin/node_modules/
 
 # Stale npm-pack snapshot from v1.0.0 (safe to delete but kept around for diff)
 package/
+
+# npm pack artifacts
+*.tgz

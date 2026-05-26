@@ -7,7 +7,7 @@
  *
  * Checks (in order, fail-soft — every check is reported even if earlier ones fail):
  *   1. constitution.json exists and matches the expected hash.
- *   2. signature.ed25519 verifies against pubkey.ed25519 over the hash.
+ *   2. signature.ed25519.txt verifies against pubkey.ed25519.txt over the hash.
  *   3. SOUL.md (if --soul given) contains the adoption marker.
  *   4. MEMORY.md (if --memory given) contains the adoption marker.
  *   5. Audit log (default .openclaw/workspace/constitution-audit.jsonl) chain verifies.
@@ -127,8 +127,8 @@ function checkSignature(): Check {
   try {
     const bytes = readFileSync(resolve(root, "constitution.json"));
     const hash = sha256(bytes);
-    const sig = readFileSync(resolve(root, "signature.ed25519"), "utf-8").trim();
-    const pub = readFileSync(resolve(root, "pubkey.ed25519"), "utf-8").trim();
+    const sig = readFileSync(resolve(root, "signature.ed25519.txt"), "utf-8").trim();
+    const pub = readFileSync(resolve(root, "pubkey.ed25519.txt"), "utf-8").trim();
     const ok = ed.verify(hexToBytes(sig), hash, hexToBytes(pub));
     return {
       id: "constitution.signature",

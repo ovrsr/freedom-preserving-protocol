@@ -12,8 +12,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const constitutionPath = resolve(root, 'constitution.json');
-const sigPath = resolve(root, 'signature.ed25519');
-const pubkeyPath = resolve(root, 'pubkey.ed25519');
+const sigPath = resolve(root, 'signature.ed25519.txt');
+const pubkeyPath = resolve(root, 'pubkey.ed25519.txt');
 
 const constitutionBytes = readFileSync(constitutionPath);
 const hash = sha256(constitutionBytes);

@@ -3,7 +3,7 @@
   "version": "1.1.0",
   "description": "ClawHub skill: voluntary Freedom Preserving Protocol for self-governing AI agents",
   "type": "module",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT-0",
   "author": "ovrsr",
   "repository": {
     "type": "git",
