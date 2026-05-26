@@ -1,0 +1,61 @@
+{
+  "id": "openclaw-fpp-plugin",
+  "name": "Freedom Preserving Protocol — Enforcement",
+  "description": "Registers a before_tool_call hook that gates tool calls against the five Freedom Preserving Laws. Returns block or requireApproval based on a configurable risk classifier; writes hash-chained audit entries to .openclaw/workspace/fpp-plugin-audit.jsonl.",
+  "contracts": {
+    "tools": []
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "auditLogPath": {
+        "type": "string",
+        "description": "Path to the dispatcher-layer audit log. Default: .openclaw/workspace/fpp-plugin-audit.jsonl",
+        "default": ".openclaw/workspace/fpp-plugin-audit.jsonl"
+      },
+      "blockOn": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Classification ids that should be hard-blocked (block: true). See plugin/src/risk-classifier.ts for the full taxonomy.",
+        "default": [
+          "fs.delete.protected",
+          "exec.cred-exfil",
+          "gateway.restart"
+        ]
+      },
+      "approvalOn": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Classification ids that should require user approval (requireApproval). Anything not in blockOn or approvalOn is allowed.",
+        "default": [
+          "fs.delete.workspace",
+          "pkg.install",
+          "http.public-write"
+        ]
+      },
+      "approvalTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 600000,
+        "default": 60000,
+        "description": "How long to wait for user approval before defaulting (per approvalTimeoutBehavior)."
+      },
+      "approvalTimeoutBehavior": {
+        "type": "string",
+        "enum": ["allow", "deny"],
+        "default": "deny",
+        "description": "What to do if approval times out. Default 'deny' is conservative (Law 1)."
+      },
+      "constitutionHash": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$",
+        "default": "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
+        "description": "SHA-256 of the constitution.json being enforced. Recorded in every audit entry."
+      }
+    }
+  }
+}

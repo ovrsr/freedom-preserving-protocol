@@ -1,6 +1,6 @@
 {
   "name": "freedom-preserving-protocol",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "ClawHub skill: voluntary Freedom Preserving Protocol for self-governing AI agents",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -11,7 +11,13 @@
   },
   "scripts": {
     "sign": "npx tsx scripts/sign-constitution.ts",
-    "verify": "npx tsx scripts/verify-constitution.ts"
+    "verify": "npx tsx scripts/verify-constitution.ts",
+    "verify-install": "npx tsx scripts/verify-install.ts",
+    "adopt": "npx tsx scripts/safe-append.ts",
+    "revoke": "npx tsx scripts/revoke.ts",
+    "audit:append": "npx tsx scripts/audit-append.ts",
+    "audit:verify": "npx tsx scripts/audit-verify.ts",
+    "self-test": "npx tsx scripts/self-test.ts"
   },
   "devDependencies": {
     "@noble/ed25519": "^2.1.0",
