@@ -117,4 +117,4 @@ Use them together for defense in depth. Each layer's weakness is the other's str
 
 ## License
 
-Humanitarian Use License v1.0 (same as the parent skill). See [../LICENSE](../LICENSE).
+Humanitarian Use License v1.0. See [LICENSE](LICENSE).

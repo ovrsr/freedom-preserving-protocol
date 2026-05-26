@@ -157,10 +157,16 @@ function main() {
 }
 
 if (!existsSync(resolve(root, "plugin", "src", "risk-classifier.ts"))) {
-  console.error(
-    "self-test requires plugin/src/risk-classifier.ts; build the companion plugin first or run from a complete checkout.",
+  console.log(
+    "Plugin source not bundled with the skill. Install the companion plugin or clone the GitHub repo to run the full dispatcher self-test:",
   );
-  process.exit(2);
+  console.log(
+    "  openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin",
+  );
+  console.log(
+    "  git clone https://github.com/ovrsr/freedom-preserving-protocol",
+  );
+  process.exit(0);
 }
 
 main();

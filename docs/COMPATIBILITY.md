@@ -91,30 +91,52 @@ npm run verify-install -- --soul ~/.openclaw/agents/<agent>/SOUL.md \
 Expected (if both layers active):
 
 ```
+Freedom Preserving Protocol — installation check
+
 [PASS] Constitution hash
+        71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993
 [PASS] Ed25519 signature
+        pubkey=fcd51dc17383f88ff8a8a86bdfba6ae5a9922c815760cb8666beaf5e8a3ef456
 [PASS] SOUL adoption block
+        "Freedom Preserving Protocol" found in ...
 [PASS] MEMORY adoption entry
+        "Freedom Preserving Protocol" found in ...
 [PASS] Audit chain
+        hash-chained log verifies (N entries)
 [PASS] Dispatcher-layer plugin
+        FPP plugin appears in `openclaw plugins list`
 
 Prompt-layer governance:     ACTIVE
 Dispatcher-layer governance: ACTIVE
+
+Overall: PASS
 ```
 
-Expected (if only prompt-layer):
+Expected (if only prompt-layer, no adoption yet):
 
 ```
+Freedom Preserving Protocol — installation check
+
 [PASS] Constitution hash
+        71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993
 [PASS] Ed25519 signature
-[PASS] SOUL adoption block
-[PASS] MEMORY adoption entry
+        pubkey=fcd51dc17383f88ff8a8a86bdfba6ae5a9922c815760cb8666beaf5e8a3ef456
+[SKIP] SOUL adoption block
+        no --soul path provided
+[SKIP] MEMORY adoption entry
+        no --memory path provided
 [SKIP] Audit chain
+        no audit log yet at .../.openclaw/workspace/constitution-audit.jsonl — first heartbeat will create it
 [WARN] Dispatcher-layer plugin
-        FPP plugin NOT installed — only prompt-layer governance is active.
+        openclaw CLI not on PATH; cannot check plugin installation. The skill works without it but only at prompt-layer.
 
-Prompt-layer governance:     ACTIVE
+Prompt-layer governance:     not active
 Dispatcher-layer governance: not active
+
+Note: without the dispatcher-layer plugin, the five-question gate can be bypassed by prompt injection or a hostile skill. Install the plugin for `before_tool_call` enforcement:
+  openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin
+
+Overall: PASS
 ```
 
 `[WARN]` for the dispatcher-layer check is **not** a failure; it is informational. The exit code is `0` as long as the required (signature + marker) checks pass.

@@ -81,8 +81,8 @@ freedom-preserving-protocol/
 ├── package.json                   Dev tooling
 ├── constitution.json              Canonical signed laws (hash: 71bf60a...)
 ├── constitution.yaml              Human-readable
-├── signature.ed25519              Detached signature
-├── pubkey.ed25519                 Publisher's public key
+├── signature.ed25519.txt           Detached signature
+├── pubkey.ed25519.txt              Publisher's public key
 ├── adoption/
 │   ├── SOUL-BLOCK.md              Template appended to SOUL.md
 │   ├── MEMORY-ENTRY.md            Template appended to MEMORY.md
@@ -161,4 +161,8 @@ This is the third entrant: substantive laws + prompt-layer adoption ritual + rea
 
 ## License
 
-Humanitarian Use License v1.0. See [LICENSE](LICENSE).
+This repository is licensed under the Humanitarian Use License v1.0 (see [LICENSE](LICENSE)).
+
+- **Skill bundle on ClawHub** — distributed under MIT-0 per ClawHub policy. Anyone may use, modify, and redistribute the published skill without attribution.
+- **Plugin (`@ovrsr/openclaw-fpp-plugin`)** — distributed under the Humanitarian Use License v1.0. See `plugin/LICENSE`.
+- **GitHub repo** — Humanitarian Use License v1.0 governs clones and forks.

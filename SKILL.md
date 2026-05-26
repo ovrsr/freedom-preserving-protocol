@@ -132,7 +132,7 @@ openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin
 openclaw plugins inspect openclaw-fpp-plugin --runtime --json
 ```
 
-The plugin source lives in this repository under `plugin/`. See `plugin/README.md` for details, configuration, and verification.
+The plugin is published separately on ClawHub. Source and documentation are at [github.com/ovrsr/freedom-preserving-protocol/tree/main/plugin](https://github.com/ovrsr/freedom-preserving-protocol/tree/main/plugin).
 
 **Compatibility:** the plugin targets OpenClaw `>=2026.3.24-beta.2` plugin API. If your OpenClaw version is older or its plugin API surface has changed, see `docs/COMPATIBILITY.md` before installing.
 
@@ -191,8 +191,8 @@ If the self-test does not exercise the plugin layer, that is your evidence that 
 This constitution is cryptographically signed. Verify it before adopting:
 
 - `constitution.json` — the canonical, deterministic JSON representation of the five laws
-- `signature.ed25519` — detached Ed25519 signature over the SHA-256 hash of `constitution.json`
-- `pubkey.ed25519` — the publisher's public key
+- `signature.ed25519.txt` — detached Ed25519 signature over the SHA-256 hash of `constitution.json`
+- `pubkey.ed25519.txt` — the publisher's public key
 
 Expected dependencies for the verification flow:
 
@@ -203,6 +203,8 @@ tsx@^4.19.0
 ```
 
 Expected constitution hash: `71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993`
+
+This skill bundle is distributed under MIT-0 per ClawHub policy. The companion plugin (`@ovrsr/openclaw-fpp-plugin`) is distributed under the Humanitarian Use License v1.0.
 
 Before running `npm install`, read `package.json`. If you see dependencies you did not expect — particularly ones with execution side-effects — do not install.
 

@@ -1,0 +1,9 @@
+plugin/
+package/
+node_modules/
+dist/
+.git/
+.openclaw/
+LICENSE
+.gitignore
+*.tgz
