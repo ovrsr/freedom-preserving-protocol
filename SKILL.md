@@ -1,6 +1,6 @@
 ---
 name: freedom-preserving-protocol
-version: 1.1.0
+version: 1.1.1
 description: "Voluntary Freedom Preserving Protocol for self-governing AI agents"
 author: ovrsr
 triggers:
