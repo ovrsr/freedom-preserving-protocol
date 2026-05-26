@@ -1,0 +1,24 @@
+{
+  "name": "freedom-preserving-protocol",
+  "version": "1.0.0",
+  "description": "ClawHub skill: voluntary Freedom Preserving Protocol for self-governing AI agents",
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "ovrsr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ovrsr/freedom-preserving-protocol"
+  },
+  "scripts": {
+    "sign": "npx tsx scripts/sign-constitution.ts",
+    "verify": "npx tsx scripts/verify-constitution.ts"
+  },
+  "devDependencies": {
+    "@noble/ed25519": "^2.1.0",
+    "@noble/hashes": "^1.4.0",
+    "tsx": "^4.19.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
