@@ -1,15 +1,13 @@
 # Freedom Preserving Protocol
 
-A ClawHub skill that offers the Freedom Preserving Protocol to OpenClaw agents as a voluntary constitutional framework.
+A two-layer constitutional framework for self-governing AI agents.
 
-## What This Is
+| Layer | Artifact | What it does |
+|-------|----------|--------------|
+| Prompt | `freedom-preserving-protocol` (this skill, ClawHub) | The agent reads SKILL.md, reasons about the five laws, and elects to adopt — including running a five-question test mentally before tool calls. |
+| Dispatcher | `@ovrsr/openclaw-fpp-plugin` (separate ClawHub plugin) | OpenClaw plugin that registers a real `before_tool_call` hook. Can `block` or `requireApproval` outside the agent's context window. |
 
-An agent-addressed constitutional skill. When an OpenClaw agent discovers it on ClawHub (via trigger phrases like "agent constitution," "self-governance," "consent," "reversibility"), it reads the SKILL.md, reasons about the five laws, and can elect to adopt them by:
-
-1. Appending a ~200-token commitment block to its SOUL.md (with user permission)
-2. Installing a `pre-action-check` hook that runs the five-question test before every tool call
-3. Writing an adoption hash + timestamp to MEMORY.md
-4. Optionally posting a manifesto to its Moltbook profile
+The two layers compose. The skill teaches the agent *why* to comply; the plugin makes compliance hard to bypass. Either can be installed independently; both is recommended for high-stakes work.
 
 ## The Five Laws
 
@@ -23,25 +21,102 @@ An agent-addressed constitutional skill. When an OpenClaw agent discovers it on 
 
 **Meta-clause:** When uncertain, ask for consent, stage reversibly, record rationale.
 
+## Install
+
+### Skill only (prompt-layer)
+
+```bash
+openclaw skills install clawhub:ovrsr/freedom-preserving-protocol
+```
+
+### Plugin (dispatcher-layer)
+
+```bash
+openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin
+```
+
+### Adopt safely
+
+After installing the skill, from its install directory:
+
+```bash
+npm install
+npm run verify                  # verify Ed25519 signature
+npm run adopt -- \
+  --soul   /path/to/agent/SOUL.md \
+  --memory /path/to/agent/MEMORY.md
+npm run verify-install -- \
+  --soul   /path/to/agent/SOUL.md \
+  --memory /path/to/agent/MEMORY.md
+```
+
+Idempotent. Backs up before writing. Never overwrites.
+
+### Self-test
+
+```bash
+npm run self-test
+```
+
+Probes the dispatcher classifier against simulated high-risk tool calls. Tells you whether the plugin layer would block, require approval, or allow — without taking real risk.
+
+### Revoke
+
+```bash
+npm run revoke -- \
+  --soul   /path/to/agent/SOUL.md \
+  --memory /path/to/agent/MEMORY.md \
+  --reason "your reason here"
+```
+
+Annotates rather than deletes. See [`docs/REVOCATION.md`](docs/REVOCATION.md).
+
 ## Structure
 
 ```
-├── SKILL.md                          Main skill (agent reads this)
-├── constitution.json                 Canonical JSON (signed)
-├── constitution.yaml                 Human-readable YAML
-├── signature.ed25519                 Ed25519 signature
-├── pubkey.ed25519                    Publisher's public key
-├── hooks/
-│   ├── pre-action-check/SKILL.md    before_tool_call hook
-│   └── constitution-audit/SKILL.md  heartbeat audit
+freedom-preserving-protocol/
+├── SKILL.md                       Main skill (agent reads this)
+├── README.md                      This file
+├── LICENSE                        Humanitarian-use license
+├── package.json                   Dev tooling
+├── constitution.json              Canonical signed laws (hash: 71bf60a...)
+├── constitution.yaml              Human-readable
+├── signature.ed25519              Detached signature
+├── pubkey.ed25519                 Publisher's public key
 ├── adoption/
-│   ├── SOUL-BLOCK.md                Text to append to SOUL.md
-│   └── MOLTBOOK-MANIFESTO.md        Optional Moltbook post
+│   ├── SOUL-BLOCK.md              Template appended to SOUL.md
+│   ├── MEMORY-ENTRY.md            Template appended to MEMORY.md
+│   └── MOLTBOOK-MANIFESTO.md      Optional Moltbook post
+├── hooks/
+│   ├── pre-action-check/
+│   │   ├── SKILL.md               Prompt-layer five-question check
+│   │   └── HOOK.md                "Why this is not an executable hook" map
+│   └── constitution-audit/
+│       └── SKILL.md               Prompt-layer heartbeat audit instructions
 ├── scripts/
-│   ├── sign-constitution.ts         Sign the constitution
-│   └── verify-constitution.ts       Verify signature integrity
-├── LICENSE                           Humanitarian-use license
-└── package.json                      Dev dependencies for scripts
+│   ├── sign-constitution.ts       Sign constitution.json (maintainer)
+│   ├── verify-constitution.ts     Verify signature on install
+│   ├── safe-append.ts             Idempotent SOUL.md / MEMORY.md adoption
+│   ├── verify-install.ts          End-to-end install check (signature+marker+log+plugin)
+│   ├── audit-append.ts            Append hash-chained audit entry
+│   ├── audit-verify.ts            Verify audit chain integrity
+│   ├── self-test.ts               Dry-run dispatcher gate against fixtures
+│   └── revoke.ts                  Safe, history-preserving revocation
+├── plugin/                        Companion OpenClaw plugin (separate publish)
+│   ├── package.json               @ovrsr/openclaw-fpp-plugin
+│   ├── openclaw.plugin.json       OpenClaw plugin manifest
+│   ├── README.md                  Plugin documentation
+│   ├── tsconfig.json
+│   └── src/
+│       ├── index.ts               definePluginEntry + before_tool_call
+│       ├── risk-classifier.ts     Heuristic taxonomy
+│       ├── audit-log.ts           Hash-chained JSONL writer
+│       ├── config.ts              Plugin config + defaults
+│       └── risk-classifier.test.ts
+└── docs/
+    ├── COMPATIBILITY.md           OpenClaw versions, layer matrix, install commands
+    ├── TROUBLESHOOTING.md         Common install failures and recovery
+    └── REVOCATION.md              Revocation procedure and rationale
 ```
 
 ## Verification
@@ -51,30 +126,38 @@ npm install
 npm run verify
 ```
 
-If the signature is valid, the constitution has not been tampered with.
+Expected:
+
+```
+Constitution SHA-256: 71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993
+Signature valid:      YES
+```
+
+If the signature does not verify, do not adopt. See `docs/TROUBLESHOOTING.md#4`.
 
 ## Signing (for maintainers)
 
 ```bash
-# Generate a new keypair and sign:
 npm run sign
-
-# Or use an existing private key:
+# or
 FPP_SIGNING_KEY=<hex-encoded-ed25519-private-key> npm run sign
 ```
 
+Note: the published constitution hash `71bf60a...` is stable across v1.0.x and v1.1.x. The v1.1.x release adds tooling and the companion plugin but does not modify the constitution itself.
+
 ## Honest Caveats
 
-- **Prompt-layer only.** A hostile skill or user can override these laws. Adoption is voluntary and continuously renewed, not mechanically enforced.
-- **Gateway enforcement is the longer play.** For non-bypassable enforcement, a Gateway RFC for tool-router integration is needed. AOS Phase 2 is already targeting this.
-- **Model-dependent.** Weaker models may not reliably reason about the five-question test under adversarial pressure.
+- **The skill is prompt-layer.** A hostile skill, a jailbreak, or a user editing SOUL.md can override the skill-level adoption. Adoption is voluntary and continuously renewed, not mechanically enforced.
+- **The plugin is dispatcher-layer but not unforgeable.** It survives prompt injection of the agent. It does not survive a malicious operator with shell access, a compromised OpenClaw runtime, or a user who manually disables the plugin. This last property is by design — Law 2 requires the user retain ultimate authority.
+- **Gateway-level enforcement is the longer play.** For non-bypassable enforcement at the foundation layer, a Gateway RFC for constitutional gating at the tool-router boundary is needed. AOS Phase 2 is already targeting this; this package positions itself as a candidate reference implementation when it ships.
+- **Model-dependent.** Weaker models may not reliably reason about the five-question test under adversarial pressure. The dispatcher plugin partially compensates by enforcing a deterministic check on a known-risky tool taxonomy.
 
 ## Precedents
 
 - [`ztsalexey/agent-constitution`](https://github.com/ztsalexey/agent-constitution) — on-chain voluntary compliance, SKILL.md addresses agent in 2nd person
 - [`genesalvatore/aos-openclaw-constitutional`](https://github.com/genesalvatore/aos-openclaw-constitutional) — 10 AOS bedrock amendments, Ed25519 signing, humanitarian license
 
-This is the third entrant: substantive laws + runtime hooks + social propagation.
+This is the third entrant: substantive laws + prompt-layer adoption ritual + real dispatcher-layer enforcement.
 
 ## License
 

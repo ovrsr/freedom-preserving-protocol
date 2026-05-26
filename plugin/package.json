@@ -1,0 +1,48 @@
+{
+  "name": "@ovrsr/openclaw-fpp-plugin",
+  "version": "1.1.0",
+  "description": "OpenClaw plugin: dispatcher-level enforcement of the Freedom Preserving Protocol via before_tool_call hook",
+  "type": "module",
+  "license": "SEE LICENSE IN ../LICENSE",
+  "author": "ovrsr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ovrsr/freedom-preserving-protocol",
+    "directory": "plugin"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/",
+    "src/",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "openclaw": {
+    "extensions": ["./dist/index.js"],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    },
+    "build": {
+      "openclawVersion": "2026.3.24-beta.2",
+      "pluginSdkVersion": "2026.3.24-beta.2"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/**/*.test.ts"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.24-beta.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "tsx": "^4.19.0"
+  },
+  "engines": {
+    "node": ">=22.19"
+  }
+}

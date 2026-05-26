@@ -1,1 +1,9 @@
 node_modules/
+plugin/dist/
+plugin/node_modules/
+
+# Runtime audit logs (per-agent; not committed)
+.openclaw/
+
+# Stale npm-pack snapshot from v1.0.0 (safe to delete but kept around for diff)
+package/
