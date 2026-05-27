@@ -2,7 +2,7 @@
 
 - Constitution version: v1.0.0 (laws unchanged from initial release)
 - Constitution hash: `[CONSTITUTION_HASH]`
-- Tooling version: skill v1.1.0 (adoption scripts, audit chain, revocation procedure)
+- Tooling version: skill v1.2.0 (adoption scripts, audit chain, Merkle proofs, revocation procedure)
 - Adopted: `[TIMESTAMP]`
 - Source: `ovrsr/freedom-preserving-protocol`
 - Layer in effect:

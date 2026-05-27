@@ -93,6 +93,11 @@ export class TrustGraphProtocol {
   private nodes = new Map<string, TrustNode>();
   private relationships = new Map<string, TrustRelationship>();
   private updateEvents: TrustUpdateEvent[] = [];
+  private onChangeCallback?: () => void;
+
+  setOnChange(cb: () => void): void {
+    this.onChangeCallback = cb;
+  }
 
   addAgent(agentId: string, constitutionHash: string): TrustNode {
     const existing = this.nodes.get(agentId);
@@ -408,5 +413,6 @@ export class TrustGraphProtocol {
     this.updateEvents.push({ type, agents, timestamp: Date.now() });
     if (this.updateEvents.length > MAX_EVENTS)
       this.updateEvents = this.updateEvents.slice(-MAX_EVENTS);
+    this.onChangeCallback?.();
   }
 }

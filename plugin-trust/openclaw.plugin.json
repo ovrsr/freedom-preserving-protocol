@@ -38,6 +38,11 @@
         "maximum": 10,
         "default": 3,
         "description": "Maximum BFS depth for trust propagation."
+      },
+      "trustGraphPath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-trust-graph.json",
+        "description": "Path to the persisted trust graph JSON file. The plugin reloads this file on startup and saves graph updates atomically."
       }
     }
   }

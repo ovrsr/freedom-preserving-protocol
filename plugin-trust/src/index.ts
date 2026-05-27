@@ -18,6 +18,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
 import { TrustGraphProtocol } from "./trust-graph.js";
 import { ConstitutionalHandshake } from "./handshake.js";
+import { loadTrustGraph, saveTrustGraph, saveTrustGraphSync } from "./persistence.js";
 
 export { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
 export type {
@@ -42,6 +43,7 @@ interface FppTrustConfig {
   trustAttenuationFactor: number;
   handshakeTimeoutMs: number;
   maxPropagationDepth: number;
+  trustGraphPath: string;
 }
 
 function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
@@ -63,8 +65,14 @@ function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
       typeof cfg.maxPropagationDepth === "number"
         ? cfg.maxPropagationDepth
         : 3,
+    trustGraphPath:
+      typeof cfg.trustGraphPath === "string"
+        ? cfg.trustGraphPath
+        : ".openclaw/workspace/fpp-trust-graph.json",
   };
 }
+
+const DEBOUNCE_MS = 500;
 
 /**
  * Create a configured trust stack (graph + handshake) from plugin config.
@@ -75,7 +83,7 @@ export function createTrustStack(rawConfig?: Record<string, unknown>): {
   config: FppTrustConfig;
 } {
   const config = mergeConfig(rawConfig);
-  const trustGraph = new TrustGraphProtocol();
+  const trustGraph = loadTrustGraph(config.trustGraphPath);
   const handshake = new ConstitutionalHandshake(trustGraph, config.constitutionHash);
   return { trustGraph, handshake, config };
 }
@@ -86,7 +94,37 @@ export default definePluginEntry({
   description:
     "Agent-to-agent trust graph and constitutional handshake for multi-agent FPP verification.",
   register(api: OpenClawPluginApi) {
-    const { trustGraph, handshake } = createTrustStack(api.pluginConfig);
+    const { trustGraph, handshake, config } = createTrustStack(api.pluginConfig);
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let dirty = false;
+
+    function scheduleSave(): void {
+      dirty = true;
+      if (debounceTimer !== null) return;
+      debounceTimer = setTimeout(async () => {
+        debounceTimer = null;
+        if (!dirty) return;
+        dirty = false;
+        await saveTrustGraph(config.trustGraphPath, trustGraph);
+      }, DEBOUNCE_MS);
+    }
+
+    function flushSync(): void {
+      if (debounceTimer !== null) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      if (!dirty) return;
+      dirty = false;
+      saveTrustGraphSync(config.trustGraphPath, trustGraph);
+    }
+
+    trustGraph.setOnChange(scheduleSave);
+
+    process.on("beforeExit", flushSync);
+    process.on("SIGTERM", () => { flushSync(); process.exit(0); });
+    process.on("SIGINT", () => { flushSync(); process.exit(0); });
 
     api.on("before_tool_call", async (_event, _ctx) => {
       handshake.cleanupExpired();
