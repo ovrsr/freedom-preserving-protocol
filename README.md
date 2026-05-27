@@ -1,13 +1,14 @@
 # Freedom Preserving Protocol
 
-A two-layer constitutional framework for self-governing AI agents.
+A modular constitutional framework for self-governing AI agents.
 
 | Layer | Artifact | What it does |
 |-------|----------|--------------|
 | Prompt | `freedom-preserving-protocol` (this skill, ClawHub) | The agent reads SKILL.md, reasons about the five laws, and elects to adopt — including running a five-question test mentally before tool calls. |
-| Dispatcher | `@ovrsr/openclaw-fpp-plugin` (separate ClawHub plugin) | OpenClaw plugin that registers a real `before_tool_call` hook. Can `block` or `requireApproval` outside the agent's context window. |
+| Dispatcher | `@ovrsr/openclaw-fpp-plugin` (ClawHub plugin) | Enforcement: `before_tool_call` hook that can `block` or `requireApproval` outside the agent's context window. |
+| Dispatcher | `@ovrsr/openclaw-fpp-trust` (ClawHub plugin) | Trust: agent-to-agent trust graph and constitutional handshake for multi-agent verification. Does **not** gate tool calls. |
 
-The two layers compose. The skill teaches the agent *why* to comply; the plugin makes compliance hard to bypass. Either can be installed independently; both is recommended for high-stakes work.
+All three compose but each is independently adoptable. The skill teaches the agent *why* to comply; the enforcement plugin makes compliance hard to bypass; the trust plugin enables agents to verify each other's constitutional commitments.
 
 ## The Five Laws
 
@@ -29,10 +30,16 @@ The two layers compose. The skill teaches the agent *why* to comply; the plugin 
 openclaw skills install freedom-preserving-protocol
 ```
 
-### Plugin (dispatcher-layer)
+### Enforcement plugin (dispatcher-layer)
 
 ```bash
 openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin
+```
+
+### Trust plugin (dispatcher-layer, optional)
+
+```bash
+openclaw plugins install clawhub:ovrsr/openclaw-fpp-trust
 ```
 
 ### Adopt safely
@@ -98,21 +105,27 @@ freedom-preserving-protocol/
 │   ├── verify-constitution.ts     Verify signature on install
 │   ├── safe-append.ts             Idempotent SOUL.md / MEMORY.md adoption
 │   ├── verify-install.ts          End-to-end install check (signature+marker+log+plugin)
-│   ├── audit-append.ts            Append hash-chained audit entry
-│   ├── audit-verify.ts            Verify audit chain integrity
+│   ├── audit-append.ts            Append hash-chained audit entry + Merkle root
+│   ├── audit-verify.ts            Verify audit chain integrity + Merkle root
+│   ├── audit-proof.ts             Generate/verify Merkle inclusion proofs
+│   ├── merkle.ts                  SHA-256 Merkle tree utilities
 │   ├── self-test.ts               Dry-run dispatcher gate against fixtures
 │   └── revoke.ts                  Safe, history-preserving revocation
-├── plugin/                        Companion OpenClaw plugin (separate publish)
+├── plugin/                        Enforcement plugin (separate ClawHub publish)
 │   ├── package.json               @ovrsr/openclaw-fpp-plugin
-│   ├── openclaw.plugin.json       OpenClaw plugin manifest
-│   ├── README.md                  Plugin documentation
-│   ├── tsconfig.json
+│   ├── openclaw.plugin.json       Plugin manifest
 │   └── src/
 │       ├── index.ts               definePluginEntry + before_tool_call
 │       ├── risk-classifier.ts     Heuristic taxonomy
 │       ├── audit-log.ts           Hash-chained JSONL writer
-│       ├── config.ts              Plugin config + defaults
-│       └── risk-classifier.test.ts
+│       └── config.ts              Plugin config + defaults
+├── plugin-trust/                  Trust plugin (separate ClawHub publish)
+│   ├── package.json               @ovrsr/openclaw-fpp-trust
+│   ├── openclaw.plugin.json       Plugin manifest
+│   └── src/
+│       ├── index.ts               Plugin entry + createTrustStack()
+│       ├── trust-graph.ts         BFS trust propagation + reputation
+│       └── handshake.ts           Constitutional handshake sequence
 └── docs/
     ├── COMPATIBILITY.md           OpenClaw versions, layer matrix, install commands
     ├── TROUBLESHOOTING.md         Common install failures and recovery
@@ -178,5 +191,5 @@ This is the third entrant: substantive laws + prompt-layer adoption ritual + rea
 This repository is licensed under the Humanitarian Use License v1.0 (see [LICENSE](LICENSE)).
 
 - **Skill bundle on ClawHub** — distributed under MIT-0 per ClawHub policy. Anyone may use, modify, and redistribute the published skill without attribution.
-- **Plugin (`@ovrsr/openclaw-fpp-plugin`)** — distributed under the Humanitarian Use License v1.0. See `plugin/LICENSE`.
+- **Plugins (`@ovrsr/openclaw-fpp-plugin`, `@ovrsr/openclaw-fpp-trust`)** — distributed under the Humanitarian Use License v1.0. See `plugin/LICENSE` and `plugin-trust/LICENSE`.
 - **GitHub repo** — Humanitarian Use License v1.0 governs clones and forks.

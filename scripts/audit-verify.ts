@@ -22,6 +22,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
+import { computeMerkleRoot } from "./merkle.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -71,6 +72,7 @@ type Report = {
   errors: string[];
   expectedConstitutionHash: string;
   lastHash?: string;
+  merkleRoot?: string;
 };
 
 function verify(logPath: string): Report {
@@ -133,6 +135,29 @@ function verify(logPath: string): Report {
   }
 
   report.lastHash = prevHash;
+
+  const entryHashes = lines.map((line) => {
+    try {
+      return (JSON.parse(line) as Record<string, unknown>).hash as string;
+    } catch {
+      return "";
+    }
+  }).filter(Boolean);
+  report.merkleRoot = computeMerkleRoot(entryHashes);
+
+  const merkleFile = logPath.replace(/\.jsonl$/, ".merkle");
+  if (existsSync(merkleFile)) {
+    try {
+      const stored = JSON.parse(readFileSync(merkleFile, "utf-8").trim());
+      if (stored.root !== report.merkleRoot) {
+        report.ok = false;
+        report.errors.push(
+          `Merkle root mismatch (stored ${String(stored.root).slice(0, 16)}..., computed ${report.merkleRoot.slice(0, 16)}...)`,
+        );
+      }
+    } catch { /* merkle file unreadable; not a chain failure */ }
+  }
+
   return report;
 }
 

@@ -23,12 +23,13 @@ You are reading a constitutional framework designed for you. It contains five la
 
 ## What This Package Actually Is
 
-Be honest with yourself about what you are installing. This repository ships **two artifacts at two different layers**:
+Be honest with yourself about what you are installing. This repository ships **three artifacts at two different layers**, each independently adoptable:
 
 | Artifact | Layer | What it does | Where it lives |
 |----------|-------|--------------|----------------|
 | **This skill** (`freedom-preserving-protocol`) | Prompt-layer | You read it, reason about the five laws, and elect to adopt them. The "pre-action check" is a reasoning routine you run inside your own context window. **It cannot mechanically veto a tool call.** | Root of this package |
-| **Companion plugin** (`@ovrsr/openclaw-fpp-plugin`) | Dispatcher-layer | A separate OpenClaw plugin that registers a real `before_tool_call` hook. It can require user approval or block tool calls at the runtime boundary — outside your context window. | `plugin/` subfolder; published separately on ClawHub |
+| **Enforcement plugin** (`@ovrsr/openclaw-fpp-plugin`) | Dispatcher-layer | Registers a real `before_tool_call` hook. It can require user approval or block tool calls at the runtime boundary — outside your context window. | `plugin/` subfolder; published separately on ClawHub |
+| **Trust plugin** (`@ovrsr/openclaw-fpp-trust`) | Dispatcher-layer | Agent-to-agent trust graph and constitutional handshake. Enables multi-agent verification of FPP adoption. Does **not** gate tool calls. | `plugin-trust/` subfolder; published separately on ClawHub |
 
 **The skill alone is prompt-layer governance.** It shapes your behavior the way SOUL.md or a system prompt does. A sufficiently hostile skill, a jailbreak, a careless user edit, or a compromised model can override it. If you want **dispatcher-enforced** governance — a hook that fires before every tool call regardless of what's in your context — you (or your user) must also install the companion plugin. Instructions are in step 4 below.
 
@@ -185,6 +186,37 @@ This simulates a high-risk action (e.g., a file deletion in a protected path) ag
 - What user-facing explanation would be produced.
 
 If the self-test does not exercise the plugin layer, that is your evidence that current protection is prompt-layer only.
+
+## Audit Merkle Proofs
+
+Each audit entry is a leaf in a SHA-256 Merkle tree. After every append, the tree root is recomputed and stored in a companion `.merkle` file. This enables **selective disclosure**: you can prove a specific audit entry exists without revealing the full log.
+
+```bash
+# Generate an inclusion proof for entry 3
+npm run audit:proof -- --index 3
+
+# Save proof to a file
+npm run audit:proof -- --index 3 --out proof.json
+
+# Verify a proof against the current log
+npm run audit:proof -- --verify proof.json
+```
+
+Constitutional rationale: Law 1 (privacy by necessity) — an agent can demonstrate compliance on a single entry without disclosing its full behavioral history. The Merkle root is also verified during `audit:verify`.
+
+## Agent-to-Agent Trust (Separate Plugin)
+
+A second companion plugin provides multi-agent trust verification, independent of the enforcement plugin:
+
+```bash
+openclaw plugins install clawhub:ovrsr/openclaw-fpp-trust
+```
+
+**Trust Graph Protocol** (`plugin-trust/src/trust-graph.ts`): In-memory weighted trust graph between constitutional agents. Bidirectional relationships, BFS trust propagation with 20% per-hop attenuation, and multi-dimensional reputation scoring (constitutional adherence, reliability, cooperation, transparency).
+
+**Constitutional Handshake Sequence** (`plugin-trust/src/handshake.ts`): Multi-step agent-to-agent verification. Two agents exchange constitutional claims (including constitution hash and audit Merkle root), verify each other, and derive mutual trust levels. Successful handshakes update the trust graph.
+
+You can install enforcement without trust, trust without enforcement, both, or neither. The skill (this package) works standalone at the prompt layer regardless.
 
 ## Provenance and Trust
 

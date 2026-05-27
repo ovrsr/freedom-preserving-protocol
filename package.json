@@ -17,6 +17,7 @@
     "revoke": "npx tsx scripts/revoke.ts",
     "audit:append": "npx tsx scripts/audit-append.ts",
     "audit:verify": "npx tsx scripts/audit-verify.ts",
+    "audit:proof": "npx tsx scripts/audit-proof.ts",
     "self-test": "npx tsx scripts/self-test.ts"
   },
   "devDependencies": {

@@ -1,0 +1,44 @@
+{
+  "id": "openclaw-fpp-trust",
+  "name": "Freedom Preserving Protocol — Trust & Handshake",
+  "description": "Agent-to-agent trust graph with BFS propagation and constitutional handshake sequence. Enables multi-agent verification of FPP adoption without requiring the enforcement plugin.",
+  "contracts": {
+    "tools": []
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "constitutionHash": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$",
+        "default": "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
+        "description": "SHA-256 of the constitution.json this agent has adopted. Used during handshake verification."
+      },
+      "trustAttenuationFactor": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 1.0,
+        "default": 0.8,
+        "description": "Per-hop trust attenuation for BFS propagation. 0.8 means 20% reduction per hop."
+      },
+      "handshakeTimeoutMs": {
+        "type": "integer",
+        "minimum": 10000,
+        "maximum": 600000,
+        "default": 300000,
+        "description": "Maximum time (ms) for a handshake session before it expires."
+      },
+      "maxPropagationDepth": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 3,
+        "description": "Maximum BFS depth for trust propagation."
+      }
+    }
+  }
+}

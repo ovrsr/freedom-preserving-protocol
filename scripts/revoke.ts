@@ -35,6 +35,7 @@ import {
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appendAuditEntry } from "./audit-append.ts";
+import { verify as verifyAuditChain } from "./audit-verify.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -230,6 +231,24 @@ function main() {
   console.log(`Reason: ${args.reason}`);
   if (args.dryRun) console.log("Mode: DRY RUN\n");
   else console.log("Mode: WRITE — backups will be created.\n");
+
+  const logResolved = resolve(args.log);
+  if (existsSync(logResolved)) {
+    const chainReport = verifyAuditChain(logResolved);
+    if (!chainReport.ok) {
+      console.error(
+        `[AUDIT] Chain integrity check FAILED — refusing to revoke from a potentially forged log.`,
+      );
+      for (const e of chainReport.errors.slice(0, 3)) {
+        console.error(`        ${e}`);
+      }
+      console.error(
+        `\nFix the audit chain first (see docs/TROUBLESHOOTING.md#5), then retry.`,
+      );
+      process.exit(1);
+    }
+    console.log(`[AUDIT] Chain integrity verified (${chainReport.entries} entries)\n`);
+  }
 
   if (args.soul) annotateSoul(resolve(args.soul), args.reason, ts, args.dryRun);
   if (args.memory)

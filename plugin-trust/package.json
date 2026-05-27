@@ -1,0 +1,49 @@
+{
+  "name": "@ovrsr/openclaw-fpp-trust",
+  "version": "1.0.0",
+  "description": "OpenClaw plugin: agent-to-agent trust graph and constitutional handshake for the Freedom Preserving Protocol",
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "ovrsr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ovrsr/freedom-preserving-protocol",
+    "directory": "plugin-trust"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/",
+    "src/",
+    "openclaw.plugin.json",
+    "LICENSE",
+    "README.md"
+  ],
+  "openclaw": {
+    "extensions": ["./dist/index.js"],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    },
+    "build": {
+      "openclawVersion": "2026.3.24-beta.2",
+      "pluginSdkVersion": "2026.3.24-beta.2"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/**/*.test.ts"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.24-beta.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "tsx": "^4.19.0"
+  },
+  "engines": {
+    "node": ">=22.19"
+  }
+}

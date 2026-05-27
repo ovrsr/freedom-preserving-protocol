@@ -31,6 +31,7 @@
 import {
   appendFileSync,
   readFileSync,
+  writeFileSync,
   existsSync,
   mkdirSync,
 } from "node:fs";
@@ -38,6 +39,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
+import { computeMerkleRoot } from "./merkle.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -164,6 +166,29 @@ function readPreviousHash(logPath: string): string {
   process.exit(2);
 }
 
+function collectLeaves(logPath: string): string[] {
+  if (!existsSync(logPath)) return [];
+  const content = readFileSync(logPath, "utf-8").trim();
+  if (!content) return [];
+  const leaves: string[] = [];
+  for (const line of content.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line) as Record<string, unknown>;
+      if (typeof entry.hash === "string") leaves.push(entry.hash);
+    } catch { /* skip malformed */ }
+  }
+  return leaves;
+}
+
+function updateMerkleRoot(logPath: string): string {
+  const leaves = collectLeaves(logPath);
+  const root = computeMerkleRoot(leaves);
+  const merkleFile = logPath.replace(/\.jsonl$/, ".merkle");
+  writeFileSync(merkleFile, JSON.stringify({ root, leaves: leaves.length, updatedAt: new Date().toISOString() }) + "\n");
+  return root;
+}
+
 function constitutionHash(): string {
   const path = resolve(root, "constitution.json");
   return bytesToHex(sha256(readFileSync(path)));
@@ -213,7 +238,8 @@ export function appendAuditEntry(opts: AppendOptions): {
   entry.hash = hashEntry(entry);
 
   appendFileSync(logPath, JSON.stringify(entry) + "\n");
-  return { hash: entry.hash as string, previousHash, logPath };
+  const merkleRoot = updateMerkleRoot(logPath);
+  return { hash: entry.hash as string, previousHash, logPath, merkleRoot };
 }
 
 function main() {
@@ -258,4 +284,4 @@ if (isDirectInvocation) {
   main();
 }
 
-export { canonicalize, hashEntry };
+export { canonicalize, hashEntry, updateMerkleRoot };

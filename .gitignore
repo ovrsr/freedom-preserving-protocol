@@ -1,6 +1,8 @@
 node_modules/
 plugin/dist/
 plugin/node_modules/
+plugin-trust/dist/
+plugin-trust/node_modules/
 
 # Runtime audit logs (per-agent; not committed)
 .openclaw/
@@ -21,3 +23,4 @@ package/
 .claude/
 .agents
 CLAUDE.md
+PRAXISCODE_LEARNINGS.md

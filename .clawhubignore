@@ -1,4 +1,5 @@
 plugin/
+plugin-trust/
 package/
 node_modules/
 dist/
@@ -8,3 +9,10 @@ LICENSE
 .gitignore
 *.tgz
 .signing-key.ed25519.local
+.praxiscode/
+.github/
+.cursor/
+.claude/
+.agents
+CLAUDE.md
+PRAXISCODE_LEARNINGS.md
