@@ -2,10 +2,14 @@
  * index.ts
  *
  * Plugin entry for the FPP Trust & Handshake plugin. Registers on startup
- * and exposes the trust graph and handshake instances via the plugin API.
- *
- * This plugin is independent of the enforcement plugin — it handles
- * agent-to-agent trust verification, not tool-call gating.
+ * and exposes:
+ *   - Trust graph + handshake instances (library API)
+ *   - Four LLM-facing tools (fpp_handshake_offer, fpp_handshake_verify,
+ *     fpp_trust_status, fpp_attestation_export)
+ *   - CLI surface (openclaw fpp-trust list/seed/export/verify/strict)
+ *   - Ed25519 agent identity, Merkle audit bridging, signed claims
+ *   - Group context trust clusters
+ *   - Strict-mode signaling to the enforcement plugin
  *
  * Constitutional rationale:
  *   - Law 1 (consent): trust relationships require mutual handshake.
@@ -19,6 +23,12 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import { TrustGraphProtocol } from "./trust-graph.js";
 import { ConstitutionalHandshake } from "./handshake.js";
 import { loadTrustGraph, saveTrustGraph, saveTrustGraphSync } from "./persistence.js";
+import { loadOrCreateIdentity } from "./identity.js";
+import { MerkleBridge } from "./merkle-bridge.js";
+import { StrictModeManager } from "./strict-mode.js";
+import { GroupContextManager } from "./group-context.js";
+import { createFppTools } from "./tools.js";
+import { registerFppTrustCli, FPP_TRUST_CLI_DESCRIPTORS } from "./cli.js";
 
 export { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
 export type {
@@ -38,12 +48,44 @@ export type {
   HandshakeEvidence,
 } from "./handshake.js";
 
+export { loadOrCreateIdentity, verifySignature } from "./identity.js";
+export type { AgentIdentity } from "./identity.js";
+
+export { signClaim, verifyClaim, canonicalize } from "./claims.js";
+export type { SignedClaim, ClaimVerification } from "./claims.js";
+
+export {
+  MerkleBridge,
+  computeMerkleRoot,
+  createMerkleProof,
+  verifyMerkleProof,
+} from "./merkle-bridge.js";
+export type { MerkleProof, MerkleProofStep } from "./merkle-bridge.js";
+
+export { StrictModeManager } from "./strict-mode.js";
+export type { StrictSessionEntry, StrictModeState } from "./strict-mode.js";
+
+export { GroupContextManager } from "./group-context.js";
+export type {
+  ClusterMember,
+  TrustCluster,
+  ClusterTrustState,
+} from "./group-context.js";
+
 interface FppTrustConfig {
   constitutionHash: string;
   trustAttenuationFactor: number;
   handshakeTimeoutMs: number;
   maxPropagationDepth: number;
   trustGraphPath: string;
+  identityKeyPath: string;
+  auditLogPath: string;
+  strictModeStatePath: string;
+  requireSignedClaims: boolean;
+  requireMerkleProof: boolean;
+  strictModeOnHandshakeFailure: boolean;
+  strictModeTtlMs: number;
+  strictModeAddApprovalOn: string[];
 }
 
 function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
@@ -69,17 +111,60 @@ function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
       typeof cfg.trustGraphPath === "string"
         ? cfg.trustGraphPath
         : ".openclaw/workspace/fpp-trust-graph.json",
+    identityKeyPath:
+      typeof cfg.identityKeyPath === "string"
+        ? cfg.identityKeyPath
+        : ".openclaw/workspace/fpp-agent-identity.key",
+    auditLogPath:
+      typeof cfg.auditLogPath === "string"
+        ? cfg.auditLogPath
+        : ".openclaw/workspace/constitution-audit.jsonl",
+    strictModeStatePath:
+      typeof cfg.strictModeStatePath === "string"
+        ? cfg.strictModeStatePath
+        : ".openclaw/workspace/fpp-strict-sessions.json",
+    requireSignedClaims:
+      typeof cfg.requireSignedClaims === "boolean"
+        ? cfg.requireSignedClaims
+        : false,
+    requireMerkleProof:
+      typeof cfg.requireMerkleProof === "boolean"
+        ? cfg.requireMerkleProof
+        : false,
+    strictModeOnHandshakeFailure:
+      typeof cfg.strictModeOnHandshakeFailure === "boolean"
+        ? cfg.strictModeOnHandshakeFailure
+        : false,
+    strictModeTtlMs:
+      typeof cfg.strictModeTtlMs === "number"
+        ? cfg.strictModeTtlMs
+        : 3_600_000,
+    strictModeAddApprovalOn: Array.isArray(cfg.strictModeAddApprovalOn)
+      ? cfg.strictModeAddApprovalOn
+      : [
+          "fs.write.workspace",
+          "fs.delete.workspace",
+          "http.public-read",
+          "http.public-write",
+          "exec.outbound-write",
+          "message.external",
+        ],
   };
 }
 
 const DEBOUNCE_MS = 500;
 
 /**
- * Create a configured trust stack (graph + handshake) from plugin config.
+ * Create a configured trust stack (graph + handshake + identity + etc.)
+ * from plugin config. Useful for programmatic access outside the plugin lifecycle.
  */
 export function createTrustStack(rawConfig?: Record<string, unknown>): {
   trustGraph: TrustGraphProtocol;
   handshake: ConstitutionalHandshake;
+  identity: ReturnType<typeof loadOrCreateIdentity>;
+  merkleBridge: MerkleBridge;
+  strictMode: StrictModeManager;
+  groupContext: GroupContextManager;
   config: FppTrustConfig;
 } {
   const config = mergeConfig(rawConfig);
@@ -89,17 +174,38 @@ export function createTrustStack(rawConfig?: Record<string, unknown>): {
   const handshake = new ConstitutionalHandshake(trustGraph, config.constitutionHash, {
     timeoutMs: config.handshakeTimeoutMs,
     maxPropagationDepth: config.maxPropagationDepth,
+    requireSignedClaims: config.requireSignedClaims,
+    requireMerkleProof: config.requireMerkleProof,
   });
-  return { trustGraph, handshake, config };
+  const identity = loadOrCreateIdentity(config.identityKeyPath);
+  const merkleBridge = new MerkleBridge(config.auditLogPath);
+  const strictMode = new StrictModeManager(config.strictModeStatePath, {
+    defaultTtlMs: config.strictModeTtlMs,
+    defaultAddApprovalOn: config.strictModeAddApprovalOn,
+  });
+  const groupContext = new GroupContextManager(trustGraph, identity.agentId);
+
+  return { trustGraph, handshake, identity, merkleBridge, strictMode, groupContext, config };
 }
 
 export default definePluginEntry({
   id: "openclaw-fpp-trust",
   name: "Freedom Preserving Protocol — Trust & Handshake",
   description:
-    "Agent-to-agent trust graph and constitutional handshake for multi-agent FPP verification.",
+    "Agent-to-agent trust graph, constitutional handshake, signed claims, " +
+    "Merkle audit bridging, and strict-mode signaling for multi-agent FPP verification.",
   register(api: OpenClawPluginApi) {
-    const { trustGraph, handshake, config } = createTrustStack(api.pluginConfig);
+    const {
+      trustGraph,
+      handshake,
+      identity,
+      merkleBridge,
+      strictMode,
+      groupContext,
+      config,
+    } = createTrustStack(api.pluginConfig);
+
+    // -- persistence (same debounce pattern as before) --
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let dirty = false;
@@ -136,9 +242,47 @@ export default definePluginEntry({
     process.once("SIGTERM", flushSync);
     process.once("SIGINT", flushSync);
 
+    // -- hook: cleanup expired sessions --
+
     api.on("before_tool_call", async (_event, _ctx) => {
       handshake.cleanupExpired();
       return undefined;
     }, { priority: 90 });
+
+    // -- register tools --
+
+    const tools = createFppTools({
+      identity,
+      trustGraph,
+      handshake,
+      merkleBridge,
+      strictMode,
+      constitutionHash: config.constitutionHash,
+      strictModeOnHandshakeFailure: config.strictModeOnHandshakeFailure,
+      strictModeTtlMs: config.strictModeTtlMs,
+    });
+
+    for (const tool of tools) {
+      api.registerTool(tool as Parameters<typeof api.registerTool>[0]);
+    }
+
+    // -- register CLI --
+
+    api.registerCli(
+      (ctx) => {
+        registerFppTrustCli(ctx.program as Parameters<typeof registerFppTrustCli>[0], {
+          identity,
+          trustGraph,
+          merkleBridge,
+          strictMode,
+          constitutionHash: config.constitutionHash,
+        });
+      },
+      {
+        descriptors: FPP_TRUST_CLI_DESCRIPTORS,
+      },
+    );
+
+    void groupContext;
   },
 });

@@ -110,6 +110,7 @@ freedom-preserving-protocol/
 │   ├── audit-proof.ts             Generate/verify Merkle inclusion proofs
 │   ├── merkle.ts                  SHA-256 Merkle tree utilities
 │   ├── self-test.ts               Dry-run dispatcher gate against fixtures
+│   ├── verify-pack.sh             Package integrity check before publishing
 │   └── revoke.ts                  Safe, history-preserving revocation
 ├── plugin/                        Enforcement plugin (separate ClawHub publish)
 │   ├── package.json               @ovrsr/openclaw-fpp-plugin

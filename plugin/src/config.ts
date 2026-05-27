@@ -15,6 +15,8 @@ export type FppPluginConfig = {
   approvalTimeoutMs: number;
   approvalTimeoutBehavior: "allow" | "deny";
   constitutionHash: string;
+  strictModeStatePath: string;
+  respectTrustStrictMode: boolean;
 };
 
 export const DEFAULT_CONFIG: FppPluginConfig = {
@@ -35,6 +37,8 @@ export const DEFAULT_CONFIG: FppPluginConfig = {
   approvalTimeoutBehavior: "deny",
   constitutionHash:
     "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
+  strictModeStatePath: ".openclaw/workspace/fpp-strict-sessions.json",
+  respectTrustStrictMode: true,
 };
 
 export function mergeConfig(input: unknown): FppPluginConfig {
@@ -47,5 +51,9 @@ export function mergeConfig(input: unknown): FppPluginConfig {
     approvalTimeoutBehavior:
       partial.approvalTimeoutBehavior ?? DEFAULT_CONFIG.approvalTimeoutBehavior,
     constitutionHash: partial.constitutionHash ?? DEFAULT_CONFIG.constitutionHash,
+    strictModeStatePath:
+      partial.strictModeStatePath ?? DEFAULT_CONFIG.strictModeStatePath,
+    respectTrustStrictMode:
+      partial.respectTrustStrictMode ?? DEFAULT_CONFIG.respectTrustStrictMode,
   };
 }

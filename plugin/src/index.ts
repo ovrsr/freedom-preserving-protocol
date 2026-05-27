@@ -18,12 +18,58 @@
  *   - Law 5 (scoped exploration): unknown tools are logged but allowed, with a note.
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
 import { classifyToolCall, type ClassificationResult } from "./risk-classifier.js";
 import { mergeConfig, type FppPluginConfig } from "./config.js";
 import { appendEnforcementEntry } from "./audit-log.js";
+
+interface StrictSessionEntry {
+  strict: boolean;
+  addedApprovalOn: string[];
+  expiresAt: string;
+}
+
+interface StrictModeState {
+  version: number;
+  sessions: Record<string, StrictSessionEntry>;
+}
+
+let strictModeCache: { state: StrictModeState; readAt: number } | null = null;
+const STRICT_CACHE_TTL_MS = 1000;
+
+function readStrictModeState(filePath: string): StrictModeState | null {
+  const now = Date.now();
+  if (strictModeCache && now - strictModeCache.readAt < STRICT_CACHE_TTL_MS) {
+    return strictModeCache.state;
+  }
+  const resolved = resolve(filePath);
+  if (!existsSync(resolved)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(resolved, "utf-8")) as StrictModeState;
+    if (raw.version !== 1 || typeof raw.sessions !== "object") return null;
+    strictModeCache = { state: raw, readAt: now };
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+function getStrictApprovalOverrides(
+  filePath: string,
+  sessionKey: string | undefined,
+): string[] {
+  if (!sessionKey) return [];
+  const state = readStrictModeState(filePath);
+  if (!state) return [];
+  const entry = state.sessions[sessionKey];
+  if (!entry || !entry.strict) return [];
+  if (new Date(entry.expiresAt).getTime() < Date.now()) return [];
+  return entry.addedApprovalOn ?? [];
+}
 
 function severityFor(classification: ClassificationResult): "info" | "warning" | "critical" {
   if (classification.decision === "block") return "critical";
@@ -41,9 +87,11 @@ function severityFor(classification: ClassificationResult): "info" | "warning" |
 function decide(
   config: FppPluginConfig,
   classification: ClassificationResult,
+  strictOverrides: string[] = [],
 ): "block" | "approval" | "allow" {
   if (config.blockOn.includes(classification.classification)) return "block";
   if (config.approvalOn.includes(classification.classification)) return "approval";
+  if (strictOverrides.includes(classification.classification)) return "approval";
   // If the classifier itself says block but config doesn't list it, honor the
   // classifier's recommendation but downgrade to approval rather than allow.
   // Preserves Law 1 even when an operator's config is loose.
@@ -81,7 +129,10 @@ export default definePluginEntry({
       "before_tool_call",
       async (event, ctx) => {
         const classification = classifyToolCall(event.toolName, event.params);
-        const decision = decide(config, classification);
+        const strictOverrides = config.respectTrustStrictMode
+          ? getStrictApprovalOverrides(config.strictModeStatePath, ctx.sessionKey)
+          : [];
+        const decision = decide(config, classification, strictOverrides);
 
         const eventForAudit = {
           toolName: event.toolName,

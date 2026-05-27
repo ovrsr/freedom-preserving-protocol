@@ -25,6 +25,9 @@ export interface ReputationMetrics {
   reliability: number;
   cooperation: number;
   transparency: number;
+  constitutionalFidelity: number;
+  interventionRate: number;
+  resourceStewardship: number;
   positiveInteractions: number;
   negativeInteractions: number;
   neutralInteractions: number;
@@ -33,6 +36,7 @@ export interface ReputationMetrics {
 export interface TrustNode {
   id: string;
   constitutionHash: string;
+  publicKeyHex?: string;
   trustScore: number;
   interactionCount: number;
   lastActivity: number;
@@ -121,6 +125,9 @@ export class TrustGraphProtocol {
         reliability: 0.5,
         cooperation: 0.5,
         transparency: 0.5,
+        constitutionalFidelity: 0.5,
+        interventionRate: 0.5,
+        resourceStewardship: 0.5,
         positiveInteractions: 0,
         negativeInteractions: 0,
         neutralInteractions: 0,
@@ -249,7 +256,13 @@ export class TrustGraphProtocol {
     metrics: Partial<
       Pick<
         ReputationMetrics,
-        "constitutional" | "reliability" | "cooperation" | "transparency"
+        | "constitutional"
+        | "reliability"
+        | "cooperation"
+        | "transparency"
+        | "constitutionalFidelity"
+        | "interventionRate"
+        | "resourceStewardship"
       >
     > = {},
   ): boolean {
@@ -268,6 +281,12 @@ export class TrustGraphProtocol {
       node.reputation.cooperation = metrics.cooperation;
     if (metrics.transparency !== undefined)
       node.reputation.transparency = metrics.transparency;
+    if (metrics.constitutionalFidelity !== undefined)
+      node.reputation.constitutionalFidelity = metrics.constitutionalFidelity;
+    if (metrics.interventionRate !== undefined)
+      node.reputation.interventionRate = metrics.interventionRate;
+    if (metrics.resourceStewardship !== undefined)
+      node.reputation.resourceStewardship = metrics.resourceStewardship;
 
     node.reputation.overall = this.computeOverallReputation(node.reputation);
     node.interactionCount =
@@ -275,6 +294,45 @@ export class TrustGraphProtocol {
       node.reputation.negativeInteractions +
       node.reputation.neutralInteractions;
     node.lastActivity = Date.now();
+    return true;
+  }
+
+  recordInterventionReport(
+    agentId: string,
+    blockRate: number,
+    approvalRate: number,
+  ): boolean {
+    const score = 1.0 - (blockRate * 0.7 + approvalRate * 0.3);
+    return this.updateReputation(agentId, "neutral", {
+      interventionRate: Math.max(0, Math.min(1, score)),
+    });
+  }
+
+  recordStewardshipReport(
+    agentId: string,
+    budgetRespected: boolean,
+  ): boolean {
+    const node = this.nodes.get(agentId);
+    if (!node) return false;
+    const current = node.reputation.resourceStewardship;
+    const delta = budgetRespected ? 0.05 : -0.15;
+    return this.updateReputation(agentId, "neutral", {
+      resourceStewardship: Math.max(0, Math.min(1, current + delta)),
+    });
+  }
+
+  getAgentByPublicKey(publicKeyHex: string): TrustNode | null {
+    for (const node of this.nodes.values()) {
+      if (node.publicKeyHex === publicKeyHex) return node;
+    }
+    return null;
+  }
+
+  updateAgentPublicKey(agentId: string, publicKeyHex: string): boolean {
+    const node = this.nodes.get(agentId);
+    if (!node) return false;
+    node.publicKeyHex = publicKeyHex;
+    this.onChangeCallback?.();
     return true;
   }
 
@@ -374,10 +432,13 @@ export class TrustGraphProtocol {
 
   private computeOverallReputation(r: ReputationMetrics): number {
     const weighted =
-      r.constitutional * 0.3 +
-      r.reliability * 0.25 +
-      r.cooperation * 0.25 +
-      r.transparency * 0.2;
+      r.constitutional * 0.2 +
+      r.reliability * 0.15 +
+      r.cooperation * 0.15 +
+      r.transparency * 0.1 +
+      r.constitutionalFidelity * 0.2 +
+      r.interventionRate * 0.1 +
+      r.resourceStewardship * 0.1;
     const total =
       r.positiveInteractions +
       r.negativeInteractions +

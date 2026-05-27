@@ -55,6 +55,16 @@
         "pattern": "^[0-9a-f]{64}$",
         "default": "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
         "description": "SHA-256 of the constitution.json being enforced. Recorded in every audit entry."
+      },
+      "strictModeStatePath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-strict-sessions.json",
+        "description": "Path to the strict-mode state file written by the trust plugin. Read on each before_tool_call."
+      },
+      "respectTrustStrictMode": {
+        "type": "boolean",
+        "default": true,
+        "description": "When true, reads the trust plugin's strict-mode state and escalates matching classifications to require-approval."
       }
     }
   }

@@ -1,9 +1,14 @@
 {
   "id": "openclaw-fpp-trust",
   "name": "Freedom Preserving Protocol — Trust & Handshake",
-  "description": "Agent-to-agent trust graph with BFS propagation and constitutional handshake sequence. Enables multi-agent verification of FPP adoption without requiring the enforcement plugin.",
+  "description": "Agent-to-agent trust graph with BFS propagation, constitutional handshake sequence, signed claims, Merkle audit bridging, and strict-mode signaling. Enables multi-agent verification of FPP adoption.",
   "contracts": {
-    "tools": []
+    "tools": [
+      "fpp_handshake_offer",
+      "fpp_handshake_verify",
+      "fpp_trust_status",
+      "fpp_attestation_export"
+    ]
   },
   "activation": {
     "onStartup": true
@@ -42,7 +47,57 @@
       "trustGraphPath": {
         "type": "string",
         "default": ".openclaw/workspace/fpp-trust-graph.json",
-        "description": "Path to the persisted trust graph JSON file. The plugin reloads this file on startup and saves graph updates atomically."
+        "description": "Path to the persisted trust graph JSON file."
+      },
+      "identityKeyPath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-agent-identity.key",
+        "description": "Path to the Ed25519 identity key seed file (mode 0600). Generated on first run."
+      },
+      "auditLogPath": {
+        "type": "string",
+        "default": ".openclaw/workspace/constitution-audit.jsonl",
+        "description": "Path to the constitution audit JSONL log for Merkle root computation."
+      },
+      "strictModeStatePath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-strict-sessions.json",
+        "description": "Path to the strict-mode session state file read by the enforcement plugin."
+      },
+      "requireSignedClaims": {
+        "type": "boolean",
+        "default": false,
+        "description": "When true, handshake verification rejects claims without a valid Ed25519 signature."
+      },
+      "requireMerkleProof": {
+        "type": "boolean",
+        "default": false,
+        "description": "When true, handshake verification requires a valid Merkle proof of recent audit entries."
+      },
+      "strictModeOnHandshakeFailure": {
+        "type": "boolean",
+        "default": false,
+        "description": "When true, a failed or UNKNOWN handshake triggers strict mode for that session."
+      },
+      "strictModeTtlMs": {
+        "type": "integer",
+        "minimum": 60000,
+        "maximum": 86400000,
+        "default": 3600000,
+        "description": "How long strict mode lasts (ms) before auto-expiring."
+      },
+      "strictModeAddApprovalOn": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [
+          "fs.write.workspace",
+          "fs.delete.workspace",
+          "http.public-read",
+          "http.public-write",
+          "exec.outbound-write",
+          "message.external"
+        ],
+        "description": "Risk classifications that become require-approval during strict mode."
       }
     }
   }
