@@ -137,11 +137,25 @@ If the signature does not verify, do not adopt. See `docs/TROUBLESHOOTING.md#4`.
 
 ## Signing (for maintainers)
 
+Preferred (release / CI):
+
 ```bash
-npm run sign
-# or
 FPP_SIGNING_KEY=<hex-encoded-ed25519-private-key> npm run sign
 ```
+
+Local maintainer convenience (interactive shell only):
+
+```bash
+npm run sign -- --generate-key   # first run only; key written to .signing-key.ed25519.local
+npm run sign                     # subsequent runs reuse the local key
+```
+
+Safety properties of `scripts/sign-constitution.ts`:
+
+- **Never prints the private key.** A newly generated key is written only to `.signing-key.ed25519.local` (gitignored, mode `0600`). Earlier versions logged the key to stdout, which a downstream review (SkillSpector, NVIDIA) correctly flagged as a high-severity exfiltration risk via CI logs, terminal scrollback, and centralized log aggregation. Fixed in v1.1.2.
+- **Refuses silent generation.** Without `--generate-key` the script exits non-zero rather than minting a key behind your back.
+- **Refuses to mint in CI.** If `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, `TRAVIS`, `JENKINS_URL`, `TEAMCITY_VERSION`, `TF_BUILD`, `BITBUCKET_BUILD_NUMBER`, or `CODEBUILD_BUILD_ID` is set, key generation is hard-disabled — provide `FPP_SIGNING_KEY` out-of-band instead.
+- **Refuses to mint when stdout is not a TTY.** Catches the `npm run sign | tee build.log` / `script(1)` capture case.
 
 Note: the published constitution hash `71bf60a...` is stable across v1.0.x and v1.1.x. The v1.1.x release adds tooling and the companion plugin but does not modify the constitution itself.
 

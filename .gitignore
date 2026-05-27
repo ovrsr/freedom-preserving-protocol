@@ -10,3 +10,6 @@ package/
 
 # npm pack artifacts
 *.tgz
+
+# Locally-generated maintainer signing key (never commit)
+.signing-key.ed25519.local

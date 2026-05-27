@@ -7,3 +7,4 @@ dist/
 LICENSE
 .gitignore
 *.tgz
+.signing-key.ed25519.local
