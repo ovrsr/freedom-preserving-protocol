@@ -79,13 +79,18 @@ export class ConstitutionalHandshake {
   private sessions = new Map<string, HandshakeSession>();
   private trustGraph: TrustGraphProtocol;
   private expectedConstitutionHash: string;
+  private timeoutMs: number;
+  private maxPropagationDepth: number;
 
   constructor(
     trustGraph: TrustGraphProtocol,
     expectedConstitutionHash: string,
+    options?: { timeoutMs?: number; maxPropagationDepth?: number },
   ) {
     this.trustGraph = trustGraph;
     this.expectedConstitutionHash = expectedConstitutionHash;
+    this.timeoutMs = options?.timeoutMs ?? SESSION_TIMEOUT_MS;
+    this.maxPropagationDepth = options?.maxPropagationDepth ?? 3;
   }
 
   /**
@@ -180,6 +185,7 @@ export class ConstitutionalHandshake {
     const existing = this.trustGraph.propagateTrust(
       session.initiator,
       session.responder,
+      this.maxPropagationDepth,
     );
 
     session.evidence.push({
@@ -347,7 +353,7 @@ export class ConstitutionalHandshake {
   }
 
   private isExpired(session: HandshakeSession): boolean {
-    return Date.now() - session.lastUpdate > SESSION_TIMEOUT_MS;
+    return Date.now() - session.lastUpdate > this.timeoutMs;
   }
 
   private generateSessionId(agentId: string): string {

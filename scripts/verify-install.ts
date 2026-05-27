@@ -288,7 +288,7 @@ function main() {
       "Dispatcher-layer enforcement plugin",
       "plugin.enforcement.installed",
       ENFORCEMENT_PLUGIN_ID_CANDIDATES,
-      "openclaw plugins install clawhub:@ovrsr/openclaw-fpp-plugin",
+      "openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin",
     ),
   );
   checks.push(
@@ -296,7 +296,7 @@ function main() {
       "Dispatcher-layer trust plugin",
       "plugin.trust.installed",
       TRUST_PLUGIN_ID_CANDIDATES,
-      "openclaw plugins install clawhub:@ovrsr/openclaw-fpp-trust",
+      "openclaw plugins install clawhub:ovrsr/openclaw-fpp-trust",
     ),
   );
 
@@ -348,7 +348,7 @@ function main() {
         "Note: without the dispatcher-layer enforcement plugin, the five-question gate can be bypassed by prompt injection or a hostile skill. Install the plugin for `before_tool_call` enforcement:",
       );
       console.log(
-        "  openclaw plugins install clawhub:@ovrsr/openclaw-fpp-plugin",
+        "  openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin",
       );
     }
     if (!trustLayerActive) {
@@ -356,7 +356,7 @@ function main() {
         "Note: without the trust plugin, agent-to-agent constitutional handshakes and trust graph verification are not active:",
       );
       console.log(
-        "  openclaw plugins install clawhub:@ovrsr/openclaw-fpp-trust",
+        "  openclaw plugins install clawhub:ovrsr/openclaw-fpp-trust",
       );
     }
     console.log(`\nOverall: ${report.ok ? "PASS" : "FAIL"}`);

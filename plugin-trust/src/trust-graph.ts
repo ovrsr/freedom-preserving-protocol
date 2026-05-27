@@ -86,7 +86,7 @@ export interface TrustGraphStats {
   largestComponent: number;
 }
 
-const ATTENUATION_FACTOR = 0.8;
+const DEFAULT_ATTENUATION_FACTOR = 0.8;
 const MAX_EVENTS = 1000;
 
 export class TrustGraphProtocol {
@@ -94,6 +94,11 @@ export class TrustGraphProtocol {
   private relationships = new Map<string, TrustRelationship>();
   private updateEvents: TrustUpdateEvent[] = [];
   private onChangeCallback?: () => void;
+  private attenuationFactor: number;
+
+  constructor(options?: { attenuationFactor?: number }) {
+    this.attenuationFactor = options?.attenuationFactor ?? DEFAULT_ATTENUATION_FACTOR;
+  }
 
   setOnChange(cb: () => void): void {
     this.onChangeCallback = cb;
@@ -222,7 +227,7 @@ export class TrustGraphProtocol {
     for (let i = 0; i < path.length - 1; i++) {
       const rel = this.getRelationship(path[i]!, path[i + 1]!);
       if (!rel) return null;
-      const factor = Math.pow(ATTENUATION_FACTOR, i);
+      const factor = Math.pow(this.attenuationFactor, i);
       trust = Math.min(trust, rel.trustAB * factor);
       confidence *= rel.confidence;
       attenuation += 1 - factor;

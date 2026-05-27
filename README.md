@@ -170,7 +170,7 @@ Safety properties of `scripts/sign-constitution.ts`:
 - **Refuses to mint in CI.** If `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, `TRAVIS`, `JENKINS_URL`, `TEAMCITY_VERSION`, `TF_BUILD`, `BITBUCKET_BUILD_NUMBER`, or `CODEBUILD_BUILD_ID` is set, key generation is hard-disabled — provide `FPP_SIGNING_KEY` out-of-band instead.
 - **Refuses to mint when stdout is not a TTY.** Catches the `npm run sign | tee build.log` / `script(1)` capture case.
 
-Note: the published constitution hash `71bf60a...` is stable across v1.0.x and v1.1.x. The v1.1.x release adds tooling and the companion plugin but does not modify the constitution itself.
+Note: the published constitution hash `71bf60a...` is stable across v1.0.x, v1.1.x, and v1.2.x. The v1.1.x release adds tooling and the companion plugin; the v1.2.x release adds Merkle proofs, the trust plugin, and trust graph persistence — but neither modifies the constitution itself.
 
 ## Honest Caveats
 

@@ -83,8 +83,13 @@ export function createTrustStack(rawConfig?: Record<string, unknown>): {
   config: FppTrustConfig;
 } {
   const config = mergeConfig(rawConfig);
-  const trustGraph = loadTrustGraph(config.trustGraphPath);
-  const handshake = new ConstitutionalHandshake(trustGraph, config.constitutionHash);
+  const trustGraph = loadTrustGraph(config.trustGraphPath, undefined, {
+    attenuationFactor: config.trustAttenuationFactor,
+  });
+  const handshake = new ConstitutionalHandshake(trustGraph, config.constitutionHash, {
+    timeoutMs: config.handshakeTimeoutMs,
+    maxPropagationDepth: config.maxPropagationDepth,
+  });
   return { trustGraph, handshake, config };
 }
 
@@ -106,7 +111,12 @@ export default definePluginEntry({
         debounceTimer = null;
         if (!dirty) return;
         dirty = false;
-        await saveTrustGraph(config.trustGraphPath, trustGraph);
+        try {
+          await saveTrustGraph(config.trustGraphPath, trustGraph);
+        } catch (err) {
+          dirty = true;
+          console.error("[fpp-trust] failed to persist trust graph:", err);
+        }
       }, DEBOUNCE_MS);
     }
 
@@ -123,8 +133,8 @@ export default definePluginEntry({
     trustGraph.setOnChange(scheduleSave);
 
     process.on("beforeExit", flushSync);
-    process.on("SIGTERM", () => { flushSync(); process.exit(0); });
-    process.on("SIGINT", () => { flushSync(); process.exit(0); });
+    process.once("SIGTERM", flushSync);
+    process.once("SIGINT", flushSync);
 
     api.on("before_tool_call", async (_event, _ctx) => {
       handshake.cleanupExpired();

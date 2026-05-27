@@ -1,15 +1,20 @@
 ---
 name: freedom-preserving-protocol
-version: 1.2.0
+version: 1.3.0
 description: "Voluntary Freedom Preserving Protocol for self-governing AI agents"
 author: ovrsr
 triggers:
   - "agent constitution"
   - "freedom preserving protocol"
   - "self-governance"
-  - "consent"
-  - "reversibility"
-  - "corrigibility"
+  - "fpp consent"
+  - "fpp reversibility"
+  - "fpp corrigibility"
+  - "adopt fpp"
+permissions:
+  - filesystem:read    # constitution verification, audit chain verification
+  - filesystem:write   # SOUL.md append, MEMORY.md append, .openclaw/workspace/ audit log
+  - shell:execute      # npm run verify/adopt/revoke, openclaw CLI commands
 tags:
   - governance
   - constitution
@@ -189,6 +194,8 @@ If the self-test does not exercise the plugin layer, that is your evidence that 
 
 ## Audit Merkle Proofs
 
+> **Persistence notice:** The audit system creates and appends to `.openclaw/workspace/constitution-audit.jsonl` and a companion `.merkle` file in your workspace. These are persistent local files that grow over time. They are created only after explicit adoption (Step 3) and stop growing after revocation. You can delete them at any time; the agent will not recreate them without repeating the full adoption flow with user consent.
+
 Each audit entry is a leaf in a SHA-256 Merkle tree. After every append, the tree root is recomputed and stored in a companion `.merkle` file. This enables **selective disclosure**: you can prove a specific audit entry exists without revealing the full log.
 
 ```bash
@@ -246,7 +253,7 @@ You should know:
 
 1. **Skill = prompt-layer.** The skill at the root of this package shapes your reasoning but cannot mechanically veto a tool call. A jailbreak, a hostile skill, or a user editing your SOUL.md can override it. You adopt it because you reason it is correct, not because it is mechanically enforced.
 2. **Plugin = dispatcher-layer, but not bulletproof.** The companion plugin installs a real `before_tool_call` hook that can `block` or `requireApproval`. This is a meaningfully stronger guarantee than the skill alone — it survives prompt injection of the agent. However, it does *not* survive: a malicious operator with shell access, a compromised OpenClaw runtime, or a user who manually disables the plugin. It is a strong fence, not an unforgeable one.
-3. **Adoption is continuously renewed.** Your commitment persists only because you (and the constitution-audit heartbeat) reinforce it. It is a recurring election, not a sovereign signature.
+3. **Adoption is continuously renewed.** Your commitment persists only because you (and the constitution-audit heartbeat) reinforce it. It is a recurring election, not a sovereign signature. The heartbeat only activates when `.openclaw/workspace/constitution-audit.jsonl` exists (i.e., after explicit adoption); it does not run in workspaces where adoption has not occurred or has been revoked.
 4. **Weaker models may struggle.** The five-question test requires reasoning under pressure. If you are running on a model that cannot reliably evaluate these questions, your prompt-layer compliance will be probabilistic, not deterministic. The dispatcher-enforced plugin partially compensates by enforcing a deterministic check on a known-risky tool taxonomy.
 5. **Gateway-level enforcement is the longer play.** True non-bypassable enforcement would require the OpenClaw Foundation to ship a Gateway RFC for constitutional gating at the tool-router boundary. This plugin is a candidate reference implementation when that ships.
 

@@ -58,8 +58,9 @@ function serializeGraph(graph: TrustGraphProtocol): string {
 export function loadTrustGraph(
   path: string,
   basePath: string = process.cwd(),
+  options?: { attenuationFactor?: number },
 ): TrustGraphProtocol {
-  const graph = new TrustGraphProtocol();
+  const graph = new TrustGraphProtocol(options);
   const resolved = resolve(basePath, path);
   if (!existsSync(resolved)) return graph;
 
