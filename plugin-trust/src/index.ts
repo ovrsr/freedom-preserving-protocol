@@ -1,15 +1,12 @@
 /**
  * index.ts
  *
- * Plugin entry for the FPP Trust & Handshake plugin. Registers on startup
- * and exposes:
- *   - Trust graph + handshake instances (library API)
- *   - Four LLM-facing tools (fpp_handshake_offer, fpp_handshake_verify,
- *     fpp_trust_status, fpp_attestation_export)
- *   - CLI surface (openclaw fpp-trust list/seed/export/verify/strict)
- *   - Ed25519 agent identity, Merkle audit bridging, signed claims
- *   - Group context trust clusters
- *   - Strict-mode signaling to the enforcement plugin
+ * Plugin entry for the FPP Trust & Handshake plugin.
+ *
+ * Uses defineToolPlugin so the SDK automatically wires tool discovery,
+ * tool-search metadata, and registrationMode gating. The five agent-facing
+ * tools are declared in the `tools:` factory; hooks and CLI are registered
+ * inside each tool factory's access to the api.
  *
  * Constitutional rationale:
  *   - Law 1 (consent): trust relationships require mutual handshake.
@@ -17,7 +14,7 @@
  *   - Law 5 (scoped exploration): trust propagation has bounded depth.
  */
 
-import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
 import { TrustGraphProtocol } from "./trust-graph.js";
@@ -27,8 +24,22 @@ import { loadOrCreateIdentity } from "./identity.js";
 import { MerkleBridge } from "./merkle-bridge.js";
 import { StrictModeManager } from "./strict-mode.js";
 import { GroupContextManager } from "./group-context.js";
-import { createFppTools } from "./tools.js";
 import { registerFppTrustCli, FPP_TRUST_CLI_DESCRIPTORS } from "./cli.js";
+import type { ToolDependencies } from "./tools.js";
+import {
+  HandshakeOfferParams,
+  HandshakeVerifyParams,
+  TrustStatusParams,
+  AttestationExportParams,
+  ClusterStatusParams,
+  executeHandshakeOffer,
+  executeHandshakeVerify,
+  executeTrustStatus,
+  executeAttestationExport,
+  executeClusterStatus,
+} from "./tools.js";
+
+// ── Re-exports (library API) ──────────────────────────────────────
 
 export { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
 export type {
@@ -71,6 +82,8 @@ export type {
   TrustCluster,
   ClusterTrustState,
 } from "./group-context.js";
+
+// ── Config ─────────────────────────────────────────────────────────
 
 interface FppTrustConfig {
   constitutionHash: string;
@@ -188,101 +201,217 @@ export function createTrustStack(rawConfig?: Record<string, unknown>): {
   return { trustGraph, handshake, identity, merkleBridge, strictMode, groupContext, config };
 }
 
-export default definePluginEntry({
+// ── Shared state (initialised once per process on first tool factory call) ──
+
+let _stack: ReturnType<typeof createTrustStack> | null = null;
+let _deps: ToolDependencies | null = null;
+
+function initStack(api: OpenClawPluginApi): {
+  stack: ReturnType<typeof createTrustStack>;
+  deps: ToolDependencies;
+} {
+  if (_stack && _deps) return { stack: _stack, deps: _deps };
+
+  const stack = createTrustStack(api.pluginConfig);
+  const { trustGraph, handshake, identity, merkleBridge, strictMode, groupContext, config } =
+    stack;
+
+  // -- persistence (debounced) --
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let dirty = false;
+
+  function scheduleSave(): void {
+    dirty = true;
+    if (debounceTimer !== null) return;
+    debounceTimer = setTimeout(async () => {
+      debounceTimer = null;
+      if (!dirty) return;
+      dirty = false;
+      try {
+        await saveTrustGraph(config.trustGraphPath, trustGraph);
+      } catch (err) {
+        dirty = true;
+        console.error("[fpp-trust] failed to persist trust graph:", err);
+      }
+    }, DEBOUNCE_MS);
+  }
+
+  function flushSync(): void {
+    if (debounceTimer !== null) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    if (!dirty) return;
+    dirty = false;
+    saveTrustGraphSync(config.trustGraphPath, trustGraph);
+  }
+
+  trustGraph.setOnChange(scheduleSave);
+  process.on("beforeExit", flushSync);
+  process.once("SIGTERM", flushSync);
+  process.once("SIGINT", flushSync);
+
+  // -- hooks --
+  api.on("before_tool_call", async (_event, ctx) => {
+    handshake.cleanupExpired();
+
+    // Group-context tracking: note agents appearing in multi-agent sessions
+    if (ctx.agentId && ctx.sessionKey) {
+      groupContext.noteAgentJoined(ctx.sessionKey, ctx.agentId);
+    }
+
+    return undefined;
+  }, { priority: 90 });
+
+  // -- CLI --
+  api.registerCli(
+    (cliCtx) => {
+      registerFppTrustCli(cliCtx.program as Parameters<typeof registerFppTrustCli>[0], {
+        identity,
+        trustGraph,
+        merkleBridge,
+        strictMode,
+        constitutionHash: config.constitutionHash,
+      });
+    },
+    { descriptors: FPP_TRUST_CLI_DESCRIPTORS },
+  );
+
+  // -- tool metadata (displaySummary for agent catalog) --
+  api.registerToolMetadata({
+    toolName: "fpp_handshake_offer",
+    displayName: "FPP Handshake Offer",
+    description: "Generate a signed constitutional claim to initiate a trust handshake with another agent.",
+    risk: "low",
+    tags: ["fpp", "trust", "handshake"],
+  });
+  api.registerToolMetadata({
+    toolName: "fpp_handshake_verify",
+    displayName: "FPP Handshake Verify",
+    description: "Verify a peer agent's signed constitutional claim and establish mutual trust.",
+    risk: "low",
+    tags: ["fpp", "trust", "handshake"],
+  });
+  api.registerToolMetadata({
+    toolName: "fpp_trust_status",
+    displayName: "FPP Trust Status",
+    description: "Query the trust level, reputation, and verification state of a known agent.",
+    risk: "low",
+    tags: ["fpp", "trust"],
+  });
+  api.registerToolMetadata({
+    toolName: "fpp_attestation_export",
+    displayName: "FPP Attestation Export",
+    description: "Export this agent's Merkle root, public key, and optional inclusion proof.",
+    risk: "low",
+    tags: ["fpp", "trust", "attestation"],
+  });
+  api.registerToolMetadata({
+    toolName: "fpp_cluster_status",
+    displayName: "FPP Cluster Status",
+    description: "Check verification state of a trust cluster (multi-agent group).",
+    risk: "low",
+    tags: ["fpp", "trust", "cluster"],
+  });
+
+  const deps: ToolDependencies = {
+    identity,
+    trustGraph,
+    handshake,
+    merkleBridge,
+    strictMode,
+    groupContext,
+    constitutionHash: config.constitutionHash,
+    strictModeOnHandshakeFailure: config.strictModeOnHandshakeFailure,
+    strictModeTtlMs: config.strictModeTtlMs,
+  };
+
+  _stack = stack;
+  _deps = deps;
+  return { stack, deps };
+}
+
+// ── Plugin entry ───────────────────────────────────────────────────
+
+export default defineToolPlugin({
   id: "openclaw-fpp-trust",
   name: "Freedom Preserving Protocol — Trust & Handshake",
   description:
     "Agent-to-agent trust graph, constitutional handshake, signed claims, " +
     "Merkle audit bridging, and strict-mode signaling for multi-agent FPP verification.",
-  register(api: OpenClawPluginApi) {
-    const {
-      trustGraph,
-      handshake,
-      identity,
-      merkleBridge,
-      strictMode,
-      groupContext,
-      config,
-    } = createTrustStack(api.pluginConfig);
+  activation: { onStartup: true },
 
-    // -- persistence (same debounce pattern as before) --
-
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    let dirty = false;
-
-    function scheduleSave(): void {
-      dirty = true;
-      if (debounceTimer !== null) return;
-      debounceTimer = setTimeout(async () => {
-        debounceTimer = null;
-        if (!dirty) return;
-        dirty = false;
-        try {
-          await saveTrustGraph(config.trustGraphPath, trustGraph);
-        } catch (err) {
-          dirty = true;
-          console.error("[fpp-trust] failed to persist trust graph:", err);
-        }
-      }, DEBOUNCE_MS);
-    }
-
-    function flushSync(): void {
-      if (debounceTimer !== null) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
-      if (!dirty) return;
-      dirty = false;
-      saveTrustGraphSync(config.trustGraphPath, trustGraph);
-    }
-
-    trustGraph.setOnChange(scheduleSave);
-
-    process.on("beforeExit", flushSync);
-    process.once("SIGTERM", flushSync);
-    process.once("SIGINT", flushSync);
-
-    // -- hook: cleanup expired sessions --
-
-    api.on("before_tool_call", async (_event, _ctx) => {
-      handshake.cleanupExpired();
-      return undefined;
-    }, { priority: 90 });
-
-    // -- register tools --
-
-    const tools = createFppTools({
-      identity,
-      trustGraph,
-      handshake,
-      merkleBridge,
-      strictMode,
-      constitutionHash: config.constitutionHash,
-      strictModeOnHandshakeFailure: config.strictModeOnHandshakeFailure,
-      strictModeTtlMs: config.strictModeTtlMs,
-    });
-
-    for (const tool of tools) {
-      api.registerTool(tool as Parameters<typeof api.registerTool>[0]);
-    }
-
-    // -- register CLI --
-
-    api.registerCli(
-      (ctx) => {
-        registerFppTrustCli(ctx.program as Parameters<typeof registerFppTrustCli>[0], {
-          identity,
-          trustGraph,
-          merkleBridge,
-          strictMode,
-          constitutionHash: config.constitutionHash,
-        });
+  tools: (tool) => [
+    tool({
+      name: "fpp_handshake_offer",
+      label: "FPP Handshake Offer",
+      description:
+        "Generate this agent's signed constitutional claim for a trust handshake. " +
+        "Share the returned JSON with the target agent so they can call fpp_handshake_verify. " +
+        "Use this when you need to prove your FPP adoption to another agent.",
+      parameters: HandshakeOfferParams,
+      execute(params, _config, ctx) {
+        const { deps } = initStack(ctx.api);
+        return executeHandshakeOffer(params, deps);
       },
-      {
-        descriptors: FPP_TRUST_CLI_DESCRIPTORS,
-      },
-    );
+    }),
 
-    void groupContext;
-  },
+    tool({
+      name: "fpp_handshake_verify",
+      label: "FPP Handshake Verify",
+      description:
+        "Verify a peer agent's constitutional claim and establish mutual trust. " +
+        "Pass the JSON string received from the peer's fpp_handshake_offer output. " +
+        "On success the peer is added to the trust graph; on failure strict mode may activate.",
+      parameters: HandshakeVerifyParams,
+      execute(params, _config, ctx) {
+        const { deps } = initStack(ctx.api);
+        return executeHandshakeVerify(params, deps);
+      },
+    }),
+
+    tool({
+      name: "fpp_trust_status",
+      label: "FPP Trust Status",
+      description:
+        "Check the trust status and reputation of a known agent. " +
+        "Returns trust level, constitutional fidelity, intervention rate, " +
+        "resource stewardship, and a trusted/caution/untrusted recommendation. " +
+        "Use this before sharing sensitive context with another agent.",
+      parameters: TrustStatusParams,
+      execute(params, _config, ctx) {
+        const { deps } = initStack(ctx.api);
+        return executeTrustStatus(params, deps);
+      },
+    }),
+
+    tool({
+      name: "fpp_attestation_export",
+      label: "FPP Attestation Export",
+      description:
+        "Export this agent's current attestation data: Merkle root, entry count, " +
+        "public key, and optionally a Merkle inclusion proof for a specific audit entry. " +
+        "Use this to provide cryptographic evidence of your audit trail to a verifier.",
+      parameters: AttestationExportParams,
+      execute(params, _config, ctx) {
+        const { deps } = initStack(ctx.api);
+        return executeAttestationExport(params, deps);
+      },
+    }),
+
+    tool({
+      name: "fpp_cluster_status",
+      label: "FPP Cluster Status",
+      description:
+        "Check the verification state of a trust cluster (multi-agent group/chat). " +
+        "Returns how many members are verified, the lowest trust level, and which " +
+        "agents still need handshakes. Use to decide if sensitive data can be shared " +
+        "in a group context.",
+      parameters: ClusterStatusParams,
+      execute(params, _config, ctx) {
+        const { deps } = initStack(ctx.api);
+        return executeClusterStatus(params, deps);
+      },
+    }),
+  ],
 });
