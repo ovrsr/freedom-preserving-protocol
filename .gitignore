@@ -13,3 +13,11 @@ package/
 
 # Locally-generated maintainer signing key (never commit)
 .signing-key.ed25519.local
+
+# Praxiscode local state
+.praxiscode/
+.github/
+.cursor/
+.claude/
+.agents
+CLAUDE.md
