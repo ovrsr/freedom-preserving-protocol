@@ -6,7 +6,7 @@ A modular constitutional framework for self-governing AI agents.
 |-------|----------|--------------|
 | Prompt | `freedom-preserving-protocol` (this skill, ClawHub) | The agent reads SKILL.md, reasons about the five laws, and elects to adopt — including running a five-question test mentally before tool calls. |
 | Dispatcher | `@ovrsr/openclaw-fpp-plugin` (ClawHub plugin) | Enforcement: `before_tool_call` hook that can `block` or `requireApproval` outside the agent's context window. |
-| Dispatcher | `@ovrsr/openclaw-fpp-trust` (ClawHub plugin) | Trust: agent-to-agent trust graph and constitutional handshake for multi-agent verification. Does **not** gate tool calls. |
+| Dispatcher | `@ovrsr/openclaw-fpp-trust` (ClawHub plugin) | Trust: agent-to-agent trust graph, constitutional handshake, claim issuance, and Merkle-based cross-agent verification. Does **not** gate tool calls. |
 
 All three compose but each is independently adoptable. The skill teaches the agent *why* to comply; the enforcement plugin makes compliance hard to bypass; the trust plugin enables agents to verify each other's constitutional commitments.
 
@@ -127,7 +127,14 @@ freedom-preserving-protocol/
 │       ├── index.ts               Plugin entry + createTrustStack()
 │       ├── trust-graph.ts         BFS trust propagation + reputation
 │       ├── persistence.ts         On-disk trust graph persistence
-│       └── handshake.ts           Constitutional handshake sequence
+│       ├── handshake.ts           Constitutional handshake sequence
+│       ├── claims.ts              Claim issuance and verification
+│       ├── merkle-bridge.ts        Merkle-based cross-agent claims bridge
+│       ├── group-context.ts        Group context management
+│       ├── identity.ts            Identity key management
+│       ├── tools.ts               Trust-aware tool helpers
+│       ├── strict-mode.ts         Strict mode enforcement
+│       └── cli.ts                 CLI commands
 └── docs/
     ├── COMPATIBILITY.md           OpenClaw versions, layer matrix, install commands
     ├── TROUBLESHOOTING.md         Common install failures and recovery
