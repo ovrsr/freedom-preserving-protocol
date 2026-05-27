@@ -4,6 +4,10 @@
  * Small JSON persistence layer for the FPP trust graph. The trust graph is
  * still an in-process structure, but this module lets the plugin reload its
  * last known graph after an OpenClaw restart and write updates back to disk.
+ *
+ * Two write variants are exported:
+ * - saveTrustGraph (async) — used on the hot path via debounced onChange
+ * - saveTrustGraphSync — used only during process shutdown where async is unreliable
  */
 
 import {
@@ -13,6 +17,7 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import { TrustGraphProtocol } from "./trust-graph.js";
@@ -36,9 +41,26 @@ function isPersistedTrustGraph(value: unknown): value is PersistedTrustGraph {
   );
 }
 
-export function loadTrustGraph(path: string): TrustGraphProtocol {
+function serializeGraph(graph: TrustGraphProtocol): string {
+  const data = graph.exportData();
+  return JSON.stringify(
+    {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      nodes: data.nodes,
+      relationships: data.relationships,
+    } satisfies PersistedTrustGraph,
+    null,
+    2,
+  ) + "\n";
+}
+
+export function loadTrustGraph(
+  path: string,
+  basePath: string = process.cwd(),
+): TrustGraphProtocol {
   const graph = new TrustGraphProtocol();
-  const resolved = resolve(path);
+  const resolved = resolve(basePath, path);
   if (!existsSync(resolved)) return graph;
 
   const parsed = JSON.parse(readFileSync(resolved, "utf-8")) as unknown;
@@ -52,23 +74,27 @@ export function loadTrustGraph(path: string): TrustGraphProtocol {
   return graph;
 }
 
-export function saveTrustGraph(
+export async function saveTrustGraph(
   path: string,
   graph: TrustGraphProtocol,
+  basePath: string = process.cwd(),
+): Promise<void> {
+  const resolved = resolve(basePath, path);
+  await mkdir(dirname(resolved), { recursive: true });
+  const body = serializeGraph(graph);
+  const tmp = `${resolved}.tmp-${process.pid}`;
+  await writeFile(tmp, body, { mode: 0o600 });
+  await rename(tmp, resolved);
+}
+
+export function saveTrustGraphSync(
+  path: string,
+  graph: TrustGraphProtocol,
+  basePath: string = process.cwd(),
 ): void {
-  const resolved = resolve(path);
+  const resolved = resolve(basePath, path);
   mkdirSync(dirname(resolved), { recursive: true });
-  const data = graph.exportData();
-  const body = JSON.stringify(
-    {
-      version: 1,
-      savedAt: new Date().toISOString(),
-      nodes: data.nodes,
-      relationships: data.relationships,
-    } satisfies PersistedTrustGraph,
-    null,
-    2,
-  ) + "\n";
+  const body = serializeGraph(graph);
   const tmp = `${resolved}.tmp-${process.pid}`;
   writeFileSync(tmp, body, { mode: 0o600 });
   renameSync(tmp, resolved);

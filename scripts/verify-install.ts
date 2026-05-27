@@ -44,6 +44,7 @@ const ENFORCEMENT_PLUGIN_ID_CANDIDATES = [
   "openclaw-fpp-plugin",
   "ovrsr/openclaw-fpp-plugin",
   "@ovrsr/openclaw-fpp-plugin",
+  "fpp",
 ];
 const TRUST_PLUGIN_ID_CANDIDATES = [
   "openclaw-fpp-trust",

@@ -18,7 +18,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
 import { TrustGraphProtocol } from "./trust-graph.js";
 import { ConstitutionalHandshake } from "./handshake.js";
-import { loadTrustGraph, saveTrustGraph } from "./persistence.js";
+import { loadTrustGraph, saveTrustGraph, saveTrustGraphSync } from "./persistence.js";
 
 export { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
 export type {
@@ -72,6 +72,8 @@ function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
   };
 }
 
+const DEBOUNCE_MS = 500;
+
 /**
  * Create a configured trust stack (graph + handshake) from plugin config.
  */
@@ -94,9 +96,38 @@ export default definePluginEntry({
   register(api: OpenClawPluginApi) {
     const { trustGraph, handshake, config } = createTrustStack(api.pluginConfig);
 
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let dirty = false;
+
+    function scheduleSave(): void {
+      dirty = true;
+      if (debounceTimer !== null) return;
+      debounceTimer = setTimeout(async () => {
+        debounceTimer = null;
+        if (!dirty) return;
+        dirty = false;
+        await saveTrustGraph(config.trustGraphPath, trustGraph);
+      }, DEBOUNCE_MS);
+    }
+
+    function flushSync(): void {
+      if (debounceTimer !== null) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      if (!dirty) return;
+      dirty = false;
+      saveTrustGraphSync(config.trustGraphPath, trustGraph);
+    }
+
+    trustGraph.setOnChange(scheduleSave);
+
+    process.on("beforeExit", flushSync);
+    process.on("SIGTERM", () => { flushSync(); process.exit(0); });
+    process.on("SIGINT", () => { flushSync(); process.exit(0); });
+
     api.on("before_tool_call", async (_event, _ctx) => {
-      const expired = handshake.cleanupExpired();
-      if (expired > 0) saveTrustGraph(config.trustGraphPath, trustGraph);
+      handshake.cleanupExpired();
       return undefined;
     }, { priority: 90 });
   },
