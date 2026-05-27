@@ -156,6 +156,56 @@ The dispatcher plugin's risk classifier ships with conservative defaults. If you
 
 Restart the gateway for changes to take effect. Be wary of tuning so aggressively that the framework no longer protects you — every removal from `approvalOn` is a deliberate Law 1 trade-off.
 
+## 11. "Plugin approval required (gateway unavailable)" on every gated tool call
+
+**Symptom:** Agent tool calls that require approval (e.g., `npm install`, `curl -d`, `openclaw plugins install`) fail with:
+
+```
+gateway/ws ⇄ res ✗ plugin.approval.request
+  errorCode=INVALID_REQUEST
+  errorMessage=invalid plugin.approval.request params: at /description: must NOT have more than 256 characters
+```
+
+The runtime then reports `"Plugin approval required (gateway unavailable)"` — this is misleading; the gateway is reachable but the approval payload was rejected by schema validation.
+
+**Root cause (fixed in v1.1.3+):** Earlier versions of `buildDescription()` produced descriptions exceeding 256 characters, which the OpenClaw gateway rejects at validation time. The approval prompt never reaches the operator, creating a hard block with no escape path.
+
+**If you are running plugin version <1.1.3**, upgrade:
+
+```bash
+# Disable the plugin first (operator bypass — the plugin cannot block this)
+openclaw operator disable-plugin openclaw-fpp-plugin
+
+# Upgrade
+openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin
+
+# Re-enable
+openclaw operator enable-plugin openclaw-fpp-plugin
+
+# Verify approval flow works
+openclaw plugins inspect openclaw-fpp-plugin --runtime
+```
+
+If `openclaw operator disable-plugin` is not available on your version, use:
+
+```bash
+openclaw plugins disable openclaw-fpp-plugin
+```
+
+**Self-update deadlock:** Because FPP classifies `openclaw plugins install` as `gateway.config-change` (requiring approval), and the approval path itself is broken, the plugin blocks its own update. The operator disable/enable workflow above is the documented recovery path.
+
+**Post-upgrade verification:**
+
+1. Trigger a gated action (e.g., `npm install some-test-pkg`).
+2. Confirm the `/approve <id> allow-once` or `/approve <id> deny` command appears in the operator console.
+3. Run `npm run self-test` to confirm all 7+ assertions pass.
+
+## 12. "INVALID_REQUEST on /description" in gateway logs
+
+Same root cause as #11. The approval description field exceeded the gateway's 256-character limit. Upgrade the plugin to v1.1.3+ where `buildDescription()` enforces truncation.
+
+If you see this in audit logs as `approval_requested` entries with no corresponding steward resolution, those represent the corrigibility gap — approvals were attempted but never reached the operator. After upgrading, these orphaned entries are safe to ignore (they document the failure, not a successful bypass).
+
 ## When you're stuck
 
 1. Run `npm run verify-install -- --json` and paste the output.

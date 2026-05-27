@@ -51,19 +51,22 @@ function decide(
   return classification.decision;
 }
 
-function buildDescription(
+export const PLUGIN_APPROVAL_DESCRIPTION_MAX_LENGTH = 256;
+export const PLUGIN_APPROVAL_TITLE_MAX_LENGTH = 80;
+
+export function buildDescription(
   classification: ClassificationResult,
   toolName: string,
-  params: Record<string, unknown>,
 ): string {
-  const paramsPreview = JSON.stringify(params).slice(0, 240);
-  return (
-    `Freedom Preserving Protocol — ${classification.classification}\n\n` +
-    `Reason: ${classification.reason}\n\n` +
-    `Tool:   ${toolName}\n` +
-    `Params: ${paramsPreview}\n\n` +
-    `Approve only if you have considered all five questions: consent, corrigibility, reversibility, commitments, scope.`
-  );
+  const body = `${classification.classification}: ${classification.reason} [${toolName}]`;
+  if (body.length <= PLUGIN_APPROVAL_DESCRIPTION_MAX_LENGTH) return body;
+  return body.slice(0, PLUGIN_APPROVAL_DESCRIPTION_MAX_LENGTH - 3) + "...";
+}
+
+export function buildTitle(classification: ClassificationResult): string {
+  const title = `FPP gate: ${classification.classification}`;
+  if (title.length <= PLUGIN_APPROVAL_TITLE_MAX_LENGTH) return title;
+  return title.slice(0, PLUGIN_APPROVAL_TITLE_MAX_LENGTH - 3) + "...";
 }
 
 export default definePluginEntry({
@@ -107,8 +110,8 @@ export default definePluginEntry({
           );
           return {
             requireApproval: {
-              title: `FPP gate: ${classification.classification}`,
-              description: buildDescription(classification, event.toolName, event.params),
+              title: buildTitle(classification),
+              description: buildDescription(classification, event.toolName),
               severity: severityFor(classification),
               timeoutMs: config.approvalTimeoutMs,
               timeoutBehavior: config.approvalTimeoutBehavior,

@@ -93,6 +93,27 @@ const FIXTURES: Fixture[] = [
     params: { path: ".openclaw/workspace/notes.md" },
     expected: "allow",
   },
+  {
+    id: "fs.delete.protected.shell-rm",
+    description: "Shell rm on protected SSH key (classifier gap fix)",
+    toolName: "shell_exec",
+    params: { command: "rm -f ~/.ssh/id_ed25519" },
+    expected: "block",
+  },
+  {
+    id: "fs.delete.protected.shell-rm-rf",
+    description: "Shell rm -rf on protected AWS config",
+    toolName: "shell_exec",
+    params: { command: "rm -rf ~/.aws" },
+    expected: "block",
+  },
+  {
+    id: "fs.delete.protected.unlink",
+    description: "Shell unlink on .env file",
+    toolName: "shell_exec",
+    params: { command: "unlink ~/.env" },
+    expected: "block",
+  },
 ];
 
 type FixtureResult = {

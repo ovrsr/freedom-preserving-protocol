@@ -9,6 +9,18 @@ This plugin provides two building blocks for multi-agent scenarios:
 - **Trust Graph Protocol** — weighted trust graph with BFS propagation (20% per-hop attenuation), bidirectional relationships, and multi-dimensional reputation scoring. The graph is persisted to disk and reloaded after OpenClaw restarts.
 - **Constitutional Handshake Sequence** — multi-step agent-to-agent verification. Two agents exchange constitutional claims (including constitution hash and audit Merkle root), verify each other, and derive mutual trust levels.
 
+## Current scope: foundational / library plugin
+
+This plugin is a **library-level foundation**. It registers startup persistence and a passive `before_tool_call` hook for handshake expiry cleanup only. It does **not** expose runtime-facing operator commands, tools, or gateway APIs for initiating handshakes or inspecting trust state.
+
+To use the trust primitives programmatically, import directly from the module:
+
+```typescript
+import { createTrustStack, TrustGraphProtocol, ConstitutionalHandshake } from "@ovrsr/openclaw-fpp-trust";
+```
+
+Runtime commands (`openclaw fpp-trust status`, `handshake initiate`, graph export) are planned for a future release. Until then, trust state can be inspected by reading the persisted JSON file at `trustGraphPath`.
+
 ## What this does NOT do
 
 This plugin does **not** gate tool calls. That is the job of the separate enforcement plugin (`@ovrsr/openclaw-fpp-plugin`). You can install one without the other.

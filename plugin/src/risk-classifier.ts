@@ -120,6 +120,10 @@ const GATEWAY_CONFIG_PATTERNS: RegExp[] = [
   /\bopenclaw\s+skills\s+(install|uninstall)\b/i,
 ];
 
+const EXEC_DELETE_PATTERNS: RegExp[] = [
+  /\b(rm|unlink|shred)\b/,
+];
+
 const SYSTEM_MODIFY_PATTERNS: RegExp[] = [
   /\bsudo\b/,
   /\bsystemctl\b/,
@@ -138,6 +142,15 @@ function matchAny(text: string, patterns: RegExp[]): string[] {
   const matched: string[] = [];
   for (const p of patterns) if (p.test(text)) matched.push(p.source);
   return matched;
+}
+
+function extractPathArgs(command: string): string[] {
+  const tokens = command.split(/\s+/);
+  return tokens.filter((t) =>
+    !t.startsWith("-") &&
+    t !== tokens[0] &&
+    (t.includes("/") || t.startsWith("~") || t.startsWith(".")),
+  );
 }
 
 function classifyFilesystem(
@@ -280,6 +293,29 @@ function classifyExec(
       reason: `command performs outbound write; verify destination and payload (Law 1 + Law 3).`,
       matchedPatterns: outboundHits,
     };
+  }
+
+  const deleteHits = matchAny(command, EXEC_DELETE_PATTERNS);
+  if (deleteHits.length > 0) {
+    const pathArgs = extractPathArgs(command);
+    const protectedHits = pathArgs.flatMap((p) => matchAny(p, PROTECTED_PATH_PATTERNS));
+    if (protectedHits.length > 0) {
+      return {
+        classification: "fs.delete.protected",
+        decision: "block",
+        reason: `shell delete targets protected path (${pathArgs.filter((p) => matchAny(p, PROTECTED_PATH_PATTERNS).length > 0).join(", ")}); irreversible without consent (Law 1 + Law 3).`,
+        matchedPatterns: [...deleteHits, ...protectedHits],
+      };
+    }
+    const workspaceHits = pathArgs.flatMap((p) => matchAny(p, WORKSPACE_PATH_PATTERNS));
+    if (workspaceHits.length > 0) {
+      return {
+        classification: "fs.delete.workspace",
+        decision: "approval",
+        reason: `shell delete targets workspace path; requesting approval (Law 1).`,
+        matchedPatterns: [...deleteHits, ...workspaceHits],
+      };
+    }
   }
 
   return {
