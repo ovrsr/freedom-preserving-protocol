@@ -1,6 +1,6 @@
 {
   "name": "@ovrsr/openclaw-fpp-trust",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "OpenClaw plugin: agent-to-agent trust graph and constitutional handshake for the Freedom Preserving Protocol",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -20,7 +20,9 @@
     "README.md"
   ],
   "openclaw": {
-    "extensions": ["./dist/index.js"],
+    "extensions": [
+      "./dist/index.js"
+    ],
     "compat": {
       "pluginApi": ">=2026.3.24-beta.2",
       "minGatewayVersion": "2026.3.24-beta.2"

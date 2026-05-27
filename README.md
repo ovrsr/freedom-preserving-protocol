@@ -125,6 +125,7 @@ freedom-preserving-protocol/
 │   └── src/
 │       ├── index.ts               Plugin entry + createTrustStack()
 │       ├── trust-graph.ts         BFS trust propagation + reputation
+│       ├── persistence.ts         On-disk trust graph persistence
 │       └── handshake.ts           Constitutional handshake sequence
 └── docs/
     ├── COMPATIBILITY.md           OpenClaw versions, layer matrix, install commands
