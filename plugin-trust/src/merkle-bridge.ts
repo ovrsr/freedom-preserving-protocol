@@ -8,6 +8,12 @@
  * Implementation mirrors scripts/merkle.ts from the parent skill package
  * but uses node:crypto SHA-256 (consistent with trust-graph.ts) and is
  * self-contained — no cross-package dependency.
+ *
+ * Fallback: when the primary audit log (constitution-audit.jsonl) has zero
+ * entries, the bridge optionally falls back to a secondary path (e.g. the
+ * enforcement plugin's fpp-plugin-audit.jsonl). This allows the trust
+ * handshake to bootstrap from enforcement audit entries when no heartbeat/
+ * adoption entries exist yet.
  */
 
 import { createHash } from "node:crypto";
@@ -118,28 +124,47 @@ function collectLeafHashes(logPath: string): string[] {
 
 export class MerkleBridge {
   private auditLogPath: string;
+  private fallbackLogPath: string | null;
 
-  constructor(auditLogPath: string, basePath: string = process.cwd()) {
+  /**
+   * @param auditLogPath - Primary audit log (e.g. constitution-audit.jsonl)
+   * @param basePath - Working directory for relative paths
+   * @param fallbackLogPath - Optional secondary log (e.g. fpp-plugin-audit.jsonl).
+   *   When the primary log has zero entries, the fallback is used. This bridges
+   *   the enforcement plugin's audit trail into the trust handshake.
+   */
+  constructor(auditLogPath: string, basePath: string = process.cwd(), fallbackLogPath?: string | null) {
     this.auditLogPath = resolve(basePath, auditLogPath);
+    this.fallbackLogPath = fallbackLogPath != null ? resolve(basePath, fallbackLogPath) : null;
+  }
+
+  private getActiveLeaves(): string[] {
+    const primary = collectLeafHashes(this.auditLogPath);
+    if (primary.length > 0) return primary;
+    if (this.fallbackLogPath) {
+      const fallback = collectLeafHashes(this.fallbackLogPath);
+      if (fallback.length > 0) return fallback;
+    }
+    return primary;
   }
 
   getCurrentRoot(): { root: string; entryCount: number } {
-    const leaves = collectLeafHashes(this.auditLogPath);
+    const leaves = this.getActiveLeaves();
     return { root: computeMerkleRoot(leaves), entryCount: leaves.length };
   }
 
   getRecentLeafHashes(n: number): string[] {
-    const leaves = collectLeafHashes(this.auditLogPath);
+    const leaves = this.getActiveLeaves();
     return leaves.slice(-n);
   }
 
   createProofForIndex(index: number): MerkleProof | null {
-    const leaves = collectLeafHashes(this.auditLogPath);
+    const leaves = this.getActiveLeaves();
     return createMerkleProof(leaves, index);
   }
 
   createProofForLeaf(leafHash: string): MerkleProof | null {
-    const leaves = collectLeafHashes(this.auditLogPath);
+    const leaves = this.getActiveLeaves();
     const index = leaves.indexOf(leafHash);
     if (index === -1) return null;
     return createMerkleProof(leaves, index);
