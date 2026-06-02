@@ -65,8 +65,8 @@
           "string",
           "null"
         ],
-        "default": null,
-        "description": "Optional fallback audit JSONL path (e.g. fpp-plugin-audit.jsonl from the enforcement plugin). Used when the primary auditLogPath has zero entries, allowing the trust handshake to bootstrap from enforcement audit entries."
+        "default": ".openclaw/workspace/fpp-plugin-audit.jsonl",
+        "description": "Fallback audit JSONL when the primary auditLogPath has zero entries (default: enforcement plugin log). Set to null to disable. Handshake Merkle roots bootstrap from enforcement entries until constitution-audit has heartbeat/adoption entries."
       },
       "strictModeStatePath": {
         "type": "string",

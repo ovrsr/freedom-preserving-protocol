@@ -130,9 +130,11 @@ function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
         ? cfg.identityKeyPath
         : ".openclaw/workspace/fpp-agent-identity.key",
     fallbackAuditLogPath:
-      typeof cfg.fallbackAuditLogPath === "string"
-        ? cfg.fallbackAuditLogPath
-        : null,
+      cfg.fallbackAuditLogPath === null
+        ? null
+        : typeof cfg.fallbackAuditLogPath === "string"
+          ? cfg.fallbackAuditLogPath
+          : ".openclaw/workspace/fpp-plugin-audit.jsonl",
     auditLogPath:
       typeof cfg.auditLogPath === "string"
         ? cfg.auditLogPath

@@ -11,7 +11,7 @@ This plugin provides an **active verification protocol** for multi-agent scenari
 - **LLM-Facing Tools** — four tools registered in the agent's tool list for one-call handshakes and trust queries.
 - **CLI Surface** — `openclaw fpp-trust` commands for graph inspection, manual seed management, attestation export, claim verification, and strict-mode management.
 - **Signed Claims** — Ed25519-signed constitutional claims that can't be spoofed by JSON override.
-- **Merkle Audit Bridging** — agents exchange audit Merkle roots during handshakes and can request inclusion proofs to verify constitutional compliance.
+- **Merkle Audit Bridging** — agents exchange audit Merkle roots during handshakes and can request inclusion proofs to verify constitutional compliance. On fresh installs, the bridge falls back to the enforcement plugin audit log until the constitution heartbeat log has entries.
 - **Group Context Trust** — cluster-based trust for multi-agent chat environments with sensitivity-gated sharing.
 - **Strict-Mode Signaling** — when a handshake fails, the plugin can signal the enforcement plugin to escalate low-risk tool calls to require-approval for that session.
 
@@ -60,6 +60,7 @@ All options are in `openclaw.plugin.json`. Key settings:
 | `trustGraphPath` | `.openclaw/.../fpp-trust-graph.json` | Persisted trust graph JSON |
 | `identityKeyPath` | `.openclaw/.../fpp-agent-identity.key` | Ed25519 identity key seed (mode 0600) |
 | `auditLogPath` | `.openclaw/.../constitution-audit.jsonl` | Constitution audit JSONL for Merkle bridging |
+| `fallbackAuditLogPath` | `.openclaw/.../fpp-plugin-audit.jsonl` | Used when `auditLogPath` has no entries yet (enforcement plugin log). Set to `null` to disable. |
 | `strictModeStatePath` | `.openclaw/.../fpp-strict-sessions.json` | Shared strict-mode state file |
 | `requireSignedClaims` | `false` | Reject unsigned claims during handshake |
 | `requireMerkleProof` | `false` | Require Merkle proof during handshake |
