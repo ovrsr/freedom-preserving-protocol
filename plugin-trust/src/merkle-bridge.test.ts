@@ -100,6 +100,55 @@ describe("MerkleBridge", () => {
     assert.equal(verifyMerkleProof(proof), true);
   });
 
+  it("uses fallback when primary audit log has no entries", () => {
+    writeFileSync(join(tmp, "constitution-audit.jsonl"), "");
+    const h1 = sha256("enforcement-1");
+    const h2 = sha256("enforcement-2");
+    writeFileSync(
+      join(tmp, "fpp-plugin-audit.jsonl"),
+      `{"hash":"${h1}"}\n{"hash":"${h2}"}\n`,
+    );
+
+    const bridge = new MerkleBridge(
+      "constitution-audit.jsonl",
+      tmp,
+      "fpp-plugin-audit.jsonl",
+    );
+    const { root, entryCount } = bridge.getCurrentRoot();
+    assert.equal(entryCount, 2);
+    assert.equal(root, computeMerkleRoot([h1, h2]));
+  });
+
+  it("prefers primary log when it has entries even if fallback is populated", () => {
+    const primaryH = sha256("constitution-only");
+    const fallbackH = sha256("enforcement-only");
+    writeFileSync(
+      join(tmp, "primary-pref.jsonl"),
+      `{"hash":"${primaryH}"}\n`,
+    );
+    writeFileSync(
+      join(tmp, "fallback-pref.jsonl"),
+      `{"hash":"${fallbackH}"}\n`,
+    );
+
+    const bridge = new MerkleBridge(
+      "primary-pref.jsonl",
+      tmp,
+      "fallback-pref.jsonl",
+    );
+    const { root, entryCount } = bridge.getCurrentRoot();
+    assert.equal(entryCount, 1);
+    assert.equal(root, computeMerkleRoot([primaryH]));
+  });
+
+  it("returns zero root when fallback is disabled and primary is empty", () => {
+    writeFileSync(join(tmp, "empty-primary.jsonl"), "");
+    const bridge = new MerkleBridge("empty-primary.jsonl", tmp, null);
+    const { root, entryCount } = bridge.getCurrentRoot();
+    assert.equal(entryCount, 0);
+    assert.equal(root, "0".repeat(64));
+  });
+
   after(() => {
     rmSync(tmp, { recursive: true, force: true });
   });

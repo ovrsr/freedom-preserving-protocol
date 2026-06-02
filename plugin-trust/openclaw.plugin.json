@@ -1,6 +1,6 @@
 {
   "id": "openclaw-fpp-trust",
-  "name": "Freedom Preserving Protocol — Trust & Handshake",
+  "name": "Freedom Preserving Protocol \u2014 Trust & Handshake",
   "description": "Agent-to-agent trust graph with BFS propagation, constitutional handshake sequence, signed claims, Merkle audit bridging, and strict-mode signaling. Enables multi-agent verification of FPP adoption.",
   "contracts": {
     "tools": [
@@ -60,6 +60,14 @@
         "default": ".openclaw/workspace/constitution-audit.jsonl",
         "description": "Path to the constitution audit JSONL log for Merkle root computation."
       },
+      "fallbackAuditLogPath": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "default": ".openclaw/workspace/fpp-plugin-audit.jsonl",
+        "description": "Fallback audit JSONL when the primary auditLogPath has zero entries (default: enforcement plugin log). Set to null to disable. Handshake Merkle roots bootstrap from enforcement entries until constitution-audit has heartbeat/adoption entries."
+      },
       "strictModeStatePath": {
         "type": "string",
         "default": ".openclaw/workspace/fpp-strict-sessions.json",
@@ -89,7 +97,9 @@
       },
       "strictModeAddApprovalOn": {
         "type": "array",
-        "items": { "type": "string" },
+        "items": {
+          "type": "string"
+        },
         "default": [
           "fs.write.workspace",
           "fs.delete.workspace",

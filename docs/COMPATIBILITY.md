@@ -157,13 +157,19 @@ The plugin reads its configuration from your OpenClaw config:
           "approvalTimeoutMs": 60000,
           "approvalTimeoutBehavior": "deny"
         }
+      },
+      "openclaw-fpp-trust": {
+        "config": {
+          "auditLogPath": ".openclaw/workspace/constitution-audit.jsonl",
+          "fallbackAuditLogPath": ".openclaw/workspace/fpp-plugin-audit.jsonl"
+        }
       }
     }
   }
 }
 ```
 
-If you do not set these, sensible defaults apply (see `plugin/src/config.ts`).
+If you do not set these, sensible defaults apply (see `plugin/src/config.ts` and `plugin-trust/openclaw.plugin.json`). The trust plugin uses `fallbackAuditLogPath` when `constitution-audit.jsonl` has no entries yet, so handshakes can bootstrap from enforcement audit activity before the first heartbeat. Set `fallbackAuditLogPath` to `null` if you run trust without the enforcement plugin.
 
 ## Known limitations
 

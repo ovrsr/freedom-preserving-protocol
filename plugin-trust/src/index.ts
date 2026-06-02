@@ -93,6 +93,7 @@ interface FppTrustConfig {
   trustGraphPath: string;
   identityKeyPath: string;
   auditLogPath: string;
+  fallbackAuditLogPath: string | null;
   strictModeStatePath: string;
   requireSignedClaims: boolean;
   requireMerkleProof: boolean;
@@ -128,6 +129,12 @@ function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
       typeof cfg.identityKeyPath === "string"
         ? cfg.identityKeyPath
         : ".openclaw/workspace/fpp-agent-identity.key",
+    fallbackAuditLogPath:
+      cfg.fallbackAuditLogPath === null
+        ? null
+        : typeof cfg.fallbackAuditLogPath === "string"
+          ? cfg.fallbackAuditLogPath
+          : ".openclaw/workspace/fpp-plugin-audit.jsonl",
     auditLogPath:
       typeof cfg.auditLogPath === "string"
         ? cfg.auditLogPath
@@ -191,7 +198,7 @@ export function createTrustStack(rawConfig?: Record<string, unknown>): {
     requireMerkleProof: config.requireMerkleProof,
   });
   const identity = loadOrCreateIdentity(config.identityKeyPath);
-  const merkleBridge = new MerkleBridge(config.auditLogPath);
+  const merkleBridge = new MerkleBridge(config.auditLogPath, process.cwd(), config.fallbackAuditLogPath);
   const strictMode = new StrictModeManager(config.strictModeStatePath, {
     defaultTtlMs: config.strictModeTtlMs,
     defaultAddApprovalOn: config.strictModeAddApprovalOn,
