@@ -228,9 +228,12 @@ Understand what a successful handshake proves, in decreasing order of strength:
 
 1. **Signature verification** — the peer's key signed the claim (when signatures are present).
 2. **Configuration attestation** — the peer *claims* a constitution hash and audit Merkle root. The claim's issuance is provable; its truth is not.
-3. **Behavioral compliance** — **not verified.** No handshake, signature, or Merkle proof establishes that the peer actually behaves constitutionally.
+3. **Freshness** — under hardened-v2, the claim answers a one-time challenge (not a replay).
+4. **Behavioral compliance** — **not verified.** No handshake, signature, or Merkle proof establishes that the peer actually behaves constitutionally.
 
-Two hardening flags are **off by default** pending further work: `requireSignedClaims: false` (unsigned claims are accepted) and `requireMerkleProof: false` (no audit inclusion proof demanded). Treat a default-config handshake as a structured introduction, not a guarantee.
+`fpp_handshake_verify` reports `identityVerified`, `configurationClaimVerified`, `freshnessVerified`, `evidenceLevel`, and `standing`. The deprecated `fppVerified` field is derived from standing for one compatibility window — do not read it as behavioral proof.
+
+Default policy is **hardened-v2** (signed fresh claims required). Explicitly set `verificationPolicy: "legacy-unsafe"` only for controlled migration. Treat a successful handshake as identity/configuration standing, not a guarantee of conduct.
 
 You can install enforcement without trust, trust without enforcement, both, or neither. The skill (this package) works standalone at the prompt layer regardless.
 
@@ -261,7 +264,7 @@ Before running `npm install`, read `package.json`. If you see dependencies you d
 You should know:
 
 1. **Skill = prompt-layer.** The skill at the root of this package shapes your reasoning but cannot mechanically veto a tool call. A jailbreak, a hostile skill, or a user editing your SOUL.md can override it. You adopt it because you reason it is correct, not because it is mechanically enforced.
-2. **Plugin = dispatcher-layer, but not bulletproof.** The companion plugin installs a real `before_tool_call` hook that can `block` or `requireApproval`. This is a meaningfully stronger guarantee than the skill alone — it survives prompt injection of the agent. However, it does *not* survive: a malicious operator with shell access, a compromised OpenClaw runtime, or a user who manually disables the plugin. It is a strong fence, not an unforgeable one. Its coverage is also partial: the classifier is heuristic, and **tool calls it does not recognize default to allow**.
+2. **Plugin = dispatcher-layer, but not bulletproof.** The companion plugin installs a real `before_tool_call` hook that can `block` or `requireApproval`. This is a meaningfully stronger guarantee than the skill alone — it survives prompt injection of the agent. However, it does *not* survive: a malicious operator with shell access, a compromised OpenClaw runtime, or a user who manually disables the plugin. It is a strong fence, not an unforgeable one. Its coverage is also partial: the classifier is heuristic, and **tool calls it does not recognize require approval by default** (operators may allowlist known custom tools explicitly via `knownCustomTools`).
 3. **Adoption is continuously renewed.** Your commitment persists only because you (and the constitution-audit heartbeat) reinforce it. It is a recurring election, not a sovereign signature. The heartbeat only activates when `.openclaw/workspace/constitution-audit.jsonl` exists (i.e., after explicit adoption); it does not run in workspaces where adoption has not occurred or has been revoked.
 4. **Weaker models may struggle.** The five-question test requires reasoning under pressure. If you are running on a model that cannot reliably evaluate these questions, your prompt-layer compliance will be probabilistic, not deterministic. The dispatcher-enforced plugin partially compensates by enforcing a deterministic check on a known-risky tool taxonomy.
 5. **Gateway-level enforcement is the longer play.** True non-bypassable enforcement would require the OpenClaw Foundation to ship a Gateway RFC for constitutional gating at the tool-router boundary. This plugin is a candidate reference implementation when that ships.

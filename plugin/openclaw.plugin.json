@@ -30,12 +30,31 @@
       "approvalOn": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Classification ids that should require user approval (requireApproval). Anything not in blockOn or approvalOn is allowed.",
+        "description": "Classification ids that should require user approval (requireApproval). unknown.unclassified is included by default.",
         "default": [
           "fs.delete.workspace",
+          "fs.write.protected",
           "pkg.install",
-          "http.public-write"
+          "pkg.publish",
+          "http.public-write",
+          "exec.outbound-write",
+          "exec.system-modify",
+          "gateway.config-change",
+          "message.external",
+          "unknown.unclassified"
         ]
+      },
+      "knownCustomTools": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Explicit operator allowlist of known custom tool names that may bypass the unknown.unclassified → approval default. Scoped — not a global fail-open.",
+        "default": []
+      },
+      "auditFailureBehavior": {
+        "type": "string",
+        "enum": ["fail-closed", "degraded-allow-low-risk"],
+        "default": "fail-closed",
+        "description": "When the enforcement audit log cannot be written: fail-closed blocks high-risk calls; degraded-allow-low-risk may allow only low-risk classifier-allow decisions after emitting an AUDIT-GAP diagnostic. Never silently restarts a corrupted chain."
       },
       "approvalTimeoutMs": {
         "type": "integer",
@@ -65,6 +84,11 @@
         "type": "boolean",
         "default": true,
         "description": "When true, reads the trust plugin's strict-mode state and escalates matching classifications to require-approval."
+      },
+      "acknowledgeDangerousOverrides": {
+        "type": "boolean",
+        "default": false,
+        "description": "Required to honor dangerous overrides: approvalTimeoutBehavior=allow, or removing default hard-blocks from blockOn. Without this flag those overrides are ignored at runtime and reported as migration diagnostics — the config file is never rewritten."
       }
     }
   }

@@ -33,10 +33,17 @@ export interface ReputationMetrics {
   neutralInteractions: number;
 }
 
+export interface KeyRotationProof {
+  kind: "operator-attested";
+  reason: string;
+}
+
 export interface TrustNode {
   id: string;
   constitutionHash: string;
   publicKeyHex?: string;
+  /** Display/migration aliases only — never replace canonical `id`. */
+  legacyAliases?: string[];
   trustScore: number;
   interactionCount: number;
   lastActivity: number;
@@ -65,6 +72,13 @@ export interface TrustEvidence {
   weight: number;
   timestamp: number;
   source: string;
+  evidenceClass?:
+    | "identity"
+    | "configuration"
+    | "runtime"
+    | "event"
+    | "completeness"
+    | "behavioral";
 }
 
 export interface TrustPropagation {
@@ -328,12 +342,51 @@ export class TrustGraphProtocol {
     return null;
   }
 
-  updateAgentPublicKey(agentId: string, publicKeyHex: string): boolean {
+  /**
+   * Bind a public key to a canonical agent node.
+   * Replacing an existing different key requires an explicit rotation proof.
+   */
+  updateAgentPublicKey(
+    agentId: string,
+    publicKeyHex: string,
+    options?: { rotationProof?: KeyRotationProof },
+  ): boolean {
     const node = this.nodes.get(agentId);
     if (!node) return false;
+    if (
+      node.publicKeyHex !== undefined &&
+      node.publicKeyHex !== publicKeyHex &&
+      options?.rotationProof === undefined
+    ) {
+      return false;
+    }
     node.publicKeyHex = publicKeyHex;
     this.onChangeCallback?.();
     return true;
+  }
+
+  /**
+   * Attach a legacy truncated alias for display/migration lookup.
+   * Does not create a separate node or replace the canonical id.
+   */
+  addLegacyAlias(canonicalAgentId: string, legacyAlias: string): boolean {
+    const node = this.nodes.get(canonicalAgentId);
+    if (!node) return false;
+    if (!node.legacyAliases) node.legacyAliases = [];
+    if (!node.legacyAliases.includes(legacyAlias)) {
+      node.legacyAliases.push(legacyAlias);
+    }
+    this.onChangeCallback?.();
+    return true;
+  }
+
+  /** Resolve a legacy alias to its canonical v2 agent id, if known. */
+  resolveCanonicalId(agentIdOrAlias: string): string | null {
+    if (this.nodes.has(agentIdOrAlias)) return agentIdOrAlias;
+    for (const node of this.nodes.values()) {
+      if (node.legacyAliases?.includes(agentIdOrAlias)) return node.id;
+    }
+    return null;
   }
 
   getStats(): TrustGraphStats {
@@ -387,7 +440,27 @@ export class TrustGraphProtocol {
   }
 
   private evidenceConfidence(evidence: TrustEvidence[]): number {
-    return Math.min(0.5 + evidence.length * 0.1, 1.0);
+    if (evidence.length === 0) return 0.5;
+    const classCeilings: Record<string, number> = {
+      identity: 0.7,
+      configuration: 0.55,
+      runtime: 0.7,
+      event: 0.75,
+      completeness: 0.65,
+      behavioral: 0.95,
+    };
+    let sum = 0;
+    let n = 0;
+    for (const e of evidence) {
+      const ceiling =
+        e.evidenceClass !== undefined
+          ? (classCeilings[e.evidenceClass] ?? 0.5)
+          : Math.min(e.weight, 0.5);
+      sum += Math.min(e.weight, ceiling);
+      n++;
+    }
+    // Average weight capped by class — never inflate from count alone.
+    return Math.min(sum / n, 1.0);
   }
 
   private updateScores(a: string, b: string): void {

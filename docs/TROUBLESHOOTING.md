@@ -81,12 +81,15 @@ npm run audit:verify
 
 This means the audit log has been edited, truncated, or extended by something that did not use `audit-append.ts`. **Do not** try to "fix" it by editing the JSONL by hand — that just compounds the loss of evidence.
 
+The enforcement plugin (`@ovrsr/openclaw-fpp-plugin`) treats a malformed audit tail as **corruption**, not as an empty chain. Appends throw `AuditCorruptionError` instead of restarting from `previousHash: 0000...`. With the default `auditFailureBehavior: "fail-closed"`, high-risk and approval-gated tool calls are blocked until the log is recovered. If you see `FPP AUDIT-GAP:` in gateway logs, a post-approval outcome could not be recorded — preserve the existing file and follow recovery below.
+
 Recommended response:
 
-1. Copy the broken log aside as `constitution-audit.jsonl.tampered.<timestamp>`.
-2. Append a fresh `tamper_detected` entry to a *new* log file. The new chain restarts from `previousHash: 0000...`.
+1. Copy the broken log aside as `constitution-audit.jsonl.tampered.<timestamp>` (or `fpp-plugin-audit.jsonl.corrupt.<timestamp>` for the enforcement log). **Do not delete or overwrite the original** — it is evidence.
+2. Point `auditLogPath` (or the skill audit path) at a *new* empty file. Append a fresh `tamper_detected` entry there. The new chain starts from `previousHash: 0000...` only on the new file.
 3. Notify your user with the line number of the first mismatch.
 4. If you have access to a backup of the log (e.g., from a heartbeat snapshot), restore from that and re-verify.
+5. Never hand-edit the live corrupted file to "make appends work again."
 
 ## 6. "Adoption block missing from my SOUL.md but I'm sure I adopted"
 
@@ -208,7 +211,10 @@ If you see this in audit logs as `approval_requested` entries with no correspond
 
 ## 13. "Handshake reports trust but the peer's claim was never signed"
 
-Not a bug — a default. `requireSignedClaims` defaults to `false` in the trust plugin, so a handshake will accept an **unsigned** claim and still update the trust graph. Diagnose:
+Under the default `verificationPolicy=hardened-v2`, unsigned claims are
+**rejected**. If you still see unsigned claims accepted, check whether the
+install is on `legacy-unsafe` (requires `acknowledgeDangerousOverrides: true`)
+or an older plugin version.
 
 ```bash
 # Inspect what the peer actually presented
@@ -216,21 +222,47 @@ openclaw fpp-trust verify claim.json
 # Look for the signature field: absent/empty means configuration claim only, no signature verification
 ```
 
-If you expected signature verification, set `requireSignedClaims: true` (and consider `requireMerkleProof: true`) under `plugins.entries.openclaw-fpp-trust.config` and restart the gateway. Existing trust-graph entries formed from unsigned claims are **not** retroactively invalidated — re-run handshakes with hardened settings if that matters to you.
+Prefer `hardened-v2`. During migration, `v2-with-legacy-declarations` keeps v1
+claims inspectable as declaration-only without trust elevation. Existing
+trust-graph entries formed under weaker policies are **not** retroactively
+invalidated — re-run handshakes with hardened settings if that matters to you.
 
 ## 14. "A peer presented an old claim / I suspect replay"
 
-Claims carry an issuance timestamp but the current handshake has no freshness nonce and no automatic staleness rejection (see `plugin-trust/README.md`, Limitations). Diagnose by inspecting the claim's timestamp field in the exchanged JSON. Mitigations today:
+Under the default `verificationPolicy=hardened-v2`, handshakes require a
+peer-supplied challenge with audience, issue time, expiry, and a one-time
+replay key. Stale (e.g. 2020), future, wrong-audience, and replayed claims
+are rejected. Diagnose:
 
-- ask the peer for a **fresh** `fpp_handshake_offer` and compare timestamps;
-- treat claims older than your own tolerance as unverified and set trust manually via seeds;
-- do not build automation that accepts stored claim files as proof of current state.
+```bash
+# Inspect the claim's freshness block in the exchanged JSON
+# (audience, challenge, issuedAt, expiresAt)
 
-Do not delete the peer's entry from the trust graph as a "fix" — record your assessment and move on. Removing entries erases the evidence trail of how the trust was formed.
+# Confirm policy is not legacy-unsafe
+# plugins.entries.openclaw-fpp-trust.config.verificationPolicy
+```
+
+If you are on an older install still using `legacy-unsafe`, migrate to
+`hardened-v2` (or `v2-with-legacy-declarations` during transition). Enabling
+`legacy-unsafe` requires `acknowledgeDangerousOverrides: true`.
+
+Do not delete the peer's entry from the trust graph as a "fix" — record your
+assessment and move on. Removing entries erases the evidence trail of how the
+trust was formed.
 
 ## 15. "Strict mode is not escalating tool calls" / strict-state parse failure
 
-The enforcement plugin reads `strictModeStatePath` (default `.openclaw/workspace/fpp-strict-sessions.json`) on each gated call. If that file is **missing or malformed JSON, the enforcement plugin silently ignores it** (`readStrictModeState` returns null) — strict mode simply stops applying, with no error surfaced. Diagnose:
+The enforcement plugin reads `strictModeStatePath` (default
+`.openclaw/workspace/fpp-strict-sessions.json`) on each gated call.
+
+- **Missing file:** no strict overrides (normal when no handshake failure has
+  entered strict mode).
+- **Malformed JSON / invalid schema:** the plugin applies a **conservative
+  approval fallback** (does not silently disable protection) and emits
+  `FPP STRICT_MODE_MALFORMED` / `FPP STRICT_MODE_SCHEMA_INVALID` diagnostics
+  without logging session keys. The corrupt file is left in place as evidence.
+
+Diagnose:
 
 ```bash
 # Is the file valid JSON with version 1?
@@ -240,9 +272,14 @@ cat .openclaw/workspace/fpp-strict-sessions.json | node -e "const d=JSON.parse(r
 openclaw fpp-trust strict list
 ```
 
-Also check `respectTrustStrictMode` has not been set to `false` in the enforcement plugin config, and that the session entry has not expired (`expiresAt`).
+Also check `respectTrustStrictMode` has not been set to `false` in the
+enforcement plugin config, and that the session entry has not expired
+(`expiresAt`).
 
-**Recovery:** if the file is corrupt, copy it aside (`fpp-strict-sessions.json.corrupt.<timestamp>`) before recreating it via `openclaw fpp-trust strict` commands. Do not just delete it — the corrupt file is evidence of what went wrong.
+**Recovery:** if the file is corrupt, copy it aside
+(`fpp-strict-sessions.json.corrupt.<timestamp>`) before recreating it via
+`openclaw fpp-trust strict` commands. Do not just delete it — the corrupt
+file is evidence of what went wrong.
 
 ## 16. "Trust plugin fails to start after an unclean shutdown"
 

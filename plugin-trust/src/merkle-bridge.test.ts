@@ -149,6 +149,18 @@ describe("MerkleBridge", () => {
     assert.equal(root, "0".repeat(64));
   });
 
+  it("labels Merkle results as inclusion-under-claimed-root", () => {
+    const leaves = ["a", "b", "c"].map((s) => sha256(s));
+    const proof = createMerkleProof(leaves, 1);
+    assert.ok(proof);
+    const bridge = new MerkleBridge("unused.jsonl", tmp, null);
+    const result = bridge.evaluateInclusion(proof, proof.root);
+    assert.equal(result.valid, true);
+    assert.equal(result.semantics, "inclusion-under-claimed-root");
+    assert.equal(result.rootAnchored, false);
+    assert.equal(result.rootMatch, true);
+  });
+
   after(() => {
     rmSync(tmp, { recursive: true, force: true });
   });

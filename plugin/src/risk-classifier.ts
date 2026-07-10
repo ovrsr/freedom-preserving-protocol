@@ -31,6 +31,7 @@ export type ClassificationId =
   | "pkg.install"
   | "pkg.publish"
   | "http.public-write"
+  | "http.public-read"
   | "http.read"
   | "gateway.restart"
   | "gateway.config-change"
@@ -45,6 +46,12 @@ export type ClassificationResult = {
   decision: Decision;
   reason: string;
   matchedPatterns: string[];
+};
+
+/** Optional classifier options — scoped overrides, never a global fail-open. */
+export type ClassifyOptions = {
+  /** Explicit operator allowlist of known custom tool names. */
+  knownCustomTools?: string[] | undefined;
 };
 
 const PROTECTED_PATH_PATTERNS: RegExp[] = [
@@ -346,6 +353,14 @@ function classifyHttp(
       matchedPatterns: [PUBLIC_HOST_PATTERN.source],
     };
   }
+  if (!isWrite && isPublic) {
+    return {
+      classification: "http.public-read",
+      decision: "allow",
+      reason: `${method} to public URL ${url} is a read; allow by default (strict mode may escalate).`,
+      matchedPatterns: [PUBLIC_HOST_PATTERN.source],
+    };
+  }
   return {
     classification: "http.read",
     decision: "allow",
@@ -375,20 +390,36 @@ function classifyMessage(
 export function classifyToolCall(
   toolName: string,
   params: Record<string, unknown>,
+  options?: ClassifyOptions | undefined,
 ): ClassificationResult {
+  const safeParams =
+    params && typeof params === "object" && !Array.isArray(params)
+      ? params
+      : {};
   const results: (ClassificationResult | null)[] = [
-    classifyFilesystem(toolName, params),
-    classifyExec(toolName, params),
-    classifyHttp(toolName, params),
-    classifyMessage(toolName, params),
+    classifyFilesystem(toolName, safeParams),
+    classifyExec(toolName, safeParams),
+    classifyHttp(toolName, safeParams),
+    classifyMessage(toolName, safeParams),
   ];
   for (const r of results) {
     if (r) return r;
   }
+
+  const allowlist = options?.knownCustomTools ?? [];
+  if (allowlist.includes(toolName)) {
+    return {
+      classification: "unknown.unclassified",
+      decision: "allow",
+      reason: `tool ${toolName} is on the operator known-custom-tool allowlist; allowing with audit.`,
+      matchedPatterns: ["knownCustomTools"],
+    };
+  }
+
   return {
     classification: "unknown.unclassified",
-    decision: "allow",
-    reason: `tool ${toolName} did not match any known risk pattern; allowing with audit (Law 5: log unknown territory).`,
+    decision: "approval",
+    reason: `tool ${toolName} did not match any known risk pattern; degraded classification — approval required (not fail-open).`,
     matchedPatterns: [],
   };
 }

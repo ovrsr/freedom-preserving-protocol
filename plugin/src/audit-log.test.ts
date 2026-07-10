@@ -1,6 +1,6 @@
 import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { appendEnforcementEntry, type EnforcementEvent } from "./audit-log.js";
 import { createTempWorkspace } from "./test-helpers.js";
@@ -74,5 +74,40 @@ describe("appendEnforcementEntry", () => {
     const lines = readFileSync(path2, "utf8").trim().split("\n");
     assert.equal(JSON.parse(lines[0]!).outcome, "approval_requested");
     assert.equal(JSON.parse(lines[1]!).outcome, "approved");
+  });
+
+  it("throws explicit corruption error on malformed tail instead of zero hash", () => {
+    const corruptPath = join(ws.path, "corrupt.jsonl");
+    writeFileSync(corruptPath, "not-valid-json\n", "utf8");
+    assert.throws(
+      () => appendEnforcementEntry(corruptPath, baseEvent, "blocked"),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /corrupt/i);
+        assert.doesNotMatch(err.message, /^$/);
+        return true;
+      },
+    );
+    // Must not silently restart the chain with a zero previousHash entry.
+    const content = readFileSync(corruptPath, "utf8");
+    assert.equal(content.trim(), "not-valid-json");
+  });
+
+  it("throws on hash-field corruption in otherwise parseable tail", () => {
+    const badHashPath = join(ws.path, "bad-hash.jsonl");
+    writeFileSync(
+      badHashPath,
+      JSON.stringify({
+        previousHash: "0".repeat(64),
+        timestamp: new Date().toISOString(),
+        kind: "enforcement",
+        hash: "not-a-valid-hash",
+      }) + "\n",
+      "utf8",
+    );
+    assert.throws(
+      () => appendEnforcementEntry(badHashPath, baseEvent, "blocked"),
+      /corrupt/i,
+    );
   });
 });

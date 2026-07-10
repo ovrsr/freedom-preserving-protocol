@@ -8,7 +8,11 @@
  */
 
 import { Type, type Static } from "@sinclair/typebox";
-import { parseClaim } from "@ovrsr/fpp-protocol-core";
+import {
+  parseClaim,
+  parseFreshnessEnvelope,
+  type FreshnessEnvelope,
+} from "@ovrsr/fpp-protocol-core";
 import type { AgentIdentity } from "./identity.js";
 import { signClaim } from "./claims.js";
 import type { ConstitutionalClaim, HandshakeResult } from "./handshake.js";
@@ -38,13 +42,104 @@ function failResult(text: string) {
   return textResult(text, { status: "failed" as const });
 }
 
+/**
+ * Precise verification summary for handshake outputs.
+ * Signed fresh configuration establishes identity/configuration standing only —
+ * never behavioral compliance. `fppVerified` is a deprecated compatibility
+ * field derived from standing for one migration window.
+ */
+export type VerificationStanding =
+  | "none"
+  | "declaration-only"
+  | "identity-configuration";
+
+export type VerificationSummary = {
+  identityVerified: boolean;
+  configurationClaimVerified: boolean;
+  freshnessVerified: boolean;
+  evidenceLevel: string;
+  standing: VerificationStanding;
+  /** @deprecated Derived from standing; not behavioral compliance. */
+  fppVerified: boolean;
+};
+
+export function summarizeHandshakeVerification(
+  result: HandshakeResult,
+): VerificationSummary {
+  const identityVerified = result.evidence.some(
+    (e) =>
+      e.type === "signature_verification" &&
+      e.confidence > 0 &&
+      (e.data as { valid?: boolean } | null)?.valid !== false,
+  );
+  const configurationClaimVerified = result.evidence.some(
+    (e) =>
+      e.type === "constitutional_commitment" && e.confidence >= 0.5,
+  );
+  const freshnessEvidence = result.evidence.filter(
+    (e) => e.type === "freshness_verification",
+  );
+  const freshnessVerified =
+    freshnessEvidence.length > 0 &&
+    freshnessEvidence.every((e) => e.confidence > 0);
+
+  const classes: string[] = [];
+  if (identityVerified) classes.push("identity");
+  if (configurationClaimVerified) classes.push("configuration");
+  if (freshnessVerified) classes.push("freshness");
+  const evidenceLevel =
+    classes.length > 0 ? classes.join("+") : "none";
+
+  let standing: VerificationStanding = "none";
+  if (identityVerified && configurationClaimVerified) {
+    standing = "identity-configuration";
+  } else if (result.success && !identityVerified) {
+    standing = "declaration-only";
+  }
+
+  // Deprecated compatibility: true only when identity+configuration standing
+  // is present — never a blanket "behavioral compliance verified".
+  const fppVerified = standing === "identity-configuration";
+
+  return {
+    identityVerified,
+    configurationClaimVerified,
+    freshnessVerified,
+    evidenceLevel,
+    standing,
+    fppVerified,
+  };
+}
+
 // ── Parameter schemas ──────────────────────────────────────────────
+
+export const HandshakeChallengeParams = Type.Object({
+  audience: Type.Optional(
+    Type.String({
+      description:
+        "Audience for the challenge (defaults to this agent's v2 id).",
+    }),
+  ),
+  lifetimeMs: Type.Optional(
+    Type.Integer({
+      minimum: 10_000,
+      maximum: 600_000,
+      description: "Challenge lifetime in milliseconds (default 300000).",
+    }),
+  ),
+});
 
 export const HandshakeOfferParams = Type.Object({
   targetAgentId: Type.Optional(
     Type.String({
       description:
         "Optional identifier of the agent you intend to handshake with.",
+    }),
+  ),
+  peerChallenge: Type.Optional(
+    Type.String({
+      description:
+        "JSON freshness envelope from the peer's fpp_handshake_challenge. Required for hardened v2 handshakes.",
     }),
   ),
 });
@@ -85,6 +180,33 @@ export const ClusterStatusParams = Type.Object({
 
 // ── Tool execute implementations ───────────────────────────────────
 
+export function executeHandshakeChallenge(
+  params: Static<typeof HandshakeChallengeParams>,
+  deps: ToolDependencies,
+) {
+  const audience = params.audience ?? deps.identity.agentId;
+  const challenge = deps.handshake.issueChallenge(
+    audience,
+    params.lifetimeMs !== undefined
+      ? { lifetimeMs: params.lifetimeMs }
+      : undefined,
+  );
+  const copyableJson = JSON.stringify(challenge, null, 2);
+  return textResult(
+    `FPP handshake challenge issued.\n` +
+      `Share this JSON with the peer so they can answer via fpp_handshake_offer ` +
+      `(peerChallenge parameter).\n\n` +
+      "```json\n" +
+      copyableJson +
+      "\n```",
+    {
+      status: "ok",
+      challenge,
+      copyableJson,
+    },
+  );
+}
+
 export function executeHandshakeOffer(
   params: Static<typeof HandshakeOfferParams>,
   deps: ToolDependencies,
@@ -92,6 +214,23 @@ export function executeHandshakeOffer(
   const { identity, merkleBridge, constitutionHash } = deps;
   const { root, entryCount } = merkleBridge.getCurrentRoot();
   const recentHashes = merkleBridge.getRecentLeafHashes(5);
+
+  let freshness: FreshnessEnvelope | undefined;
+  if (params.peerChallenge) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(params.peerChallenge);
+    } catch {
+      return failResult(
+        "Failed to parse peerChallenge JSON. Expect the output of fpp_handshake_challenge.",
+      );
+    }
+    const env = parseFreshnessEnvelope(parsed);
+    if (!env.ok) {
+      return failResult(`Invalid peerChallenge: ${env.error}`);
+    }
+    freshness = env.envelope;
+  }
 
   const claim: ConstitutionalClaim = {
     agentId: identity.agentId,
@@ -101,6 +240,7 @@ export function executeHandshakeOffer(
     auditEntryCount: entryCount,
     chainIntact: entryCount > 0,
     recentLaws: [],
+    ...(freshness !== undefined ? { freshness } : {}),
   };
 
   const signed = signClaim(claim, identity);
@@ -115,7 +255,8 @@ export function executeHandshakeOffer(
       `Agent ID: ${identity.agentId}\n` +
       `Public Key: ${identity.publicKeyHex}\n` +
       `Merkle Root: ${root}\n` +
-      `Audit Entries: ${entryCount}\n\n` +
+      `Audit Entries: ${entryCount}\n` +
+      `Freshness bound: ${freshness ? "yes" : "no"}\n\n` +
       "```json\n" +
       copyableJson +
       "\n```",
@@ -124,6 +265,7 @@ export function executeHandshakeOffer(
       claim: signed,
       recentAuditHashes: recentHashes,
       copyableJson,
+      freshnessBound: freshness !== undefined,
     },
   );
 }
@@ -186,10 +328,24 @@ export function executeHandshakeVerify(
   const trustLevelName =
     ["UNKNOWN", "LOW", "MEDIUM", "HIGH", "MAXIMUM"][result.trustLevel] ??
     "UNKNOWN";
+  const summary = summarizeHandshakeVerification(result);
 
   if (result.success) {
+    const verifiedParts: string[] = [];
+    if (summary.identityVerified) verifiedParts.push("identity");
+    if (summary.configurationClaimVerified) {
+      verifiedParts.push("configuration");
+    }
+    if (summary.freshnessVerified) verifiedParts.push("freshness");
+    const verifiedLabel =
+      verifiedParts.length > 0
+        ? verifiedParts.join("/")
+        : "declaration-only";
+
     return textResult(
-      `FPP handshake VERIFIED with ${peerClaim.agentId}.\n` +
+      `FPP handshake ${verifiedLabel} verified with ${peerClaim.agentId}.\n` +
+        `Standing: ${summary.standing} (not behavioral compliance).\n` +
+        `Evidence level: ${summary.evidenceLevel}\n` +
         `Trust Level: ${trustLevelName} (${result.trustLevel}/4)\n` +
         `Confidence: ${(result.confidence * 100).toFixed(1)}%\n` +
         `Evidence items: ${result.evidence.length}\n` +
@@ -201,7 +357,13 @@ export function executeHandshakeVerify(
         trustLevelName,
         confidence: result.confidence,
         evidence: result.evidence,
-        fppVerified: true,
+        identityVerified: summary.identityVerified,
+        configurationClaimVerified: summary.configurationClaimVerified,
+        freshnessVerified: summary.freshnessVerified,
+        evidenceLevel: summary.evidenceLevel,
+        standing: summary.standing,
+        /** @deprecated Use standing / identityVerified fields. */
+        fppVerified: summary.fppVerified,
         sessionId: result.sessionId,
       },
     );
@@ -209,6 +371,7 @@ export function executeHandshakeVerify(
 
   return textResult(
     `FPP handshake FAILED for ${peerClaim.agentId}.\n` +
+      `Standing: none (not behavioral compliance).\n` +
       `Errors: ${result.errors.join("; ")}\n` +
       `Confidence: ${(result.confidence * 100).toFixed(1)}%`,
     {
@@ -217,6 +380,12 @@ export function executeHandshakeVerify(
       trustLevel: result.trustLevel,
       confidence: result.confidence,
       errors: result.errors,
+      identityVerified: summary.identityVerified,
+      configurationClaimVerified: summary.configurationClaimVerified,
+      freshnessVerified: summary.freshnessVerified,
+      evidenceLevel: summary.evidenceLevel,
+      standing: summary.standing,
+      /** @deprecated Use standing / identityVerified fields. */
       fppVerified: false,
     },
   );
@@ -236,6 +405,8 @@ export function executeTrustStatus(
         `Use fpp_handshake_offer / fpp_handshake_verify to establish trust first.`,
       {
         known: false,
+        standing: "none" as const,
+        /** @deprecated Use standing. */
         fppVerified: false,
         targetAgentId: targetId,
         recommendation: "untrusted" as const,
@@ -247,7 +418,11 @@ export function executeTrustStatus(
   const trustLevel = rel
     ? Math.max(rel.trustAB, rel.trustBA)
     : TrustLevel.UNKNOWN;
+  // Deprecated: derived from relationship standing, not behavioral proof.
   const fppVerified = rel !== null && trustLevel >= TrustLevel.LOW;
+  const standing: VerificationStanding = fppVerified
+    ? "identity-configuration"
+    : "none";
   const trustLevelName =
     ["UNKNOWN", "LOW", "MEDIUM", "HIGH", "MAXIMUM"][trustLevel] ?? "UNKNOWN";
 
@@ -262,7 +437,7 @@ export function executeTrustStatus(
 
   return textResult(
     `Agent ${targetId} — ${trustLevelName} trust (${trustLevel}/4)\n` +
-      `FPP Verified: ${fppVerified ? "YES" : "NO"}\n` +
+      `Standing: ${standing} (identity/configuration; not behavioral compliance)\n` +
       `Recommendation: ${recommendation.toUpperCase()}\n` +
       `Overall Reputation: ${(node.reputation.overall * 100).toFixed(0)}%\n` +
       `Constitutional Fidelity: ${(node.reputation.constitutionalFidelity * 100).toFixed(0)}%\n` +
@@ -271,6 +446,8 @@ export function executeTrustStatus(
       `Interactions: ${node.interactionCount} (${node.reputation.positiveInteractions}+ / ${node.reputation.negativeInteractions}-)`,
     {
       known: true,
+      standing,
+      /** @deprecated Use standing. */
       fppVerified,
       targetAgentId: targetId,
       trustLevel,

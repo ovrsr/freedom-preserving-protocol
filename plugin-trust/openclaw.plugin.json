@@ -4,6 +4,7 @@
   "description": "Agent-to-agent trust graph with BFS propagation, constitutional handshake sequence, signed claims, Merkle audit bridging, and strict-mode signaling. Enables multi-agent verification of FPP adoption.",
   "contracts": {
     "tools": [
+      "fpp_handshake_challenge",
       "fpp_handshake_offer",
       "fpp_handshake_verify",
       "fpp_trust_status",
@@ -73,15 +74,35 @@
         "default": ".openclaw/workspace/fpp-strict-sessions.json",
         "description": "Path to the strict-mode session state file read by the enforcement plugin."
       },
+      "verificationPolicy": {
+        "type": "string",
+        "enum": [
+          "hardened-v2",
+          "v2-with-legacy-declarations",
+          "legacy-unsafe"
+        ],
+        "default": "hardened-v2",
+        "description": "Handshake verification policy. hardened-v2 (default) requires signed fresh v2 claims. v2-with-legacy-declarations allows inspecting v1 as declaration-only. legacy-unsafe is visibly weaker and accepts unsigned claims."
+      },
+      "replayCachePath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-replay-cache.json",
+        "description": "Path to the bounded challenge replay-key cache."
+      },
       "requireSignedClaims": {
         "type": "boolean",
-        "default": false,
-        "description": "When true, handshake verification rejects claims without a valid Ed25519 signature."
+        "default": true,
+        "description": "Deprecated in favor of verificationPolicy. Derived from policy when omitted."
       },
       "requireMerkleProof": {
         "type": "boolean",
         "default": false,
         "description": "When true, handshake verification requires a valid Merkle proof of recent audit entries."
+      },
+      "requireFreshness": {
+        "type": "boolean",
+        "default": true,
+        "description": "Deprecated in favor of verificationPolicy. Derived from policy when omitted."
       },
       "strictModeOnHandshakeFailure": {
         "type": "boolean",
@@ -109,6 +130,11 @@
           "message.external"
         ],
         "description": "Risk classifications that become require-approval during strict mode."
+      },
+      "acknowledgeDangerousOverrides": {
+        "type": "boolean",
+        "default": false,
+        "description": "Required to enable verificationPolicy=legacy-unsafe. Without this flag, legacy-unsafe fails closed to hardened-v2 and emits a migration diagnostic — the config file is never rewritten."
       }
     }
   }

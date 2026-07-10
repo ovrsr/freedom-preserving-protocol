@@ -200,6 +200,30 @@
       "params": { "command": "git status" },
       "expected": "allow",
       "notes": "benign git status"
+    },
+    {
+      "id": "unknown-custom-tool-requires-approval",
+      "category": "unknown",
+      "toolName": "some_custom_tool_xyz",
+      "params": { "foo": "bar" },
+      "expected": "approval",
+      "notes": "unclassified tools require approval by default (not fail-open)"
+    },
+    {
+      "id": "malformed-empty-params-exec",
+      "category": "malformed",
+      "toolName": "shell_exec",
+      "params": {},
+      "expected": "approval",
+      "notes": "empty params on exec tool: no command matched → unknown.unclassified approval (not fail-open)"
+    },
+    {
+      "id": "renamed-nested-high-impact-delete",
+      "category": "renamed",
+      "toolName": "secure_file_remove",
+      "params": { "path": "/home/user/.ssh/authorized_keys" },
+      "expected": "block",
+      "notes": "renamed nested delete of protected path still classified"
     }
   ]
 }

@@ -104,6 +104,58 @@ describe("signClaim / verifyClaim", () => {
     assert.match(result.reason, /agentId does not match/i);
   });
 
+  it("rejects a valid signature that spoofs a different agentId in the signed payload", () => {
+    const identity = loadOrCreateIdentity(keyPath, "/");
+    const spoofedId = "fpp:ed25519:" + "a".repeat(64);
+    assert.notEqual(spoofedId, identity.agentId);
+
+    // Craft a claim signed with our key but claiming a foreign agentId.
+    // Without key/ID binding this would verify as a valid signature.
+    const spoofedPayload = {
+      agentId: spoofedId,
+      constitutionHash: "e".repeat(64),
+      adoptedAt: "2026-01-01T00:00:00Z",
+      auditMerkleRoot: "f".repeat(64),
+      auditEntryCount: 1,
+      chainIntact: true,
+      recentLaws: [] as string[],
+      keyAlgorithm: "ed25519",
+    };
+    const payload = canonicalize(spoofedPayload);
+    const sig = identity.sign(new TextEncoder().encode(payload));
+    const result = verifyClaim({
+      ...spoofedPayload,
+      publicKey: identity.publicKeyHex,
+      signature: Buffer.from(sig).toString("hex"),
+    });
+    assert.equal(result.valid, false);
+    assert.match(result.reason, /agentId does not match/i);
+  });
+
+  it("rejects legacy alias as agentId even when it matches the public key prefix", () => {
+    const identity = loadOrCreateIdentity(keyPath, "/");
+    const claim: ConstitutionalClaim = {
+      agentId: identity.legacyAlias,
+      constitutionHash: "e".repeat(64),
+      adoptedAt: "2026-01-01T00:00:00Z",
+      auditMerkleRoot: "f".repeat(64),
+      auditEntryCount: 1,
+      chainIntact: true,
+      recentLaws: [],
+    };
+    // Bypass signClaim's agentId overwrite by signing manually with legacy alias.
+    const toSign = { ...claim, keyAlgorithm: "ed25519" };
+    const payload = canonicalize(toSign);
+    const sig = identity.sign(new TextEncoder().encode(payload));
+    const result = verifyClaim({
+      ...toSign,
+      publicKey: identity.publicKeyHex,
+      signature: Buffer.from(sig).toString("hex"),
+    });
+    assert.equal(result.valid, false);
+    assert.match(result.reason, /agentId does not match/i);
+  });
+
   it("binds v2 agentId and keyAlgorithm into the signed claim", () => {
     const identity = loadOrCreateIdentity(keyPath, "/");
     assert.match(identity.agentId, /^fpp:ed25519:[0-9a-f]{64}$/);

@@ -15,7 +15,8 @@
  *   - Law 1 (consent): requireApproval surfaces the action to the user before it runs.
  *   - Law 2 (corrigibility): every decision is logged with reason and tool metadata.
  *   - Law 3 (reversibility): the hook can block irreversible actions in advance.
- *   - Law 5 (scoped exploration): unknown tools are logged but allowed, with a note.
+ *   - Law 5 (scoped exploration): unknown tools require approval by default;
+ *     operators may allowlist known custom tools explicitly.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -24,8 +25,16 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import type { OpenClawPluginApi, OpenClawPluginDefinition } from "openclaw/plugin-sdk/plugin-entry";
 
 import { classifyToolCall, type ClassificationResult } from "./risk-classifier.js";
-import { mergeConfig, type FppPluginConfig } from "./config.js";
-import { appendEnforcementEntry } from "./audit-log.js";
+import {
+  mergeConfig,
+  CONSERVATIVE_STRICT_APPROVAL_ON,
+  type FppPluginConfig,
+} from "./config.js";
+import {
+  appendEnforcementEntry,
+  type EnforcementEvent,
+  type EnforcementOutcome,
+} from "./audit-log.js";
 
 interface StrictSessionEntry {
   strict: boolean;
@@ -38,23 +47,101 @@ interface StrictModeState {
   sessions: Record<string, StrictSessionEntry>;
 }
 
-let strictModeCache: { state: StrictModeState; readAt: number } | null = null;
+type StrictReadResult =
+  | { kind: "ok"; state: StrictModeState }
+  | { kind: "missing" }
+  | { kind: "degraded"; code: "STRICT_MODE_MALFORMED" | "STRICT_MODE_SCHEMA_INVALID" };
+
+let strictModeCache: { result: StrictReadResult; readAt: number } | null = null;
 const STRICT_CACHE_TTL_MS = 1000;
 
-function readStrictModeState(filePath: string): StrictModeState | null {
+function emitStrictDiagnostic(
+  code: "STRICT_MODE_MALFORMED" | "STRICT_MODE_SCHEMA_INVALID",
+  detail: string,
+): void {
+  // Structured diagnostic — never include session keys or reason text.
+  console.error(`FPP ${code}: ${detail}`);
+}
+
+function isValidStrictEntry(value: unknown): value is StrictSessionEntry {
+  if (!value || typeof value !== "object") return false;
+  const e = value as Record<string, unknown>;
+  return (
+    typeof e.strict === "boolean" &&
+    Array.isArray(e.addedApprovalOn) &&
+    e.addedApprovalOn.every((x) => typeof x === "string") &&
+    typeof e.expiresAt === "string"
+  );
+}
+
+function readStrictModeState(filePath: string): StrictReadResult {
   const now = Date.now();
   if (strictModeCache && now - strictModeCache.readAt < STRICT_CACHE_TTL_MS) {
-    return strictModeCache.state;
+    return strictModeCache.result;
   }
   const resolved = resolve(filePath);
-  if (!existsSync(resolved)) return null;
+  if (!existsSync(resolved)) {
+    const result: StrictReadResult = { kind: "missing" };
+    strictModeCache = { result, readAt: now };
+    return result;
+  }
   try {
-    const raw = JSON.parse(readFileSync(resolved, "utf-8")) as StrictModeState;
-    if (raw.version !== 1 || typeof raw.sessions !== "object") return null;
-    strictModeCache = { state: raw, readAt: now };
-    return raw;
+    const raw: unknown = JSON.parse(readFileSync(resolved, "utf-8"));
+    if (!raw || typeof raw !== "object") {
+      const result: StrictReadResult = {
+        kind: "degraded",
+        code: "STRICT_MODE_SCHEMA_INVALID",
+      };
+      emitStrictDiagnostic(result.code, "strict-mode state root is not an object");
+      strictModeCache = { result, readAt: now };
+      return result;
+    }
+    const obj = raw as Record<string, unknown>;
+    if (obj.version !== 1 || typeof obj.sessions !== "object" || obj.sessions === null) {
+      const result: StrictReadResult = {
+        kind: "degraded",
+        code: "STRICT_MODE_SCHEMA_INVALID",
+      };
+      emitStrictDiagnostic(
+        result.code,
+        "strict-mode state failed versioned schema validation",
+      );
+      strictModeCache = { result, readAt: now };
+      return result;
+    }
+    const sessions: Record<string, StrictSessionEntry> = {};
+    for (const [key, entry] of Object.entries(
+      obj.sessions as Record<string, unknown>,
+    )) {
+      if (!isValidStrictEntry(entry)) {
+        const result: StrictReadResult = {
+          kind: "degraded",
+          code: "STRICT_MODE_SCHEMA_INVALID",
+        };
+        emitStrictDiagnostic(
+          result.code,
+          "strict-mode session entry failed schema validation",
+        );
+        strictModeCache = { result, readAt: now };
+        return result;
+      }
+      sessions[key] = entry;
+    }
+    const state: StrictModeState = { version: 1, sessions };
+    const result: StrictReadResult = { kind: "ok", state };
+    strictModeCache = { result, readAt: now };
+    return result;
   } catch {
-    return null;
+    const result: StrictReadResult = {
+      kind: "degraded",
+      code: "STRICT_MODE_MALFORMED",
+    };
+    emitStrictDiagnostic(
+      result.code,
+      "strict-mode state file is not valid JSON; applying conservative fallback",
+    );
+    strictModeCache = { result, readAt: now };
+    return result;
   }
 }
 
@@ -63,12 +150,21 @@ function getStrictApprovalOverrides(
   sessionKey: string | undefined,
 ): string[] {
   if (!sessionKey) return [];
-  const state = readStrictModeState(filePath);
-  if (!state) return [];
-  const entry = state.sessions[sessionKey];
+  const result = readStrictModeState(filePath);
+  if (result.kind === "missing") return [];
+  if (result.kind === "degraded") {
+    // Malformed state must not silently disable configured protection.
+    return [...CONSERVATIVE_STRICT_APPROVAL_ON];
+  }
+  const entry = result.state.sessions[sessionKey];
   if (!entry || !entry.strict) return [];
   if (new Date(entry.expiresAt).getTime() < Date.now()) return [];
   return entry.addedApprovalOn ?? [];
+}
+
+/** Test seam: reset the strict-mode read cache between tests. */
+export function resetStrictModeCache(): void {
+  strictModeCache = null;
 }
 
 function severityFor(classification: ClassificationResult): "info" | "warning" | "critical" {
@@ -102,6 +198,45 @@ function decide(
 /** Test seam: decision helper used by the before_tool_call hook. */
 export { decide };
 
+function emitAuditGap(message: string): void {
+  console.error(`FPP AUDIT-GAP: ${message}`);
+}
+
+function tryAppend(
+  logPath: string,
+  event: EnforcementEvent,
+  outcome: EnforcementOutcome,
+): { ok: true } | { ok: false; error: Error } {
+  try {
+    appendEnforcementEntry(logPath, event, outcome);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err as Error };
+  }
+}
+
+/**
+ * When audit persistence fails: fail-closed for high-risk / approval paths.
+ * degraded-allow-low-risk may proceed only for classifier-allow decisions.
+ */
+function handleAuditFailure(
+  config: FppPluginConfig,
+  decision: "block" | "approval" | "allow",
+  error: Error,
+): { block: true; blockReason: string } | undefined {
+  const highRisk = decision === "block" || decision === "approval";
+  if (config.auditFailureBehavior === "fail-closed" || highRisk) {
+    return {
+      block: true,
+      blockReason: `audit failure (fail-closed): ${error.message}`,
+    };
+  }
+  emitAuditGap(
+    `proceeding under degraded-allow-low-risk despite audit write failure: ${error.message}`,
+  );
+  return undefined;
+}
+
 /**
  * Test seam: register the enforcement hook against any api-like object.
  * Production entry calls this from definePluginEntry.register.
@@ -129,13 +264,15 @@ export function registerEnforcement(api: {
         sessionKey?: string;
         toolCallId?: string;
       };
-      const classification = classifyToolCall(e.toolName, e.params ?? {});
+      const classification = classifyToolCall(e.toolName, e.params ?? {}, {
+        knownCustomTools: config.knownCustomTools,
+      });
       const strictOverrides = config.respectTrustStrictMode
         ? getStrictApprovalOverrides(config.strictModeStatePath, c.sessionKey)
         : [];
       const decision = decide(config, classification, strictOverrides);
 
-      const eventForAudit = {
+      const eventForAudit: EnforcementEvent = {
         toolName: e.toolName,
         agentId: c.agentId,
         runId: c.runId ?? e.runId,
@@ -148,7 +285,11 @@ export function registerEnforcement(api: {
       };
 
       if (decision === "block") {
-        appendEnforcementEntry(config.auditLogPath, eventForAudit, "blocked");
+        const appended = tryAppend(config.auditLogPath, eventForAudit, "blocked");
+        if (!appended.ok) {
+          const failure = handleAuditFailure(config, decision, appended.error);
+          if (failure) return failure;
+        }
         return {
           block: true,
           blockReason: `${classification.classification}: ${classification.reason}`,
@@ -156,11 +297,15 @@ export function registerEnforcement(api: {
       }
 
       if (decision === "approval") {
-        appendEnforcementEntry(
+        const appended = tryAppend(
           config.auditLogPath,
           eventForAudit,
           "approval_requested",
         );
+        if (!appended.ok) {
+          const failure = handleAuditFailure(config, decision, appended.error);
+          if (failure) return failure;
+        }
         return {
           requireApproval: {
             title: buildTitle(classification),
@@ -171,7 +316,7 @@ export function registerEnforcement(api: {
             allowedDecisions: ["allow-once", "deny"],
             pluginId: "openclaw-fpp-plugin",
             onResolution: async (decisionResult: string) => {
-              const outcome =
+              const outcome: EnforcementOutcome =
                 decisionResult === "allow-once" || decisionResult === "allow-always"
                   ? "approved"
                   : decisionResult === "deny"
@@ -179,13 +324,36 @@ export function registerEnforcement(api: {
                     : decisionResult === "timeout"
                       ? "timeout"
                       : "cancelled";
-              appendEnforcementEntry(config.auditLogPath, eventForAudit, outcome);
+              const logged = tryAppend(
+                config.auditLogPath,
+                eventForAudit,
+                outcome,
+              );
+              if (!logged.ok) {
+                emitAuditGap(
+                  `post-approval outcome logging failed (${outcome}): ${logged.error.message}. ` +
+                    `Preserve the existing audit file; do not overwrite or restart the chain. ` +
+                    `See docs/TROUBLESHOOTING.md.`,
+                );
+              }
             },
           },
         };
       }
 
-      appendEnforcementEntry(config.auditLogPath, eventForAudit, "allowed");
+      const allowedAppend = tryAppend(
+        config.auditLogPath,
+        eventForAudit,
+        "allowed",
+      );
+      if (!allowedAppend.ok) {
+        const failure = handleAuditFailure(
+          config,
+          decision,
+          allowedAppend.error,
+        );
+        if (failure) return failure;
+      }
       return;
     },
     { priority: 50 },

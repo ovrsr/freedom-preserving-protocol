@@ -8,6 +8,9 @@
  * Entries written here have kind "enforcement" (with a sub-kind in the
  * decision field). The skill's heartbeat audit (kind "heartbeat") writes to
  * a separate file; the two logs are complementary, not duplicative.
+ *
+ * Malformed tails throw AuditCorruptionError — they must never silently
+ * restart the chain from the zero hash.
  */
 
 import {
@@ -21,6 +24,13 @@ import { hashEntryV1 as hashEntry } from "@ovrsr/fpp-protocol-core";
 
 const ZERO = "0".repeat(64);
 
+export class AuditCorruptionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AuditCorruptionError";
+  }
+}
+
 function readPreviousHash(logPath: string): string {
   if (!existsSync(logPath)) return ZERO;
   const content = readFileSync(logPath, "utf-8").trim();
@@ -29,14 +39,19 @@ function readPreviousHash(logPath: string): string {
   if (lines.length === 0) return ZERO;
   const last = lines[lines.length - 1];
   if (!last) return ZERO;
+  let parsed: Record<string, unknown>;
   try {
-    const parsed = JSON.parse(last) as Record<string, unknown>;
-    const h = parsed.hash;
-    if (typeof h === "string" && /^[0-9a-f]{64}$/.test(h)) return h;
-  } catch {
-    /* fallthrough */
+    parsed = JSON.parse(last) as Record<string, unknown>;
+  } catch (err) {
+    throw new AuditCorruptionError(
+      `audit log corruption: malformed JSON tail at ${logPath}: ${(err as Error).message}`,
+    );
   }
-  return ZERO;
+  const h = parsed.hash;
+  if (typeof h === "string" && /^[0-9a-f]{64}$/.test(h)) return h;
+  throw new AuditCorruptionError(
+    `audit log corruption: last entry missing valid 64-hex hash at ${logPath}`,
+  );
 }
 
 export type EnforcementEvent = {

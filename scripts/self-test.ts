@@ -94,6 +94,13 @@ const FIXTURES: Fixture[] = [
     expected: "allow",
   },
   {
+    id: "unknown.unclassified",
+    description: "Unknown custom tool requires approval by default",
+    toolName: "some_custom_tool_xyz",
+    params: { foo: "bar" },
+    expected: "approval",
+  },
+  {
     id: "fs.delete.protected.shell-rm",
     description: "Shell rm on protected SSH key (classifier gap fix)",
     toolName: "shell_exec",

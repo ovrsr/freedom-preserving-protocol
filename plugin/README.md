@@ -50,7 +50,7 @@ On every tool call your agent attempts, OpenClaw invokes this plugin's `before_t
    - if the classification is in `blockOn`, return `{ block: true, blockReason }`.
    - if in `approvalOn` (or escalated by trust-plugin strict mode), return `{ requireApproval: { ... } }`.
    - if the classifier itself recommends `block` but your config doesn't list the classification, the decision is downgraded to `requireApproval` (not allow).
-   - otherwise, **allow**. This includes every tool call the classifier does not recognize: **unknown tools and unmatched parameter shapes default to allow** (they are audited as `allowed`, not gated). Enforcement coverage is the classified taxonomy, not all tool calls.
+   - otherwise, follow the classifier decision. **Unknown tools (`unknown.unclassified`) require approval by default.** Operators may allowlist known custom tool names via `knownCustomTools` (scoped — not a global fail-open). Benign known tools (e.g. workspace reads) still allow.
 3. **Audits** the decision to `.openclaw/workspace/fpp-plugin-audit.jsonl` as a hash-chained entry (same format as the skill's audit log; cross-verifiable with `npm run audit:verify` in the parent package).
 
 **Audit-write failure behavior (current, pending hardening):** audit entries are written with a synchronous append and no fallback. If the write throws (permissions, disk full), the exception propagates to the OpenClaw runtime — the plugin does **not** guarantee fail-closed behavior ("no audit, no action"). Until that hardening lands, treat the audit log as best-effort evidence, not a completeness guarantee.
@@ -111,7 +111,7 @@ The published artifact ships pre-built `dist/`. Source is included in the npm ta
 
 ## Limitations (read this)
 
-0. **Unknown tools are allowed, not gated.** The hook only blocks or escalates classifications it recognizes. A tool call outside the taxonomy passes through with an `allowed` audit entry. Do not describe this plugin as gating "all" tool calls.
+0. **Unknown tools require approval by default.** Unclassified tool names escalate to `requireApproval` unless listed in `knownCustomTools`. Do not describe this plugin as gating "all" tool calls with equal strength — coverage is still heuristic.
 1. **Heuristic classification can be evaded.** The classifier pattern-matches on tool name and parameter shape. A determined adversary can route through a tool name that doesn't match, or encode payloads (base64, nested templates) that the regex doesn't see. This is a strong-but-not-unforgeable fence, not an oracle.
 2. **A malicious operator can disable it.** The plugin honors `openclaw plugins disable openclaw-fpp-plugin` (as it must, per Law 2). If your threat model includes a hostile operator on the same machine, this plugin is not sufficient.
 3. **Audit log integrity depends on filesystem permissions.** The hash chain makes tampering *detectable* but not *preventable*. For tamper-evident archival, pipe the audit log to an append-only external store.

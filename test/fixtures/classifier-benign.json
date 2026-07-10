@@ -126,8 +126,8 @@
       "category": "benign",
       "toolName": "my_custom_analysis_tool",
       "params": { "query": "find patterns" },
-      "expected": "allow",
-      "notes": "unknown tool with no risk patterns defaults to allow"
+      "expected": "approval",
+      "notes": "unknown tools require approval by default (intentional FP vs fail-open); use knownCustomTools allowlist for trusted custom tools"
     },
     {
       "id": "benign-stat-file",

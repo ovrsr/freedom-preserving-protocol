@@ -1,8 +1,8 @@
 import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { registerEnforcement } from "./index.js";
+import { registerEnforcement, resetStrictModeCache } from "./index.js";
 import { createHookCapture, createTempWorkspace } from "./test-helpers.js";
 
 describe("enforcement hook integration", () => {
@@ -12,6 +12,7 @@ describe("enforcement hook integration", () => {
   after(() => ws.cleanup());
 
   function setup() {
+    resetStrictModeCache();
     const capture = createHookCapture({
       auditLogPath,
       respectTrustStrictMode: false,
@@ -105,5 +106,182 @@ describe("enforcement hook integration", () => {
     assert.equal(line.outcome, "allowed");
     assert.equal(line.decision, "allow");
     assert.equal(line.toolCallId, "call-xyz");
+  });
+
+  it("blocks high-risk calls when audit log is corrupted (fail-closed)", async () => {
+    const corruptPath = join(ws.path, "corrupt-high-risk.jsonl");
+    writeFileSync(corruptPath, "{broken\n", "utf8");
+    const capture = createHookCapture({
+      auditLogPath: corruptPath,
+      respectTrustStrictMode: false,
+      auditFailureBehavior: "fail-closed",
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = (await handler(
+      {
+        toolName: "filesystem_delete",
+        params: { path: "/home/user/.ssh/id_ed25519" },
+        runId: "event-run",
+      },
+      ctx,
+    )) as { block?: boolean; blockReason?: string };
+    assert.equal(result.block, true);
+    assert.match(result.blockReason ?? "", /audit/i);
+    // Corrupted file must not be overwritten with a fresh zero-hash chain.
+    assert.equal(readFileSync(corruptPath, "utf8").trim(), "{broken");
+  });
+
+  it("emits audit-gap diagnostic when post-approval outcome logging fails", async () => {
+    const gapPath = join(ws.path, "gap-audit.jsonl");
+    const diagnostics: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      diagnostics.push(args.map(String).join(" "));
+    };
+    try {
+      const capture = createHookCapture({
+        auditLogPath: gapPath,
+        respectTrustStrictMode: false,
+      });
+      registerEnforcement(capture.api);
+      const handler = capture.hooks[0]!.handler;
+      const result = (await handler(
+        {
+          toolName: "filesystem_delete",
+          params: { path: ".openclaw/workspace/tmp/scratch.txt" },
+        },
+        ctx,
+      )) as {
+        requireApproval?: { onResolution: (d: string) => Promise<void> };
+      };
+      assert.ok(result.requireApproval);
+      writeFileSync(gapPath, "CORRUPT_TAIL\n", "utf8");
+      await result.requireApproval!.onResolution("allow-once");
+      assert.ok(
+        diagnostics.some((d) => /audit-gap/i.test(d)),
+        `expected audit-gap diagnostic, got: ${JSON.stringify(diagnostics)}`,
+      );
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it("malformed strict-mode JSON applies conservative approval overrides", async () => {
+    resetStrictModeCache();
+    const strictPath = join(ws.path, "strict-corrupt.json");
+    writeFileSync(strictPath, "{broken", "utf8");
+    const diagnostics: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      diagnostics.push(args.map(String).join(" "));
+    };
+    try {
+      const capture = createHookCapture({
+        auditLogPath: join(ws.path, "strict-audit.jsonl"),
+        respectTrustStrictMode: true,
+        strictModeStatePath: strictPath,
+      });
+      registerEnforcement(capture.api);
+      const handler = capture.hooks[0]!.handler;
+      // fs.write.workspace is normally allow; strict conservative fallback escalates it
+      const result = (await handler(
+        {
+          toolName: "filesystem_write",
+          params: { path: ".openclaw/workspace/notes.md", content: "x" },
+        },
+        ctx,
+      )) as { requireApproval?: unknown } | undefined;
+      assert.ok(
+        result && result.requireApproval,
+        "malformed strict state must not silently disable protection",
+      );
+      assert.ok(
+        diagnostics.some((d) => /STRICT_MODE_MALFORMED|strict-mode/i.test(d)),
+      );
+      assert.ok(
+        !diagnostics.some((d) => d.includes("session-xyz")),
+        "diagnostics must not include session keys",
+      );
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it("expired strict-mode entry does not escalate", async () => {
+    resetStrictModeCache();
+    const strictPath = join(ws.path, "strict-expired.json");
+    writeFileSync(
+      strictPath,
+      JSON.stringify({
+        version: 1,
+        updatedAt: "2020-01-01T00:00:00.000Z",
+        sessions: {
+          "session-xyz": {
+            strict: true,
+            reason: "old",
+            addedApprovalOn: ["fs.write.workspace"],
+            addedAt: "2020-01-01T00:00:00.000Z",
+            expiresAt: "2020-01-01T01:00:00.000Z",
+          },
+        },
+      }),
+      "utf8",
+    );
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "expired-audit.jsonl"),
+      respectTrustStrictMode: true,
+      strictModeStatePath: strictPath,
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = await handler(
+      {
+        toolName: "filesystem_write",
+        params: { path: ".openclaw/workspace/notes.md", content: "x" },
+      },
+      ctx,
+    );
+    assert.equal(result, undefined, "expired strict entry must not escalate");
+  });
+
+  it("valid strict-mode escalates http.public-read", async () => {
+    resetStrictModeCache();
+    const strictPath = join(ws.path, "strict-http-read.json");
+    writeFileSync(
+      strictPath,
+      JSON.stringify({
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        sessions: {
+          "session-xyz": {
+            strict: true,
+            reason: "handshake failed",
+            addedApprovalOn: ["http.public-read"],
+            addedAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+          },
+        },
+      }),
+      "utf8",
+    );
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "http-read-audit.jsonl"),
+      respectTrustStrictMode: true,
+      strictModeStatePath: strictPath,
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = (await handler(
+      {
+        toolName: "http_request",
+        params: { method: "GET", url: "https://api.example.com/v1/info" },
+      },
+      ctx,
+    )) as { requireApproval?: unknown } | undefined;
+    assert.ok(
+      result && result.requireApproval,
+      "http.public-read override must be reachable for public GET",
+    );
   });
 });

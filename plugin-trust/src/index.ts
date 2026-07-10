@@ -4,8 +4,8 @@
  * Plugin entry for the FPP Trust & Handshake plugin.
  *
  * Uses defineToolPlugin so the SDK automatically wires tool discovery,
- * tool-search metadata, and registrationMode gating. The five agent-facing
- * tools are declared in the `tools:` factory; hooks and CLI are registered
+ * tool-search metadata, and registrationMode gating. Agent-facing tools
+ * are declared in the `tools:` factory; hooks and CLI are registered
  * inside each tool factory's access to the api.
  *
  * Constitutional rationale:
@@ -22,22 +22,32 @@ import { ConstitutionalHandshake } from "./handshake.js";
 import { loadTrustGraph, saveTrustGraph, saveTrustGraphSync } from "./persistence.js";
 import { loadOrCreateIdentity } from "./identity.js";
 import { MerkleBridge } from "./merkle-bridge.js";
-import { StrictModeManager } from "./strict-mode.js";
+import { StrictModeManager, CONSERVATIVE_STRICT_APPROVAL_ON } from "./strict-mode.js";
 import { GroupContextManager } from "./group-context.js";
 import { registerFppTrustCli, FPP_TRUST_CLI_DESCRIPTORS } from "./cli.js";
 import type { ToolDependencies } from "./tools.js";
 import {
+  HandshakeChallengeParams,
   HandshakeOfferParams,
   HandshakeVerifyParams,
   TrustStatusParams,
   AttestationExportParams,
   ClusterStatusParams,
+  executeHandshakeChallenge,
   executeHandshakeOffer,
   executeHandshakeVerify,
   executeTrustStatus,
   executeAttestationExport,
   executeClusterStatus,
 } from "./tools.js";
+import { ReplayCache } from "./replay-cache.js";
+import {
+  resolveVerificationPolicy,
+  type VerificationPolicy,
+} from "./verification-policy.js";
+
+export { resolveVerificationPolicy } from "./verification-policy.js";
+export type { VerificationPolicy } from "./verification-policy.js";
 
 // ── Re-exports (library API) ──────────────────────────────────────
 
@@ -65,6 +75,8 @@ export type { AgentIdentity } from "./identity.js";
 export { signClaim, verifyClaim, canonicalize } from "./claims.js";
 export type { SignedClaim, ClaimVerification } from "./claims.js";
 
+export { ReplayCache } from "./replay-cache.js";
+
 export {
   MerkleBridge,
   computeMerkleRoot,
@@ -73,8 +85,13 @@ export {
 } from "./merkle-bridge.js";
 export type { MerkleProof, MerkleProofStep } from "./merkle-bridge.js";
 
-export { StrictModeManager } from "./strict-mode.js";
-export type { StrictSessionEntry, StrictModeState } from "./strict-mode.js";
+export { StrictModeManager, CONSERVATIVE_STRICT_APPROVAL_ON, STRICT_MODE_SCHEMA_VERSION } from "./strict-mode.js";
+export type {
+  StrictSessionEntry,
+  StrictModeState,
+  StrictModeDiagnostic,
+  StrictModeDiagnosticCode,
+} from "./strict-mode.js";
 
 export { GroupContextManager } from "./group-context.js";
 export type {
@@ -84,6 +101,12 @@ export type {
 } from "./group-context.js";
 
 // ── Config ─────────────────────────────────────────────────────────
+
+export type TrustConfigDiagnostic = {
+  code: string;
+  severity: "error" | "warn" | "info";
+  detail: string;
+};
 
 interface FppTrustConfig {
   constitutionHash: string;
@@ -95,15 +118,49 @@ interface FppTrustConfig {
   auditLogPath: string;
   fallbackAuditLogPath: string | null;
   strictModeStatePath: string;
+  replayCachePath: string;
+  verificationPolicy: VerificationPolicy;
   requireSignedClaims: boolean;
   requireMerkleProof: boolean;
+  requireFreshness: boolean;
+  allowLegacyDeclarations: boolean;
   strictModeOnHandshakeFailure: boolean;
   strictModeTtlMs: number;
   strictModeAddApprovalOn: string[];
+  acknowledgeDangerousOverrides: boolean;
+  /** Migration diagnostics only — never used to rewrite operator config files. */
+  migrationDiagnostics: TrustConfigDiagnostic[];
 }
 
 function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
-  const cfg = (raw ?? {}) as Partial<FppTrustConfig>;
+  const cfg = (raw ?? {}) as Partial<FppTrustConfig> & Record<string, unknown>;
+  const ack = cfg.acknowledgeDangerousOverrides === true;
+  const policy = resolveVerificationPolicy({
+    ...cfg,
+    acknowledgeDangerousOverrides: ack,
+  });
+  const migrationDiagnostics: TrustConfigDiagnostic[] = [];
+
+  if (
+    cfg.verificationPolicy === "legacy-unsafe" &&
+    policy.policy !== "legacy-unsafe"
+  ) {
+    migrationDiagnostics.push({
+      code: "DANGEROUS_LEGACY_UNSAFE",
+      severity: "error",
+      detail: policy.diagnostic,
+    });
+  } else if (policy.policy === "legacy-unsafe") {
+    migrationDiagnostics.push({
+      code: "DANGEROUS_LEGACY_UNSAFE",
+      severity: "warn",
+      detail: policy.diagnostic,
+    });
+  }
+
+  if (policy.policy !== "hardened-v2" || policy.diagnostic.includes("unknown") || migrationDiagnostics.length > 0) {
+    console.warn(`[fpp-trust] ${policy.diagnostic}`);
+  }
   return {
     constitutionHash:
       typeof cfg.constitutionHash === "string"
@@ -143,14 +200,18 @@ function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
       typeof cfg.strictModeStatePath === "string"
         ? cfg.strictModeStatePath
         : ".openclaw/workspace/fpp-strict-sessions.json",
-    requireSignedClaims:
-      typeof cfg.requireSignedClaims === "boolean"
-        ? cfg.requireSignedClaims
-        : false,
+    replayCachePath:
+      typeof cfg.replayCachePath === "string"
+        ? cfg.replayCachePath
+        : ".openclaw/workspace/fpp-replay-cache.json",
+    verificationPolicy: policy.policy,
+    requireSignedClaims: policy.requireSignedClaims,
     requireMerkleProof:
       typeof cfg.requireMerkleProof === "boolean"
         ? cfg.requireMerkleProof
         : false,
+    requireFreshness: policy.requireFreshness,
+    allowLegacyDeclarations: policy.allowLegacyDeclarations,
     strictModeOnHandshakeFailure:
       typeof cfg.strictModeOnHandshakeFailure === "boolean"
         ? cfg.strictModeOnHandshakeFailure
@@ -161,14 +222,9 @@ function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
         : 3_600_000,
     strictModeAddApprovalOn: Array.isArray(cfg.strictModeAddApprovalOn)
       ? cfg.strictModeAddApprovalOn
-      : [
-          "fs.write.workspace",
-          "fs.delete.workspace",
-          "http.public-read",
-          "http.public-write",
-          "exec.outbound-write",
-          "message.external",
-        ],
+      : [...CONSERVATIVE_STRICT_APPROVAL_ON],
+    acknowledgeDangerousOverrides: ack,
+    migrationDiagnostics,
   };
 }
 
@@ -185,19 +241,24 @@ export function createTrustStack(rawConfig?: Record<string, unknown>): {
   merkleBridge: MerkleBridge;
   strictMode: StrictModeManager;
   groupContext: GroupContextManager;
+  replayCache: ReplayCache;
   config: FppTrustConfig;
 } {
   const config = mergeConfig(rawConfig);
   const trustGraph = loadTrustGraph(config.trustGraphPath, undefined, {
     attenuationFactor: config.trustAttenuationFactor,
   });
+  const identity = loadOrCreateIdentity(config.identityKeyPath);
+  const replayCache = new ReplayCache({ path: config.replayCachePath });
   const handshake = new ConstitutionalHandshake(trustGraph, config.constitutionHash, {
     timeoutMs: config.handshakeTimeoutMs,
     maxPropagationDepth: config.maxPropagationDepth,
     requireSignedClaims: config.requireSignedClaims,
     requireMerkleProof: config.requireMerkleProof,
+    requireFreshness: config.requireFreshness,
+    replayCache,
+    localAudience: identity.agentId,
   });
-  const identity = loadOrCreateIdentity(config.identityKeyPath);
   const merkleBridge = new MerkleBridge(config.auditLogPath, process.cwd(), config.fallbackAuditLogPath);
   const strictMode = new StrictModeManager(config.strictModeStatePath, {
     defaultTtlMs: config.strictModeTtlMs,
@@ -205,7 +266,7 @@ export function createTrustStack(rawConfig?: Record<string, unknown>): {
   });
   const groupContext = new GroupContextManager(trustGraph, identity.agentId);
 
-  return { trustGraph, handshake, identity, merkleBridge, strictMode, groupContext, config };
+  return { trustGraph, handshake, identity, merkleBridge, strictMode, groupContext, replayCache, config };
 }
 
 // ── Shared state (initialised once per process on first tool factory call) ──
@@ -279,12 +340,23 @@ function initStack(api: OpenClawPluginApi): {
         merkleBridge,
         strictMode,
         constitutionHash: config.constitutionHash,
+        handshake,
+        replayCache: stack.replayCache,
+        requireFreshness: config.requireFreshness,
       });
     },
     { descriptors: FPP_TRUST_CLI_DESCRIPTORS },
   );
 
   // -- tool metadata (displaySummary for agent catalog) --
+  api.registerToolMetadata({
+    toolName: "fpp_handshake_challenge",
+    displayName: "FPP Handshake Challenge",
+    description:
+      "Issue a one-time freshness challenge for a peer to bind into their signed claim.",
+    risk: "low",
+    tags: ["fpp", "trust", "handshake"],
+  });
   api.registerToolMetadata({
     toolName: "fpp_handshake_offer",
     displayName: "FPP Handshake Offer",
@@ -350,12 +422,25 @@ export default defineToolPlugin({
 
   tools: (tool) => [
     tool({
+      name: "fpp_handshake_challenge",
+      label: "FPP Handshake Challenge",
+      description:
+        "Issue a one-time freshness challenge. Share the JSON with the peer so they " +
+        "can answer via fpp_handshake_offer (peerChallenge). Verify once with fpp_handshake_verify.",
+      parameters: HandshakeChallengeParams,
+      execute(params, _config, ctx) {
+        const { deps } = initStack(ctx.api);
+        return executeHandshakeChallenge(params, deps);
+      },
+    }),
+
+    tool({
       name: "fpp_handshake_offer",
       label: "FPP Handshake Offer",
       description:
         "Generate this agent's signed constitutional claim for a trust handshake. " +
-        "Share the returned JSON with the target agent so they can call fpp_handshake_verify. " +
-        "Use this when you need to prove your FPP adoption to another agent.",
+        "Optionally bind a peerChallenge from fpp_handshake_challenge. " +
+        "Share the returned JSON with the target agent so they can call fpp_handshake_verify.",
       parameters: HandshakeOfferParams,
       execute(params, _config, ctx) {
         const { deps } = initStack(ctx.api);

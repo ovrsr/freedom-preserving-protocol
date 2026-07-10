@@ -46,6 +46,11 @@ jobs:
         env:
           SKIP_INSTALL: "1"
 
+      - name: Security regression suites
+        run: |
+          npx tsx --test plugin/src/security-regressions.test.ts
+          npx tsx --test plugin-trust/src/security-regressions.test.ts
+
       - name: Coverage thresholds
         run: npm run test:coverage
 

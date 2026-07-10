@@ -4,9 +4,37 @@
  * Plugin config schema and defaults. Mirrors openclaw.plugin.json's
  * configSchema. Defaults are conservative — adopters who want to relax
  * enforcement should do so by config, not by editing source.
+ *
+ * Dangerous overrides (blockOn downgrade, approvalTimeoutBehavior=allow)
+ * require explicit `acknowledgeDangerousOverrides: true`. Without it,
+ * runtime keeps the safe default and emits migration diagnostics — the
+ * operator's config file is never rewritten.
  */
 
+import { readFileSync } from "node:fs";
 import type { ClassificationId } from "./risk-classifier.js";
+
+/**
+ * Conservative strict-mode approval overrides used when the shared
+ * strict-mode state file is missing schema validity (malformed JSON,
+ * wrong version, etc.). Must stay aligned with the trust plugin defaults.
+ */
+export const CONSERVATIVE_STRICT_APPROVAL_ON: readonly ClassificationId[] = [
+  "fs.write.workspace",
+  "fs.delete.workspace",
+  "http.public-read",
+  "http.public-write",
+  "exec.outbound-write",
+  "message.external",
+];
+
+export type ConfigDiagnosticSeverity = "error" | "warn" | "info";
+
+export type ConfigDiagnostic = {
+  code: string;
+  severity: ConfigDiagnosticSeverity;
+  detail: string;
+};
 
 export type FppPluginConfig = {
   auditLogPath: string;
@@ -17,6 +45,30 @@ export type FppPluginConfig = {
   constitutionHash: string;
   strictModeStatePath: string;
   respectTrustStrictMode: boolean;
+  /**
+   * Explicit operator allowlist of known custom tool names that may bypass
+   * the unknown.unclassified → approval default. Scoped — not a global fail-open.
+   */
+  knownCustomTools: string[];
+  /**
+   * Behavior when the enforcement audit log cannot be written (corruption,
+   * permissions, etc.). Default `fail-closed` blocks high-risk and unknown
+   * calls rather than proceeding without an audit record.
+   * `degraded-allow-low-risk` may allow only classifier-`allow` decisions
+   * after emitting a visible AUDIT-GAP diagnostic.
+   */
+  auditFailureBehavior: "fail-closed" | "degraded-allow-low-risk";
+  /**
+   * Required to honor dangerous overrides (timeout allow, blockOn downgrade).
+   * Without this flag those overrides are ignored at runtime and reported
+   * via migration diagnostics — the on-disk user config is not rewritten.
+   */
+  acknowledgeDangerousOverrides: boolean;
+};
+
+export type MergeConfigResult = {
+  config: FppPluginConfig;
+  diagnostics: ConfigDiagnostic[];
 };
 
 export const DEFAULT_CONFIG: FppPluginConfig = {
@@ -32,6 +84,7 @@ export const DEFAULT_CONFIG: FppPluginConfig = {
     "exec.system-modify",
     "gateway.config-change",
     "message.external",
+    "unknown.unclassified",
   ],
   approvalTimeoutMs: 60_000,
   approvalTimeoutBehavior: "deny",
@@ -39,21 +92,144 @@ export const DEFAULT_CONFIG: FppPluginConfig = {
     "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
   strictModeStatePath: ".openclaw/workspace/fpp-strict-sessions.json",
   respectTrustStrictMode: true,
+  knownCustomTools: [],
+  auditFailureBehavior: "fail-closed",
+  acknowledgeDangerousOverrides: false,
 };
 
-export function mergeConfig(input: unknown): FppPluginConfig {
+function isBlockDowngrade(blockOn: ClassificationId[]): boolean {
+  return DEFAULT_CONFIG.blockOn.some((id) => !blockOn.includes(id));
+}
+
+/**
+ * Diagnose unsafe configuration shapes without mutating anything.
+ * Used by install verification and mergeConfigWithDiagnostics.
+ */
+export function diagnoseConfigSafety(
+  partial: Partial<FppPluginConfig> & Record<string, unknown>,
+): ConfigDiagnostic[] {
+  const diagnostics: ConfigDiagnostic[] = [];
+  const ack = partial.acknowledgeDangerousOverrides === true;
+
+  if (partial.approvalTimeoutBehavior === "allow") {
+    diagnostics.push({
+      code: "DANGEROUS_TIMEOUT_ALLOW",
+      severity: ack ? "warn" : "error",
+      detail: ack
+        ? "approvalTimeoutBehavior=allow is acknowledged (fail-open on timeout)."
+        : "approvalTimeoutBehavior=allow requires acknowledgeDangerousOverrides: true. " +
+          "Without acknowledgement, runtime keeps deny. Set the flag explicitly if intentional.",
+    });
+  }
+
+  if (Array.isArray(partial.blockOn) && isBlockDowngrade(partial.blockOn as ClassificationId[])) {
+    diagnostics.push({
+      code: "DANGEROUS_BLOCK_DOWNGRADE",
+      severity: ack ? "warn" : "error",
+      detail: ack
+        ? "blockOn removes one or more default hard-blocks (acknowledged)."
+        : "blockOn removes default hard-blocks (fs.delete.protected / exec.cred-exfil / gateway.restart). " +
+          "Requires acknowledgeDangerousOverrides: true. Without acknowledgement, missing hard-blocks are restored at runtime.",
+    });
+  }
+
+  return diagnostics;
+}
+
+export function mergeConfigWithDiagnostics(input: unknown): MergeConfigResult {
   const partial = (input as Partial<FppPluginConfig>) ?? {};
-  return {
+  const diagnostics = diagnoseConfigSafety(partial as Partial<FppPluginConfig> & Record<string, unknown>);
+  const ack = partial.acknowledgeDangerousOverrides === true;
+
+  let approvalTimeoutBehavior =
+    partial.approvalTimeoutBehavior ?? DEFAULT_CONFIG.approvalTimeoutBehavior;
+  if (approvalTimeoutBehavior === "allow" && !ack) {
+    approvalTimeoutBehavior = "deny";
+  }
+
+  let blockOn = partial.blockOn ?? DEFAULT_CONFIG.blockOn;
+  if (Array.isArray(partial.blockOn) && isBlockDowngrade(partial.blockOn) && !ack) {
+    // Restore missing default hard-blocks without rewriting the operator's file.
+    const restored = new Set<ClassificationId>([...partial.blockOn, ...DEFAULT_CONFIG.blockOn]);
+    blockOn = [...restored];
+  }
+
+  const config: FppPluginConfig = {
     auditLogPath: partial.auditLogPath ?? DEFAULT_CONFIG.auditLogPath,
-    blockOn: partial.blockOn ?? DEFAULT_CONFIG.blockOn,
+    blockOn,
     approvalOn: partial.approvalOn ?? DEFAULT_CONFIG.approvalOn,
     approvalTimeoutMs: partial.approvalTimeoutMs ?? DEFAULT_CONFIG.approvalTimeoutMs,
-    approvalTimeoutBehavior:
-      partial.approvalTimeoutBehavior ?? DEFAULT_CONFIG.approvalTimeoutBehavior,
+    approvalTimeoutBehavior,
     constitutionHash: partial.constitutionHash ?? DEFAULT_CONFIG.constitutionHash,
     strictModeStatePath:
       partial.strictModeStatePath ?? DEFAULT_CONFIG.strictModeStatePath,
     respectTrustStrictMode:
       partial.respectTrustStrictMode ?? DEFAULT_CONFIG.respectTrustStrictMode,
+    knownCustomTools: partial.knownCustomTools ?? DEFAULT_CONFIG.knownCustomTools,
+    auditFailureBehavior:
+      partial.auditFailureBehavior ?? DEFAULT_CONFIG.auditFailureBehavior,
+    acknowledgeDangerousOverrides: ack,
   };
+
+  return { config, diagnostics };
+}
+
+export function mergeConfig(input: unknown): FppPluginConfig {
+  const { config, diagnostics } = mergeConfigWithDiagnostics(input);
+  for (const d of diagnostics) {
+    if (d.severity === "error") {
+      console.error(`FPP CONFIG ${d.code}: ${d.detail}`);
+    } else if (d.severity === "warn") {
+      console.warn(`FPP CONFIG ${d.code}: ${d.detail}`);
+    }
+  }
+  return config;
+}
+
+/** Fields whose manifest `default` must match DEFAULT_CONFIG. */
+const MANIFEST_DEFAULT_KEYS: (keyof FppPluginConfig)[] = [
+  "auditLogPath",
+  "blockOn",
+  "approvalOn",
+  "approvalTimeoutMs",
+  "approvalTimeoutBehavior",
+  "constitutionHash",
+  "strictModeStatePath",
+  "respectTrustStrictMode",
+  "knownCustomTools",
+  "auditFailureBehavior",
+];
+
+export type ManifestValidationResult = {
+  ok: boolean;
+  mismatches: string[];
+};
+
+/**
+ * Validate that openclaw.plugin.json configSchema defaults match DEFAULT_CONFIG.
+ * Does not rewrite the manifest — reports drift only.
+ */
+export function validateManifestDefaults(manifestPath: string): ManifestValidationResult {
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+    configSchema?: { properties?: Record<string, { default?: unknown }> };
+  };
+  const props = manifest.configSchema?.properties ?? {};
+  const mismatches: string[] = [];
+
+  for (const key of MANIFEST_DEFAULT_KEYS) {
+    const prop = props[key];
+    if (!prop || !("default" in prop)) {
+      mismatches.push(`manifest missing default for ${key}`);
+      continue;
+    }
+    const expected = DEFAULT_CONFIG[key];
+    const actual = prop.default;
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      mismatches.push(
+        `${key}: manifest=${JSON.stringify(actual)} runtime=${JSON.stringify(expected)}`,
+      );
+    }
+  }
+
+  return { ok: mismatches.length === 0, mismatches };
 }

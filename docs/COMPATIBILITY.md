@@ -187,10 +187,10 @@ If you do not set these, sensible defaults apply (see `plugin/src/config.ts` and
 
 Release order: build/test/pack core → skill → enforcement plugin → trust plugin. Rollback: restore the previous exact core version before rolling back dependent plugins. See `docs/RELEASE_ASSURANCE.md`.
 
-- **Legacy-v1 claim** — handshake claim format without `schemaVersion`: timestamped, optionally Ed25519-signed (`requireSignedClaims` defaults to `false`), no freshness nonce. Parsed as **declaration-only**; never silently escalated to v2 assurance.
-- **v2 claim** — carries explicit `schemaVersion: 2`, key-bound agent ID (`fpp:ed25519:<fingerprint>`), claim class, and optional freshness envelope. Runtime-validated by `parseClaim`.
-- **Migration window** — the period during which a verifier accepts both formats. Verifiers must report *which* format a peer presented rather than silently normalizing.
-- **Legacy acceptance policy** — a verifier-local setting for whether legacy-v1 claims are accepted, warned about, or rejected during the migration window.
+- **Legacy-v1 claim** — handshake claim format without `schemaVersion`: timestamped, optionally Ed25519-signed, no freshness nonce. Parsed as **declaration-only**; never silently escalated to v2 assurance. Under default `verificationPolicy: "hardened-v2"`, unsigned/legacy claims cannot establish trust.
+- **v2 claim** — carries explicit `schemaVersion: 2`, key-bound agent ID (`fpp:ed25519:<fingerprint>`), claim class, and freshness envelope. Runtime-validated by `parseClaim`.
+- **Migration window** — the period during which a verifier may accept both formats for inspection. Verifiers must report *which* format a peer presented rather than silently normalizing.
+- **verificationPolicy** (trust plugin) — `hardened-v2` (default, signed fresh v2 required), `v2-with-legacy-declarations` (v1 inspectable, no trust elevation), or `legacy-unsafe` (visibly weaker; emits a warning). Existing installs that omit the field receive hardened-v2 on upgrade; set an explicit weaker policy only when migrating.
 
 ## Known limitations
 

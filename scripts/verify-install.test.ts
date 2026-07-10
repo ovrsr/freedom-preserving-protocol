@@ -163,4 +163,52 @@ describe("verify-install runVerifyInstall", () => {
     assert.equal(enf?.status, "warn");
     assert.equal(trust?.status, "warn");
   });
+
+  it("warns on unsafe enforcement config without acknowledgement", () => {
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      log: join(workdir, "no-log.jsonl"),
+      pluginLister: unavailableLister,
+      enforcementConfig: {
+        approvalTimeoutBehavior: "allow",
+        blockOn: ["gateway.restart"],
+      },
+    });
+    const timeout = report.checks.find((c) => c.id === "config.enforcement.timeout");
+    const block = report.checks.find((c) => c.id === "config.enforcement.blockOn");
+    assert.equal(timeout?.status, "fail");
+    assert.equal(block?.status, "fail");
+    assert.match(timeout?.detail ?? "", /acknowledgeDangerousOverrides/);
+  });
+
+  it("passes unsafe enforcement config when acknowledgement is present", () => {
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      log: join(workdir, "no-log.jsonl"),
+      pluginLister: unavailableLister,
+      enforcementConfig: {
+        approvalTimeoutBehavior: "allow",
+        blockOn: ["gateway.restart"],
+        acknowledgeDangerousOverrides: true,
+      },
+    });
+    const timeout = report.checks.find((c) => c.id === "config.enforcement.timeout");
+    const block = report.checks.find((c) => c.id === "config.enforcement.blockOn");
+    assert.equal(timeout?.status, "warn");
+    assert.equal(block?.status, "warn");
+  });
+
+  it("warns on legacy-unsafe trust config without acknowledgement", () => {
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      log: join(workdir, "no-log.jsonl"),
+      pluginLister: unavailableLister,
+      trustConfig: {
+        verificationPolicy: "legacy-unsafe",
+      },
+    });
+    const legacy = report.checks.find((c) => c.id === "config.trust.legacy");
+    assert.equal(legacy?.status, "fail");
+    assert.match(legacy?.detail ?? "", /acknowledgeDangerousOverrides|legacy-unsafe/);
+  });
 });

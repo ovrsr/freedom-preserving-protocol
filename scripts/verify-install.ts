@@ -85,6 +85,10 @@ export type VerifyInstallOptions = {
   log?: string;
   expectedConstitutionHash?: string;
   pluginLister?: PluginLister;
+  /** Optional enforcement plugin config to diagnose (never rewritten). */
+  enforcementConfig?: Record<string, unknown>;
+  /** Optional trust plugin config to diagnose (never rewritten). */
+  trustConfig?: Record<string, unknown>;
 };
 
 function parseArgs(argv: string[]): {
@@ -289,6 +293,67 @@ export function runInstallChecks(opts: InstallCheckOptions = {}): Report {
   });
 }
 
+function checkEnforcementConfig(config: Record<string, unknown> | undefined): Check[] {
+  if (!config) return [];
+  const checks: Check[] = [];
+  const ack = config.acknowledgeDangerousOverrides === true;
+
+  if (config.approvalTimeoutBehavior === "allow") {
+    checks.push({
+      id: "config.enforcement.timeout",
+      label: "Enforcement approval timeout policy",
+      status: ack ? "warn" : "fail",
+      detail: ack
+        ? "approvalTimeoutBehavior=allow is acknowledged (fail-open on timeout)."
+        : "approvalTimeoutBehavior=allow requires acknowledgeDangerousOverrides: true. " +
+          "Config file was not rewritten; set the flag explicitly if intentional.",
+    });
+  }
+
+  const defaultBlocks = [
+    "fs.delete.protected",
+    "exec.cred-exfil",
+    "gateway.restart",
+  ];
+  if (Array.isArray(config.blockOn)) {
+    const blockOn = config.blockOn as string[];
+    const missing = defaultBlocks.filter((id) => !blockOn.includes(id));
+    if (missing.length > 0) {
+      checks.push({
+        id: "config.enforcement.blockOn",
+        label: "Enforcement hard-block coverage",
+        status: ack ? "warn" : "fail",
+        detail: ack
+          ? `blockOn omits default hard-blocks (${missing.join(", ")}) — acknowledged.`
+          : `blockOn omits default hard-blocks (${missing.join(", ")}). ` +
+            "Requires acknowledgeDangerousOverrides: true. Config file was not rewritten.",
+      });
+    }
+  }
+
+  return checks;
+}
+
+function checkTrustConfig(config: Record<string, unknown> | undefined): Check[] {
+  if (!config) return [];
+  const checks: Check[] = [];
+  const ack = config.acknowledgeDangerousOverrides === true;
+
+  if (config.verificationPolicy === "legacy-unsafe") {
+    checks.push({
+      id: "config.trust.legacy",
+      label: "Trust verification policy",
+      status: ack ? "warn" : "fail",
+      detail: ack
+        ? "verificationPolicy=legacy-unsafe is acknowledged (visibly weaker)."
+        : "verificationPolicy=legacy-unsafe requires acknowledgeDangerousOverrides: true. " +
+          "Without acknowledgement, runtime fails closed to hardened-v2. Config file was not rewritten.",
+    });
+  }
+
+  return checks;
+}
+
 export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
   const rootDir = options.rootDir ?? DEFAULT_ROOT;
   const expectedHash =
@@ -350,6 +415,9 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
       lister,
     ),
   );
+
+  checks.push(...checkEnforcementConfig(options.enforcementConfig));
+  checks.push(...checkTrustConfig(options.trustConfig));
 
   const requiredIds = new Set<string>([
     "constitution.hash",

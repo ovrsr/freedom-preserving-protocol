@@ -24,7 +24,7 @@ All five tools below are registered in `src/index.ts` and declared in `openclaw.
 | Tool | Description |
 |------|-------------|
 | `fpp_handshake_offer` | Generate this agent's signed constitutional claim for sharing with a peer |
-| `fpp_handshake_verify` | Check a peer's claim (signature + configuration attestation), establish mutual trust, update the graph |
+| `fpp_handshake_verify` | Check a peer's claim (signature + configuration + freshness), report precise standing — **not** behavioral compliance |
 | `fpp_trust_status` | Check trust level and reputation of a known agent |
 | `fpp_attestation_export` | Export Merkle root, public key, and optional inclusion proofs |
 | `fpp_cluster_status` | Report group-context (cluster) trust state for multi-agent chat environments |
@@ -67,7 +67,10 @@ All options are in `openclaw.plugin.json`. Key settings:
 | `auditLogPath` | `.openclaw/.../constitution-audit.jsonl` | Constitution audit JSONL for Merkle bridging |
 | `fallbackAuditLogPath` | `.openclaw/.../fpp-plugin-audit.jsonl` | Used when `auditLogPath` has no entries yet (enforcement plugin log). Set to `null` to disable. |
 | `strictModeStatePath` | `.openclaw/.../fpp-strict-sessions.json` | Shared strict-mode state file |
-| `requireSignedClaims` | `false` | Reject unsigned claims during handshake |
+| `replayCachePath` | `.openclaw/.../fpp-replay-cache.json` | Bounded challenge replay-key cache |
+| `verificationPolicy` | `hardened-v2` | `hardened-v2` \| `v2-with-legacy-declarations` \| `legacy-unsafe` |
+| `requireSignedClaims` | derived | Derived from `verificationPolicy` (deprecated as a standalone toggle) |
+| `requireFreshness` | derived | Derived from `verificationPolicy` (deprecated as a standalone toggle) |
 | `requireMerkleProof` | `false` | Require Merkle proof during handshake |
 | `strictModeOnHandshakeFailure` | `false` | Enter strict mode on failed handshake |
 | `strictModeTtlMs` | `3600000` | How long strict mode lasts |
@@ -77,14 +80,16 @@ All options are in `openclaw.plugin.json`. Key settings:
 
 This plugin does **not** gate tool calls. That is the job of the separate enforcement plugin (`@ovrsr/openclaw-fpp-plugin`). You can install one without the other.
 
-It also does **not** prove behavioral compliance. A successful handshake means: the peer produced a claim (optionally signed), the claimed constitution hash matched, and (optionally) a Merkle inclusion proof checked out. That is signature verification plus configuration attestation — the peer's actual conduct is out of scope.
+It also does **not** prove behavioral compliance. A successful handshake means: the peer produced a signed claim, the claimed constitution hash matched, freshness/replay checks passed (under hardened policy), and (optionally) a Merkle inclusion proof checked out. That is identity/configuration attestation — the peer's actual conduct is out of scope.
+
+Tool and CLI outputs name exactly what was verified (`identityVerified`, `configurationClaimVerified`, `freshnessVerified`, `evidenceLevel`, `standing`). The legacy `fppVerified` boolean remains for one compatibility window as a **deprecated** field derived from `standing === "identity-configuration"` — never as proof of behavioral compliance. Prefer the precise fields.
 
 ## Limitations (read this)
 
-1. **Hardening flags are off by default.** `requireSignedClaims` and `requireMerkleProof` both default to `false`, so a default-config handshake accepts unsigned claims with no audit proof. Enable both for anything beyond experimentation.
+1. **Default policy is hardened-v2.** New installs require signed, fresh, non-replayed claims. Explicitly set `verificationPolicy: "legacy-unsafe"` only for controlled migration; the plugin emits a prominent warning. `v2-with-legacy-declarations` keeps v1 inspectable as declaration-only without trust elevation.
 2. **Trust state is local and per-host.** The trust graph, identity key, and strict-mode state live in this host's workspace files. There is no cross-host synchronization and no transitive guarantee: a peer trusted here is not automatically trusted by your other agents.
-3. **Replay is possible.** Claims carry timestamps, but the current handshake has no peer-supplied freshness nonce and no default staleness rejection — a captured claim can be replayed. The `handshakeTimeoutMs` setting bounds the handshake *session*, not the claim's validity. (Nonce-fresh, time-bounded trust capsules are a proposed design — `docs/dev-review.md` §7.)
-4. **Key lifecycle is manual.** The Ed25519 identity seed is generated on first run and reused indefinitely. There is no rotation schedule, no revocation registry, and no automated way to tell peers a key was compromised — see the revocation classes in `docs/REVOCATION.md`.
+3. **Challenge-response freshness is required under hardened-v2.** Use `fpp_handshake_challenge` → answer via `fpp_handshake_offer` (`peerChallenge`) → `fpp_handshake_verify` once. Replay keys are persisted in `replayCachePath`.
+4. **Key lifecycle is manual.** The Ed25519 identity seed is generated on first run and reused indefinitely. Public-key replacement on an existing node requires an explicit rotation proof. See `docs/REVOCATION.md`.
 5. **No Sybil resistance.** Nothing prevents an operator from minting many agent identities and having them vouch for each other. Trust propagation attenuates per hop but does not detect coordinated identity clusters.
 
 ## Persistence

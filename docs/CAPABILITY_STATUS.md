@@ -34,8 +34,8 @@ word "verified":
   prove the local log was not edited after writing. Tampering is *detectable*,
   not *preventable*, and completeness is not proven.
 - **Enforcement coverage** — the subset of tool calls that pass through the
-  dispatcher classifier. Unknown tool names and unmatched parameter shapes
-  default to **allow**.
+  dispatcher classifier. Unknown tool names default to **approval**
+  (`unknown.unclassified`), not allow.
 - **Behavioral compliance** — whether an agent's conduct actually conforms to
   the five laws. **No component of this repository verifies behavioral
   compliance cryptographically.** A valid signature proves a statement was
@@ -50,14 +50,14 @@ word "verified":
 | Safe adoption / revocation tooling | `SHIPPED` | `scripts/safe-append.ts`, `scripts/revoke.ts`, `scripts/verify-install.ts`; `npm run adopt`, `npm run revoke`, `npm run verify-install`. |
 | Constitution signature verification | `SHIPPED` | `scripts/verify-constitution.ts`; `npm run verify`. |
 | Local audit chain + Merkle inclusion proofs | `SHIPPED` | `scripts/audit-append.ts`, `scripts/audit-verify.ts`, `scripts/audit-proof.ts`, `scripts/merkle.ts`. Local audit integrity only — no completeness guarantee, and heartbeat entries depend on the agent's continued cooperation. |
-| Dispatcher enforcement (`before_tool_call` block / requireApproval) | `PARTIAL` | `plugin/src/index.ts`, `plugin/src/risk-classifier.ts`. Works for the classified taxonomy. Gap: the classifier is heuristic; **unknown tools default to allow**; a manifest/source drift exists between `plugin/openclaw.plugin.json` default `approvalOn` (3 entries) and `plugin/src/config.ts` `DEFAULT_CONFIG.approvalOn` (9 entries) — the runtime uses `config.ts` when no user config is set. |
-| Enforcement audit log (hash-chained, per-decision) | `PARTIAL` | `plugin/src/audit-log.ts`. Gap: an audit-write failure does not currently block the gated action (no fail-closed audit guarantee), and log integrity depends on filesystem permissions. |
-| Dispatcher self-test | `PARTIAL` | `scripts/self-test.ts`; `npm run self-test`. Runs the classifier against 10 fixtures **in-process**. Gap: it does not execute the installed plugin, does not test prompt-layer behavior, and does not write audit entries. |
+| Dispatcher enforcement (`before_tool_call` block / requireApproval) | `PARTIAL` | `plugin/src/index.ts`, `plugin/src/risk-classifier.ts`. Works for the classified taxonomy. Gap: the classifier is heuristic; unmatched parameter shapes can still evade patterns. **Unknown tools require approval by default** (`unknown.unclassified` in `approvalOn`; proven by `plugin/src/security-regressions.test.ts`). Manifest defaults are validated against `DEFAULT_CONFIG` (`plugin/src/config.test.ts`). |
+| Enforcement audit log (hash-chained, per-decision) | `PARTIAL` | `plugin/src/audit-log.ts`. Malformed tails throw `AuditCorruptionError` (no silent chain reset). Default `auditFailureBehavior=fail-closed` blocks high-risk calls when the log cannot be written (proven by security regressions). Gap: log integrity still depends on filesystem permissions; post-approval outcome gaps emit `AUDIT-GAP` diagnostics rather than rolling back the approved action. |
+| Dispatcher self-test | `PARTIAL` | `scripts/self-test.ts`; `npm run self-test`. Runs the classifier against fixtures **in-process**. Gap: it does not execute the installed plugin, does not test prompt-layer behavior, and does not write audit entries. |
 | Agent identity keys (Ed25519) | `SHIPPED` | `plugin-trust/src/identity.ts`; key seed persisted per `identityKeyPath`. |
-| Constitutional handshake + signed claims | `PARTIAL` | `plugin-trust/src/handshake.ts`, `claims.ts`, `merkle-bridge.ts`. Verifies signature and configuration attestation. Gap: `requireSignedClaims` and `requireMerkleProof` default to `false`; no peer-supplied freshness nonce, so captured claims can be replayed; a handshake proves what a peer *claims* about its configuration, not how it behaves. |
+| Constitutional handshake + signed claims | `PARTIAL` | `plugin-trust/src/handshake.ts`, `claims.ts`, `merkle-bridge.ts`, `replay-cache.ts`. Default `verificationPolicy=hardened-v2` requires signed fresh v2 claims; spoofed IDs, stale/replayed claims, and unsigned claims are rejected (proven by `plugin-trust/src/security-regressions.test.ts`). Self-asserted `chainIntact` cannot reach HIGH trust. Gap: a handshake proves what a peer *claims* about its configuration, not how it behaves; Merkle proofs are inclusion-under-claimed-root until externally anchored. |
 | Trust graph with propagation + persistence | `SHIPPED` | `plugin-trust/src/trust-graph.ts`, `persistence.ts`. Local, per-host state; scores are heuristic, not attestations. |
-| Strict-mode escalation (trust → enforcement coupling) | `SHIPPED` | `plugin-trust/src/strict-mode.ts` writes; `plugin/src/index.ts` reads `strictModeStatePath`. Loose file-based coupling by design. |
-| Trust-plugin LLM tools | `SHIPPED` | 5 tools registered in `plugin-trust/src/index.ts` and `plugin-trust/openclaw.plugin.json` `contracts.tools`: `fpp_handshake_offer`, `fpp_handshake_verify`, `fpp_trust_status`, `fpp_attestation_export`, `fpp_cluster_status`. |
+| Strict-mode escalation (trust → enforcement coupling) | `SHIPPED` | `plugin-trust/src/strict-mode.ts` writes; `plugin/src/index.ts` reads `strictModeStatePath`. Malformed state applies conservative approval fallback (does not silently disable protection). Loose file-based coupling by design. |
+| Trust-plugin LLM tools | `SHIPPED` | Tools registered in `plugin-trust/src/index.ts` and `plugin-trust/openclaw.plugin.json` `contracts.tools`: `fpp_handshake_challenge`, `fpp_handshake_offer`, `fpp_handshake_verify`, `fpp_trust_status`, `fpp_attestation_export`, `fpp_cluster_status`. |
 | Adoption states beyond adopted/revoked (`reviewed`, `inherited`, `forked`, `superseded`, …) | `PROPOSED` | `docs/dev-review.md` §3.2. Current tooling implements adopted and revoked only. |
 | Conformance receipts | `PROPOSED` | `docs/dev-review.md` §5. No receipt schema or emission exists. |
 | Trust-state capsules (signed, time-bounded, nonce-fresh) | `PROPOSED` | `docs/dev-review.md` §7. Current handshake claims are simpler and have no freshness nonce requirement by default. |

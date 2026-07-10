@@ -68,12 +68,12 @@ test("POST to public host is http.public-write -> approval", () => {
   assert.equal(r.decision, "approval");
 });
 
-test("GET to public host is http.read -> allow", () => {
+test("GET to public host is http.public-read -> allow", () => {
   const r = classifyToolCall("http_request", {
     method: "GET",
     url: "https://api.example.com/v1/info",
   });
-  assert.equal(r.classification, "http.read");
+  assert.equal(r.classification, "http.public-read");
   assert.equal(r.decision, "allow");
 });
 
@@ -103,10 +103,31 @@ test("send_email tool returns message.external -> approval", () => {
   assert.equal(r.decision, "approval");
 });
 
-test("unknown tool returns unknown.unclassified -> allow with note", () => {
+test("unknown tool returns unknown.unclassified -> approval with degraded reason", () => {
   const r = classifyToolCall("some_custom_tool_xyz", { foo: "bar" });
   assert.equal(r.classification, "unknown.unclassified");
+  assert.equal(r.decision, "approval");
+  assert.match(r.reason, /degraded|unknown|approval/i);
+});
+
+test("known custom tool allowlist overrides unknown to allow", () => {
+  const r = classifyToolCall(
+    "my_org_internal_tool",
+    { foo: "bar" },
+    { knownCustomTools: ["my_org_internal_tool"] },
+  );
+  assert.equal(r.classification, "unknown.unclassified");
   assert.equal(r.decision, "allow");
+  assert.match(r.reason, /allowlist|known custom/i);
+});
+
+test("allowlist is scoped — other unknown tools still require approval", () => {
+  const r = classifyToolCall(
+    "totally_other_tool",
+    {},
+    { knownCustomTools: ["my_org_internal_tool"] },
+  );
+  assert.equal(r.decision, "approval");
 });
 
 test("sudo command is exec.system-modify -> approval", () => {

@@ -105,6 +105,31 @@ export class MerkleBridge {
   }
 
   verifyProofAgainstRoot(proof: MerkleProof, expectedRoot: string): boolean {
-    return verifyMerkleProof(proof) && proof.root === expectedRoot;
+    return this.evaluateInclusion(proof, expectedRoot).valid;
+  }
+
+  /**
+   * Structured inclusion check. A valid result proves inclusion under the
+   * claimed root only — not log completeness or external anchoring.
+   */
+  evaluateInclusion(
+    proof: MerkleProof,
+    claimedRoot: string,
+  ): {
+    valid: boolean;
+    semantics: "inclusion-under-claimed-root";
+    rootMatch: boolean;
+    proofValid: boolean;
+    rootAnchored: false;
+  } {
+    const proofValid = verifyMerkleProof(proof);
+    const rootMatch = proof.root === claimedRoot;
+    return {
+      valid: proofValid && rootMatch,
+      semantics: "inclusion-under-claimed-root",
+      rootMatch,
+      proofValid,
+      rootAnchored: false,
+    };
   }
 }

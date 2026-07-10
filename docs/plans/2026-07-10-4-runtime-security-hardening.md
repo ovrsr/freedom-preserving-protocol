@@ -1,6 +1,6 @@
 # Runtime Security Hardening
 
-**Status:** PENDING
+**Status:** COMPLETE
 **Created:** 2026-07-10
 **Scope:** In: key/ID binding, challenge freshness, replay prevention, hardened v2 defaults, evidence-aware trust derivation, precise verification terminology, unknown-tool handling, fail-closed audit behavior, strict-mode resilience, and configuration migration. Out: signed conformance receipts, full post-execution coverage, contextual trust redesign, governance ratification, and remote-host guarantees.
 
@@ -49,18 +49,18 @@ No security behavior is removed without a versioned migration path.
 
 ## Progress Tracking
 
-- [ ] Task 1: Enforce key-bound identity
-- [ ] Task 2: Add challenge freshness and replay prevention
-- [ ] Task 3: Introduce versioned verification policy and hardened defaults
-- [ ] Task 4: Derive trust only from verified evidence classes
-- [ ] Task 5: Replace ambiguous verification terminology and outputs
-- [ ] Task 6: Require approval for unknown tools
-- [ ] Task 7: Fail safely on audit corruption and persistence failure
-- [ ] Task 8: Harden strict-mode state and taxonomy handling
-- [ ] Task 9: Normalize configuration and migration diagnostics
-- [ ] Task 10: Add end-to-end security regression coverage
+- [x] Task 1: Enforce key-bound identity
+- [x] Task 2: Add challenge freshness and replay prevention
+- [x] Task 3: Introduce versioned verification policy and hardened defaults
+- [x] Task 4: Derive trust only from verified evidence classes
+- [x] Task 5: Replace ambiguous verification terminology and outputs
+- [x] Task 6: Require approval for unknown tools
+- [x] Task 7: Fail safely on audit corruption and persistence failure
+- [x] Task 8: Harden strict-mode state and taxonomy handling
+- [x] Task 9: Normalize configuration and migration diagnostics
+- [x] Task 10: Add end-to-end security regression coverage
 
-**Total Tasks:** 10 | **Completed:** 0 | **Remaining:** 10
+**Total Tasks:** 10 | **Completed:** 10 | **Remaining:** 0
 
 ## Implementation Tasks
 
@@ -84,10 +84,10 @@ No security behavior is removed without a versioned migration path.
 5. Run trust tests and typecheck.
 
 **Definition of Done:**
-- [ ] Spoofed agent IDs fail
-- [ ] Correct key-bound IDs pass
-- [ ] Legacy aliases cannot replace canonical identity
-- [ ] Trust tests and typecheck pass
+- [x] Spoofed agent IDs fail
+- [x] Correct key-bound IDs pass
+- [x] Legacy aliases cannot replace canonical identity
+- [x] Trust tests and typecheck pass
 
 ### Task 2: Add challenge freshness and replay prevention
 
@@ -110,10 +110,10 @@ No security behavior is removed without a versioned migration path.
 5. Prune expired replay entries and cap storage growth.
 
 **Definition of Done:**
-- [ ] Stale, future, wrong-audience, and replayed claims fail
-- [ ] Fresh one-time responses pass
-- [ ] Replay state is bounded and persisted or conservatively reset
-- [ ] Tests use a fake clock
+- [x] Stale, future, wrong-audience, and replayed claims fail
+- [x] Fresh one-time responses pass
+- [x] Replay state is bounded and persisted or conservatively reset
+- [x] Tests use a fake clock
 
 ### Task 3: Introduce versioned verification policy and hardened defaults
 
@@ -135,10 +135,10 @@ No security behavior is removed without a versioned migration path.
 5. Keep v1 data inspectable but prevent trust elevation.
 
 **Definition of Done:**
-- [ ] New installs reject unsigned v2 handshakes
-- [ ] Legacy mode is explicit and visibly weaker
-- [ ] Manifest and runtime defaults agree
-- [ ] Migration behavior is documented
+- [x] New installs reject unsigned v2 handshakes
+- [x] Legacy mode is explicit and visibly weaker
+- [x] Manifest and runtime defaults agree
+- [x] Migration behavior is documented
 
 ### Task 4: Derive trust only from verified evidence classes
 
@@ -160,10 +160,10 @@ No security behavior is removed without a versioned migration path.
 5. Remove evidence-count-only confidence inflation from handshake derivation.
 
 **Definition of Done:**
-- [ ] Self-assertion alone cannot produce HIGH trust
-- [ ] Every confidence contribution has a verified evidence class
-- [ ] Merkle semantics are precise
-- [ ] Existing valid evidence paths remain usable
+- [x] Self-assertion alone cannot produce HIGH trust
+- [x] Every confidence contribution has a verified evidence class
+- [x] Merkle semantics are precise
+- [x] Existing valid evidence paths remain usable
 
 ### Task 5: Replace ambiguous verification terminology and outputs
 
@@ -185,10 +185,10 @@ No security behavior is removed without a versioned migration path.
 5. Document the migration contract.
 
 **Definition of Done:**
-- [ ] API output names the verified claim class
-- [ ] Human output avoids blanket compliance language
-- [ ] Compatibility behavior is versioned and tested
-- [ ] Documentation matches runtime output
+- [x] API output names the verified claim class
+- [x] Human output avoids blanket compliance language
+- [x] Compatibility behavior is versioned and tested
+- [x] Documentation matches runtime output
 
 ### Task 6: Require approval for unknown tools
 
@@ -210,10 +210,10 @@ No security behavior is removed without a versioned migration path.
 5. Measure and document false-positive effects.
 
 **Definition of Done:**
-- [ ] Unknown tools require approval by default
-- [ ] Trusted custom-tool exceptions are explicit and scoped
-- [ ] Self-test and adversarial corpus agree
-- [ ] Benign known tools retain expected behavior
+- [x] Unknown tools require approval by default
+- [x] Trusted custom-tool exceptions are explicit and scoped
+- [x] Self-test and adversarial corpus agree
+- [x] Benign known tools retain expected behavior
 
 ### Task 7: Fail safely on audit corruption and persistence failure
 
@@ -236,10 +236,10 @@ No security behavior is removed without a versioned migration path.
 5. Verify recovery never overwrites or silently restarts the old chain.
 
 **Definition of Done:**
-- [ ] Corrupted tails stop append
-- [ ] High-risk calls do not proceed silently without audit
-- [ ] Post-resolution gaps are visible and recoverable
-- [ ] Recovery instructions preserve original evidence
+- [x] Corrupted tails stop append
+- [x] High-risk calls do not proceed silently without audit
+- [x] Post-resolution gaps are visible and recoverable
+- [x] Recovery instructions preserve original evidence
 
 ### Task 8: Harden strict-mode state and taxonomy handling
 
@@ -261,10 +261,10 @@ No security behavior is removed without a versioned migration path.
 5. Add structured diagnostics without logging sensitive session content.
 
 **Definition of Done:**
-- [ ] Malformed state cannot silently disable configured protection
-- [ ] Every override references a valid classification
-- [ ] Expiry remains deterministic
-- [ ] Cross-plugin tests pass
+- [x] Malformed state cannot silently disable configured protection
+- [x] Every override references a valid classification
+- [x] Expiry remains deterministic
+- [x] Cross-plugin tests pass
 
 ### Task 9: Normalize configuration and migration diagnostics
 
@@ -287,10 +287,10 @@ No security behavior is removed without a versioned migration path.
 5. Define migration output for existing installations without silently rewriting user config.
 
 **Definition of Done:**
-- [ ] Manifest and runtime defaults are identical
-- [ ] Dangerous overrides require explicit acknowledgement
-- [ ] Existing operators receive actionable migration diagnostics
-- [ ] No user config is silently changed
+- [x] Manifest and runtime defaults are identical
+- [x] Dangerous overrides require explicit acknowledgement
+- [x] Existing operators receive actionable migration diagnostics
+- [x] No user config is silently changed
 
 ### Task 10: Add end-to-end security regression coverage
 
@@ -312,10 +312,10 @@ No security behavior is removed without a versioned migration path.
 5. Update capability status only for guarantees proven by the tests.
 
 **Definition of Done:**
-- [ ] Every demonstrated finding has a regression test
-- [ ] Security regressions pass in CI
-- [ ] Benign compatibility controls pass
-- [ ] Documentation claims no more than the tests prove
+- [x] Every demonstrated finding has a regression test
+- [x] Security regressions pass in CI
+- [x] Benign compatibility controls pass
+- [x] Documentation claims no more than the tests prove
 
 ## Testing Strategy
 
