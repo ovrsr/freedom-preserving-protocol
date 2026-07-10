@@ -38,8 +38,8 @@ import { appendAuditEntry } from "./audit-append.ts";
 import { verify as verifyAuditChain } from "./audit-verify.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, "..");
-void root;
+const DEFAULT_ROOT = resolve(__dirname, "..");
+void DEFAULT_ROOT;
 
 type Args = {
   soul?: string;
@@ -88,27 +88,37 @@ does not run it for you).`);
   return args;
 }
 
-function nowIso(): string {
+export function nowIso(): string {
   return new Date().toISOString();
 }
 
-function backupName(target: string): string {
-  return `${target}.${nowIso().replace(/[:.]/g, "-")}.bak`;
+export function backupName(target: string, now: () => string = nowIso): string {
+  return `${target}.${now().replace(/[:.]/g, "-")}.bak`;
 }
 
-const ADOPTION_MARKER = "Freedom Preserving Protocol";
+export const ADOPTION_MARKER = "Freedom Preserving Protocol";
 
-function annotateSoul(path: string, reason: string, ts: string, dryRun: boolean) {
+export type AnnotateResult = {
+  status: "annotated" | "skipped-no-file" | "skipped-no-marker" | "skipped-already-revoked" | "dry-run";
+  backup?: string;
+};
+
+export function annotateSoul(
+  path: string,
+  reason: string,
+  ts: string,
+  dryRun: boolean,
+): AnnotateResult {
   if (!existsSync(path)) {
     console.log(`[SOUL ] file not found: ${path} — skipping`);
-    return;
+    return { status: "skipped-no-file" };
   }
   const content = readFileSync(path, "utf-8");
   if (!content.includes(ADOPTION_MARKER)) {
     console.log(
       `[SOUL ] no adoption block found (marker "${ADOPTION_MARKER}" absent) — skipping`,
     );
-    return;
+    return { status: "skipped-no-marker" };
   }
   const tag = `\n\n> **[REVOKED ${ts}]** Reason: ${reason}\n`;
   const annotated = content.includes(`[REVOKED `)
@@ -117,21 +127,22 @@ function annotateSoul(path: string, reason: string, ts: string, dryRun: boolean)
 
   if (annotated === content) {
     console.log(`[SOUL ] already annotated as revoked — skipping`);
-    return;
+    return { status: "skipped-already-revoked" };
   }
   if (dryRun) {
     console.log(`[SOUL ] (dry-run) would annotate adoption block with:`);
     console.log(tag);
-    return;
+    return { status: "dry-run" };
   }
   const bak = backupName(path);
   copyFileSync(path, bak);
   writeFileSync(path, annotated);
   console.log(`[SOUL ] backup created: ${bak}`);
   console.log(`[SOUL ] adoption block annotated as REVOKED`);
+  return { status: "annotated", backup: bak };
 }
 
-function insertAfterMarker(content: string, marker: string, insertion: string) {
+export function insertAfterMarker(content: string, marker: string, insertion: string): string {
   const i = content.indexOf(marker);
   if (i < 0) return content;
   const afterHeading = content.indexOf("\n", i);
@@ -139,12 +150,17 @@ function insertAfterMarker(content: string, marker: string, insertion: string) {
   return content.slice(0, afterHeading) + insertion + content.slice(afterHeading);
 }
 
-function appendMemoryRevocation(
+export type MemoryRevokeResult = {
+  status: "appended" | "created" | "dry-run";
+  backup?: string;
+};
+
+export function appendMemoryRevocation(
   path: string,
   reason: string,
   ts: string,
   dryRun: boolean,
-) {
+): MemoryRevokeResult {
   const block = [
     "",
     "## Constitutional Adoption — REVOKED",
@@ -159,23 +175,24 @@ function appendMemoryRevocation(
   if (!existsSync(path)) {
     if (dryRun) {
       console.log(`[MEM  ] (dry-run) would create ${path} with revocation block`);
-      return;
+      return { status: "dry-run" };
     }
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, block.trimStart());
     console.log(`[MEM  ] created and wrote revocation block`);
-    return;
+    return { status: "created" };
   }
   if (dryRun) {
     console.log(`[MEM  ] (dry-run) would append revocation block:`);
     console.log(block);
-    return;
+    return { status: "dry-run" };
   }
   const bak = backupName(path);
   copyFileSync(path, bak);
   appendFileSync(path, block);
   console.log(`[MEM  ] backup created: ${bak}`);
   console.log(`[MEM  ] revocation block appended`);
+  return { status: "appended", backup: bak };
 }
 
 function appendAuditRevocation(logPath: string, reason: string, dryRun: boolean) {
@@ -200,17 +217,46 @@ function appendAuditRevocation(logPath: string, reason: string, dryRun: boolean)
   }
 }
 
-function writeMarker(logPath: string, reason: string, ts: string, dryRun: boolean) {
+export type MarkerResult = { path: string; wrote: boolean };
+
+export function writeMarker(
+  logPath: string,
+  reason: string,
+  ts: string,
+  dryRun: boolean,
+): MarkerResult {
   const markerPath = resolve(dirname(logPath), ".fpp-revoked");
   const content = `Freedom Preserving Protocol — revoked ${ts}\nReason: ${reason}\n`;
   if (dryRun) {
     console.log(`[MARK ] (dry-run) would write marker to ${markerPath}`);
-    return;
+    return { path: markerPath, wrote: false };
   }
   mkdirSync(dirname(markerPath), { recursive: true });
   writeFileSync(markerPath, content);
   console.log(`[MARK ] revocation marker written to ${markerPath}`);
+  return { path: markerPath, wrote: true };
 }
+
+export type RevokeOptions = {
+  soul?: string;
+  memory?: string;
+  log: string;
+  reason: string;
+  dryRun?: boolean;
+};
+
+export function revokeAdoption(opts: RevokeOptions): void {
+  const ts = nowIso();
+  const dryRun = opts.dryRun ?? false;
+
+  if (opts.soul) annotateSoul(resolve(opts.soul), opts.reason, ts, dryRun);
+  if (opts.memory)
+    appendMemoryRevocation(resolve(opts.memory), opts.reason, ts, dryRun);
+  appendAuditRevocation(resolve(opts.log), opts.reason, dryRun);
+  writeMarker(resolve(opts.log), opts.reason, ts, dryRun);
+}
+
+export { appendAuditRevocation };
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -265,4 +311,10 @@ function main() {
   );
 }
 
-main();
+const isDirectInvocation =
+  import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}` ||
+  import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, "/")}`;
+
+if (isDirectInvocation) {
+  main();
+}

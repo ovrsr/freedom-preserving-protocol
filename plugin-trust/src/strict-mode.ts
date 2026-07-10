@@ -38,13 +38,15 @@ export class StrictModeManager {
   private filePath: string;
   private defaultTtlMs: number;
   private defaultAddApprovalOn: string[];
+  private now: () => number;
 
   constructor(
     statePath: string,
     options?: {
-      basePath?: string;
-      defaultTtlMs?: number;
-      defaultAddApprovalOn?: string[];
+      basePath?: string | undefined;
+      defaultTtlMs?: number | undefined;
+      defaultAddApprovalOn?: string[] | undefined;
+      now?: (() => number) | undefined;
     },
   ) {
     this.filePath = resolve(options?.basePath ?? process.cwd(), statePath);
@@ -57,6 +59,7 @@ export class StrictModeManager {
       "exec.outbound-write",
       "message.external",
     ];
+    this.now = options?.now ?? Date.now;
   }
 
   enterStrict(
@@ -66,8 +69,9 @@ export class StrictModeManager {
     addApprovalOn?: string[],
   ): void {
     const state = this.readState();
-    const now = new Date();
-    const expires = new Date(now.getTime() + (ttlMs ?? this.defaultTtlMs));
+    const nowMs = this.now();
+    const now = new Date(nowMs);
+    const expires = new Date(nowMs + (ttlMs ?? this.defaultTtlMs));
 
     state.sessions[sessionKey] = {
       strict: true,
@@ -92,7 +96,7 @@ export class StrictModeManager {
     const state = this.readState();
     const entry = state.sessions[sessionKey];
     if (!entry) return null;
-    if (new Date(entry.expiresAt).getTime() < Date.now()) {
+    if (new Date(entry.expiresAt).getTime() < this.now()) {
       delete state.sessions[sessionKey];
       this.writeState(state);
       return null;
@@ -147,7 +151,7 @@ export class StrictModeManager {
   }
 
   private pruneExpired(state: StrictModeState): void {
-    const now = Date.now();
+    const now = this.now();
     for (const [key, entry] of Object.entries(state.sessions)) {
       if (new Date(entry.expiresAt).getTime() < now) {
         delete state.sessions[key];

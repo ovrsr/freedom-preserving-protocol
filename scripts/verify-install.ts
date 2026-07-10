@@ -35,9 +35,9 @@ import { verify as verifyAuditChain } from "./audit-verify.ts";
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, "..");
+const DEFAULT_ROOT = resolve(__dirname, "..");
 
-const EXPECTED_CONSTITUTION_HASH =
+const DEFAULT_EXPECTED_CONSTITUTION_HASH =
   "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993";
 const ADOPTION_MARKER = "Freedom Preserving Protocol";
 const ENFORCEMENT_PLUGIN_ID_CANDIDATES = [
@@ -52,15 +52,15 @@ const TRUST_PLUGIN_ID_CANDIDATES = [
   "@ovrsr/openclaw-fpp-trust",
 ];
 
-type CheckStatus = "pass" | "fail" | "skip" | "warn";
-type Check = {
+export type CheckStatus = "pass" | "fail" | "skip" | "warn";
+export type Check = {
   id: string;
   label: string;
   status: CheckStatus;
   detail: string;
 };
 
-type Report = {
+export type Report = {
   ok: boolean;
   checks: Check[];
   summary: {
@@ -68,6 +68,23 @@ type Report = {
     dispatcherLayerActive: boolean;
     trustLayerActive: boolean;
   };
+};
+
+export type PluginListResult = {
+  available: boolean;
+  stdout?: string;
+  stderr?: string;
+};
+
+export type PluginLister = () => PluginListResult;
+
+export type VerifyInstallOptions = {
+  rootDir?: string;
+  soul?: string;
+  memory?: string;
+  log?: string;
+  expectedConstitutionHash?: string;
+  pluginLister?: PluginLister;
 };
 
 function parseArgs(argv: string[]): {
@@ -101,16 +118,16 @@ Options:
   return { soul, memory, log, json };
 }
 
-function checkConstitution(): Check {
+function checkConstitution(rootDir: string, expectedHash: string): Check {
   try {
-    const bytes = readFileSync(resolve(root, "constitution.json"));
+    const bytes = readFileSync(resolve(rootDir, "constitution.json"));
     const hash = bytesToHex(sha256(bytes));
-    if (hash !== EXPECTED_CONSTITUTION_HASH) {
+    if (hash !== expectedHash) {
       return {
         id: "constitution.hash",
         label: "Constitution hash",
         status: "fail",
-        detail: `got ${hash}, expected ${EXPECTED_CONSTITUTION_HASH}`,
+        detail: `got ${hash}, expected ${expectedHash}`,
       };
     }
     return {
@@ -129,12 +146,12 @@ function checkConstitution(): Check {
   }
 }
 
-function checkSignature(): Check {
+function checkSignature(rootDir: string): Check {
   try {
-    const bytes = readFileSync(resolve(root, "constitution.json"));
+    const bytes = readFileSync(resolve(rootDir, "constitution.json"));
     const hash = sha256(bytes);
-    const sig = readFileSync(resolve(root, "signature.ed25519.txt"), "utf-8").trim();
-    const pub = readFileSync(resolve(root, "pubkey.ed25519.txt"), "utf-8").trim();
+    const sig = readFileSync(resolve(rootDir, "signature.ed25519.txt"), "utf-8").trim();
+    const pub = readFileSync(resolve(rootDir, "pubkey.ed25519.txt"), "utf-8").trim();
     const ok = ed.verify(hexToBytes(sig), hash, hexToBytes(pub));
     return {
       id: "constitution.signature",
@@ -199,36 +216,37 @@ function checkAuditChain(logPath: string): Check {
   };
 }
 
-function checkPluginInstalled(
-  label: string,
-  id: string,
-  candidates: string[],
-  installHint: string,
-): Check {
+function defaultPluginLister(): PluginListResult {
   const which = spawnSync(process.platform === "win32" ? "where" : "which", [
     "openclaw",
   ]);
   if (which.status !== 0) {
-    return {
-      id,
-      label,
-      status: "warn",
-      detail:
-        "openclaw CLI not on PATH; cannot check plugin installation.",
-    };
+    return { available: false };
   }
   const list = spawnSync("openclaw", ["plugins", "list", "--json"], {
     encoding: "utf-8",
   });
   if (list.status !== 0) {
-    return {
-      id,
-      label,
-      status: "warn",
-      detail: `openclaw plugins list failed: ${list.stderr.trim()}`,
-    };
+    return { available: false, stderr: list.stderr?.trim?.() ?? "" };
   }
-  const stdout = list.stdout;
+  return { available: true, stdout: list.stdout };
+}
+
+function checkPluginInstalled(
+  label: string,
+  id: string,
+  candidates: string[],
+  installHint: string,
+  lister: PluginLister,
+): Check {
+  const result = lister();
+  if (!result.available) {
+    const detail = result.stderr
+      ? `openclaw plugins list failed: ${result.stderr}`
+      : "openclaw CLI not on PATH; cannot check plugin installation.";
+    return { id, label, status: "warn", detail };
+  }
+  const stdout = result.stdout ?? "";
   const present = candidates.some((candidate) => stdout.includes(candidate));
   return {
     id,
@@ -253,15 +271,40 @@ function statusGlyph(s: CheckStatus): string {
   }
 }
 
-function main() {
-  const args = parseArgs(process.argv.slice(2));
+/**
+ * @deprecated Use `VerifyInstallOptions` and `runVerifyInstall` instead.
+ * Retained as an alias for backward compatibility with earlier test scaffolding.
+ */
+export type InstallCheckOptions = VerifyInstallOptions;
+
+/**
+ * @deprecated Use `runVerifyInstall` instead. This alias skips plugin-install
+ * checks (uses a stub `pluginLister` that always returns `available: false`)
+ * for backward compatibility with earlier test scaffolding.
+ */
+export function runInstallChecks(opts: InstallCheckOptions = {}): Report {
+  return runVerifyInstall({
+    ...opts,
+    pluginLister: opts.pluginLister ?? (() => ({ available: false })),
+  });
+}
+
+export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
+  const rootDir = options.rootDir ?? DEFAULT_ROOT;
+  const expectedHash =
+    options.expectedConstitutionHash ?? DEFAULT_EXPECTED_CONSTITUTION_HASH;
+  const lister = options.pluginLister ?? defaultPluginLister;
+  const logPath = options.log ?? ".openclaw/workspace/constitution-audit.jsonl";
+
   const checks: Check[] = [];
 
-  checks.push(checkConstitution());
-  checks.push(checkSignature());
+  checks.push(checkConstitution(rootDir, expectedHash));
+  checks.push(checkSignature(rootDir));
 
-  if (args.soul) {
-    checks.push(checkMarker(resolve(args.soul), "soul.marker", "SOUL adoption block"));
+  if (options.soul) {
+    checks.push(
+      checkMarker(resolve(options.soul), "soul.marker", "SOUL adoption block"),
+    );
   } else {
     checks.push({
       id: "soul.marker",
@@ -271,8 +314,14 @@ function main() {
     });
   }
 
-  if (args.memory) {
-    checks.push(checkMarker(resolve(args.memory), "memory.marker", "MEMORY adoption entry"));
+  if (options.memory) {
+    checks.push(
+      checkMarker(
+        resolve(options.memory),
+        "memory.marker",
+        "MEMORY adoption entry",
+      ),
+    );
   } else {
     checks.push({
       id: "memory.marker",
@@ -282,13 +331,14 @@ function main() {
     });
   }
 
-  checks.push(checkAuditChain(resolve(args.log)));
+  checks.push(checkAuditChain(resolve(logPath)));
   checks.push(
     checkPluginInstalled(
       "Dispatcher-layer enforcement plugin",
       "plugin.enforcement.installed",
       ENFORCEMENT_PLUGIN_ID_CANDIDATES,
       "openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin",
+      lister,
     ),
   );
   checks.push(
@@ -297,14 +347,15 @@ function main() {
       "plugin.trust.installed",
       TRUST_PLUGIN_ID_CANDIDATES,
       "openclaw plugins install clawhub:ovrsr/openclaw-fpp-trust",
+      lister,
     ),
   );
 
-  const requiredIds = new Set([
+  const requiredIds = new Set<string>([
     "constitution.hash",
     "constitution.signature",
-    args.soul ? "soul.marker" : null,
-    args.memory ? "memory.marker" : null,
+    ...(options.soul ? ["soul.marker"] : []),
+    ...(options.memory ? ["memory.marker"] : []),
   ]);
   const requiredOk = checks
     .filter((c) => requiredIds.has(c.id))
@@ -314,15 +365,29 @@ function main() {
     checks.find((c) => c.id === "soul.marker")?.status === "pass" ||
     checks.find((c) => c.id === "memory.marker")?.status === "pass";
   const dispatcherLayerActive =
-    checks.find((c) => c.id === "plugin.enforcement.installed")?.status === "pass";
+    checks.find((c) => c.id === "plugin.enforcement.installed")?.status ===
+    "pass";
   const trustLayerActive =
     checks.find((c) => c.id === "plugin.trust.installed")?.status === "pass";
 
-  const report: Report = {
+  return {
     ok: requiredOk,
     checks,
     summary: { promptLayerActive, dispatcherLayerActive, trustLayerActive },
   };
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const report = runVerifyInstall({
+    soul: args.soul,
+    memory: args.memory,
+    log: args.log,
+  });
+  const promptLayerActive = report.summary.promptLayerActive;
+  const dispatcherLayerActive = report.summary.dispatcherLayerActive;
+  const trustLayerActive = report.summary.trustLayerActive;
+  const checks = report.checks;
 
   if (args.json) {
     console.log(JSON.stringify(report, null, 2));
@@ -365,4 +430,10 @@ function main() {
   process.exit(report.ok ? 0 : 1);
 }
 
-main();
+const isDirectInvocation =
+  import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}` ||
+  import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, "/")}`;
+
+if (isDirectInvocation) {
+  main();
+}

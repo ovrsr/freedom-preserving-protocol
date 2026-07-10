@@ -211,6 +211,7 @@ export function appendAuditEntry(opts: AppendOptions): {
   hash: string;
   previousHash: string;
   logPath: string;
+  merkleRoot: string;
 } {
   if (!KINDS.has(opts.kind)) {
     throw new Error(`Invalid kind: ${opts.kind}`);

@@ -45,7 +45,7 @@ OPTIONS:
   --version <ver>    Explicit semver to set (overrides --bump)
   --changelog <msg>  Changelog message (required for publish)
   --dry-run          Show what would happen without executing
-  --skip-tests       Skip pre-publish verification steps
+  --skip-tests       UNSAFE / maintainer-only: skip pre-publish verification
   --help             Show this help
 
 EXAMPLES:
@@ -114,6 +114,46 @@ require_clawhub() {
   command -v clawhub >/dev/null 2>&1 || die "clawhub CLI not found. Install: npm i -g clawhub"
 }
 
+require_lockfile_sync() {
+  local pkg="$1" lock="$2" label="$3"
+  local pkg_ver lock_ver
+  pkg_ver="$(get_json_version "$pkg")"
+  lock_ver="$(node -p "const l=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); (l.packages && l.packages[''] && l.packages[''].version) || l.version || ''" "$lock" | tr -d '\r\n')"
+  [[ "$pkg_ver" == "$lock_ver" ]] || die "$label version mismatch: package.json=$pkg_ver lockfile=$lock_ver"
+}
+
+run_strict_checks_skill() {
+  bold "Running pre-publish checks for skill (fail-hard)..."
+  (cd "$REPO_ROOT" && npm run verify)
+  (cd "$REPO_ROOT" && npm run self-test)
+  green "  ✓ Skill checks passed"
+}
+
+run_strict_checks_plugin() {
+  bold "Building, typechecking, and testing enforcement plugin (fail-hard)..."
+  (cd "$REPO_ROOT/$PLUGIN_DIR" && npm run typecheck)
+  (cd "$REPO_ROOT/$PLUGIN_DIR" && npm run build)
+  (cd "$REPO_ROOT/$PLUGIN_DIR" && npm test)
+  (cd "$REPO_ROOT" && bash scripts/verify-pack.sh)
+  require_lockfile_sync \
+    "$REPO_ROOT/$PLUGIN_DIR/package.json" \
+    "$REPO_ROOT/$PLUGIN_DIR/package-lock.json" \
+    "enforcement plugin"
+  green "  ✓ Enforcement plugin checks passed"
+}
+
+run_strict_checks_trust() {
+  bold "Building, typechecking, and testing trust plugin (fail-hard)..."
+  (cd "$REPO_ROOT/$TRUST_DIR" && npm run typecheck)
+  (cd "$REPO_ROOT/$TRUST_DIR" && npm run build)
+  (cd "$REPO_ROOT/$TRUST_DIR" && npm test)
+  require_lockfile_sync \
+    "$REPO_ROOT/$TRUST_DIR/package.json" \
+    "$REPO_ROOT/$TRUST_DIR/package-lock.json" \
+    "trust plugin"
+  green "  ✓ Trust plugin checks passed"
+}
+
 # ── Version bump ─────────────────────────────────────────────────────
 
 do_bump_skill() {
@@ -177,11 +217,10 @@ publish_skill() {
   do_bump_skill
   ver="$(get_json_version "$REPO_ROOT/package.json")"
 
-  if [[ "$SKIP_TESTS" != "true" ]]; then
-    bold "Running pre-publish checks for skill..."
-    (cd "$REPO_ROOT" && npm run verify)
-    (cd "$REPO_ROOT" && npm run self-test)
-    green "  ✓ All checks passed"
+  if [[ "$SKIP_TESTS" == "true" ]]; then
+    yellow "  ⚠ UNSAFE: --skip-tests set (maintainer-only); skipping skill verification"
+  else
+    run_strict_checks_skill
   fi
 
   bold "Publishing skill v${ver}..."
@@ -205,11 +244,10 @@ publish_plugin() {
   ver="$(get_json_version "$REPO_ROOT/$PLUGIN_DIR/package.json")"
   sha="$(git_sha)"
 
-  if [[ "$SKIP_TESTS" != "true" ]]; then
-    bold "Building and testing enforcement plugin..."
-    (cd "$REPO_ROOT/$PLUGIN_DIR" && npm run build)
-    (cd "$REPO_ROOT/$PLUGIN_DIR" && npm test) || yellow "  ⚠ Tests exited non-zero (may have no test files)"
-    green "  ✓ Build complete"
+  if [[ "$SKIP_TESTS" == "true" ]]; then
+    yellow "  ⚠ UNSAFE: --skip-tests set (maintainer-only); skipping enforcement plugin verification"
+  else
+    run_strict_checks_plugin
   fi
 
   bold "Publishing enforcement plugin v${ver}..."
@@ -236,10 +274,10 @@ publish_trust() {
   ver="$(get_json_version "$REPO_ROOT/$TRUST_DIR/package.json")"
   sha="$(git_sha)"
 
-  if [[ "$SKIP_TESTS" != "true" ]]; then
-    bold "Building trust plugin..."
-    (cd "$REPO_ROOT/$TRUST_DIR" && npm run build)
-    green "  ✓ Build complete"
+  if [[ "$SKIP_TESTS" == "true" ]]; then
+    yellow "  ⚠ UNSAFE: --skip-tests set (maintainer-only); skipping trust plugin verification"
+  else
+    run_strict_checks_trust
   fi
 
   bold "Publishing trust plugin v${ver}..."
@@ -300,7 +338,11 @@ while [[ $# -gt 0 ]]; do
     --version)    EXPLICIT_VERSION="$2"; shift 2 ;;
     --changelog)  CHANGELOG="$2"; shift 2 ;;
     --dry-run)    DRY_RUN="true"; shift ;;
-    --skip-tests) SKIP_TESTS="true"; shift ;;
+    --skip-tests)
+      SKIP_TESTS="true"
+      yellow "WARNING: --skip-tests is UNSAFE and maintainer-only"
+      shift
+      ;;
     --help|-h)    usage ;;
     *) die "Unknown argument: $1" ;;
   esac

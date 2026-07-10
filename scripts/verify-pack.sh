@@ -18,7 +18,11 @@ for pkg in plugin plugin-trust; do
     continue
   fi
 
-  npm ci --ignore-scripts --quiet 2>/dev/null || npm install --ignore-scripts --quiet 2>/dev/null
+  if [ "${SKIP_INSTALL:-}" = "1" ] || [ -d node_modules ]; then
+    echo "Using existing node_modules for $pkg"
+  else
+    npm ci --ignore-scripts --quiet 2>/dev/null || npm install --ignore-scripts --quiet 2>/dev/null
+  fi
   npm run build --if-present
 
   pack_list=$(npm pack --dry-run 2>&1)
@@ -46,3 +50,12 @@ if [ $errors -gt 0 ]; then
 fi
 
 echo "All packages verified."
+
+# Optional reproducibility + SBOM pass (no registry side effects)
+if [[ "${SKIP_REPRO:-}" != "1" ]]; then
+  echo ""
+  echo "--- Package inventories and SBOMs ---"
+  ASSURE_OUT="${ASSURANCE_OUT:-$ROOT/assurance-artifacts}"
+  mkdir -p "$ASSURE_OUT"
+  (cd "$ROOT" && npx tsx scripts/package-reproducibility.ts "$ASSURE_OUT")
+fi

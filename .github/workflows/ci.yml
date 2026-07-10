@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            plugin/package-lock.json
+            plugin-trust/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install enforcement plugin dependencies
+        working-directory: plugin
+        run: npm ci --ignore-scripts
+
+      - name: Install trust plugin dependencies
+        working-directory: plugin-trust
+        run: npm ci --ignore-scripts
+
+      - name: Full verification gate
+        run: npm run verify:all
+        env:
+          SKIP_INSTALL: "1"
+
+      - name: Coverage thresholds
+        run: npm run test:coverage
+
+      - name: Classifier adversarial corpus
+        run: npm run test:corpus
+
+      - name: Package inventories and SBOMs
+        run: npm run assurance:packages
+
+      - name: Upload assurance artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: assurance-artifacts
+          path: assurance-artifacts/
+          if-no-files-found: warn
+          retention-days: 30

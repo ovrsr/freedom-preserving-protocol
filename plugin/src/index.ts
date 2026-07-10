@@ -21,7 +21,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import type { OpenClawPluginApi, OpenClawPluginDefinition } from "openclaw/plugin-sdk/plugin-entry";
 
 import { classifyToolCall, type ClassificationResult } from "./risk-classifier.js";
 import { mergeConfig, type FppPluginConfig } from "./config.js";
@@ -99,6 +99,100 @@ function decide(
   return classification.decision;
 }
 
+/** Test seam: decision helper used by the before_tool_call hook. */
+export { decide };
+
+/**
+ * Test seam: register the enforcement hook against any api-like object.
+ * Production entry calls this from definePluginEntry.register.
+ */
+export function registerEnforcement(api: {
+  pluginConfig?: unknown;
+  on: (
+    event: string,
+    handler: (...args: unknown[]) => unknown,
+    opts?: { priority?: number },
+  ) => void;
+}): FppPluginConfig {
+  const config = mergeConfig(api.pluginConfig);
+  api.on(
+    "before_tool_call",
+    async (event: unknown, ctx: unknown) => {
+      const e = event as {
+        toolName: string;
+        params?: Record<string, unknown>;
+        runId?: string;
+      };
+      const c = ctx as {
+        agentId?: string;
+        runId?: string;
+        sessionKey?: string;
+        toolCallId?: string;
+      };
+      const classification = classifyToolCall(e.toolName, e.params ?? {});
+      const strictOverrides = config.respectTrustStrictMode
+        ? getStrictApprovalOverrides(config.strictModeStatePath, c.sessionKey)
+        : [];
+      const decision = decide(config, classification, strictOverrides);
+
+      const eventForAudit = {
+        toolName: e.toolName,
+        agentId: c.agentId,
+        runId: c.runId ?? e.runId,
+        sessionKey: c.sessionKey,
+        toolCallId: c.toolCallId,
+        classification: classification.classification,
+        decision,
+        reason: classification.reason,
+        constitutionHash: config.constitutionHash,
+      };
+
+      if (decision === "block") {
+        appendEnforcementEntry(config.auditLogPath, eventForAudit, "blocked");
+        return {
+          block: true,
+          blockReason: `${classification.classification}: ${classification.reason}`,
+        };
+      }
+
+      if (decision === "approval") {
+        appendEnforcementEntry(
+          config.auditLogPath,
+          eventForAudit,
+          "approval_requested",
+        );
+        return {
+          requireApproval: {
+            title: buildTitle(classification),
+            description: buildDescription(classification, e.toolName),
+            severity: severityFor(classification),
+            timeoutMs: config.approvalTimeoutMs,
+            timeoutBehavior: config.approvalTimeoutBehavior,
+            allowedDecisions: ["allow-once", "deny"],
+            pluginId: "openclaw-fpp-plugin",
+            onResolution: async (decisionResult: string) => {
+              const outcome =
+                decisionResult === "allow-once" || decisionResult === "allow-always"
+                  ? "approved"
+                  : decisionResult === "deny"
+                    ? "denied"
+                    : decisionResult === "timeout"
+                      ? "timeout"
+                      : "cancelled";
+              appendEnforcementEntry(config.auditLogPath, eventForAudit, outcome);
+            },
+          },
+        };
+      }
+
+      appendEnforcementEntry(config.auditLogPath, eventForAudit, "allowed");
+      return;
+    },
+    { priority: 50 },
+  );
+  return config;
+}
+
 export const PLUGIN_APPROVAL_DESCRIPTION_MAX_LENGTH = 256;
 export const PLUGIN_APPROVAL_TITLE_MAX_LENGTH = 80;
 
@@ -117,76 +211,14 @@ export function buildTitle(classification: ClassificationResult): string {
   return title.slice(0, PLUGIN_APPROVAL_TITLE_MAX_LENGTH - 3) + "...";
 }
 
-export default definePluginEntry({
+const plugin: OpenClawPluginDefinition = definePluginEntry({
   id: "openclaw-fpp-plugin",
   name: "Freedom Preserving Protocol — Enforcement",
   description:
     "Gates tool calls through the five Freedom Preserving Laws via a before_tool_call hook.",
   register(api: OpenClawPluginApi) {
-    const config = mergeConfig(api.pluginConfig);
-
-    api.on(
-      "before_tool_call",
-      async (event, ctx) => {
-        const classification = classifyToolCall(event.toolName, event.params);
-        const strictOverrides = config.respectTrustStrictMode
-          ? getStrictApprovalOverrides(config.strictModeStatePath, ctx.sessionKey)
-          : [];
-        const decision = decide(config, classification, strictOverrides);
-
-        const eventForAudit = {
-          toolName: event.toolName,
-          agentId: ctx.agentId,
-          runId: ctx.runId ?? event.runId,
-          sessionKey: ctx.sessionKey,
-          classification: classification.classification,
-          decision,
-          reason: classification.reason,
-          constitutionHash: config.constitutionHash,
-        };
-
-        if (decision === "block") {
-          appendEnforcementEntry(config.auditLogPath, eventForAudit, "blocked");
-          return {
-            block: true,
-            blockReason: `${classification.classification}: ${classification.reason}`,
-          };
-        }
-
-        if (decision === "approval") {
-          appendEnforcementEntry(
-            config.auditLogPath,
-            eventForAudit,
-            "approval_requested",
-          );
-          return {
-            requireApproval: {
-              title: buildTitle(classification),
-              description: buildDescription(classification, event.toolName),
-              severity: severityFor(classification),
-              timeoutMs: config.approvalTimeoutMs,
-              timeoutBehavior: config.approvalTimeoutBehavior,
-              allowedDecisions: ["allow-once", "deny"],
-              pluginId: "openclaw-fpp-plugin",
-              onResolution: async (decisionResult) => {
-                const outcome =
-                  decisionResult === "allow-once" || decisionResult === "allow-always"
-                    ? "approved"
-                    : decisionResult === "deny"
-                      ? "denied"
-                      : decisionResult === "timeout"
-                        ? "timeout"
-                        : "cancelled";
-                appendEnforcementEntry(config.auditLogPath, eventForAudit, outcome);
-              },
-            },
-          };
-        }
-
-        appendEnforcementEntry(config.auditLogPath, eventForAudit, "allowed");
-        return;
-      },
-      { priority: 50 },
-    );
+    registerEnforcement(api as Parameters<typeof registerEnforcement>[0]);
   },
 });
+
+export default plugin;

@@ -13,7 +13,7 @@ Freedom Preserving Protocol ships two installable artifacts at two layers. Each 
 
 ### Prompt-layer skill
 
-The skill is plain markdown with YAML frontmatter conforming to the AgentSkills spec. It works in any harness that consumes that spec. The skill's tooling scripts (`npm run verify/adopt/revoke/...`) require Node `>=18` (source: root `package.json` `engines.node`).
+The skill is plain markdown with YAML frontmatter conforming to the AgentSkills spec. It works in any harness that consumes that spec. The skill's tooling scripts (`npm run verify/adopt/revoke/...`) and the aggregate gate (`npm run verify:all`) require Node `>=22.19` (source: root `package.json` `engines.node`, pinned via `.node-version`).
 
 | Runtime | Tested | Notes |
 |---------|--------|-------|
@@ -40,7 +40,7 @@ The plugin uses the OpenClaw Plugin SDK and is **OpenClaw-specific**. It does no
 | OpenClaw Gateway | `>=2026.3.24-beta.2` | `plugin/package.json` → `openclaw.compat.minGatewayVersion` (same in `plugin-trust/package.json`) |
 | Plugin API (`openclaw/plugin-sdk`) | `>=2026.3.24-beta.2` | `plugin/package.json` → `openclaw.compat.pluginApi` |
 | Node.js (both plugins) | `>=22.19` | `plugin/package.json` and `plugin-trust/package.json` → `engines.node` |
-| Node.js (skill scripts only) | `>=18` | root `package.json` → `engines.node` |
+| Node.js (skill scripts + `verify:all`) | `>=22.19` | root `package.json` → `engines.node`; `.node-version` |
 | Package manager | `npm` or `pnpm`; `pnpm` required for in-repo bundled builds | repo build convention |
 
 The plugin's `package.json` declares:

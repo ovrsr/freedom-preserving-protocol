@@ -165,6 +165,20 @@ Signature valid:      YES
 
 If the signature does not verify, do not adopt. See `docs/TROUBLESHOOTING.md#4`.
 
+### Continuous integration
+
+Pull requests and pushes to `main`/`master` run `.github/workflows/ci.yml` on Node `22.19`: constitution verification, classifier self-test, both plugin typecheck/test suites, and a package dry-run (`scripts/verify-pack.sh`) with no registry side effects.
+
+Locally, the canonical full gate is:
+
+```bash
+npm run verify:all
+```
+
+That runs constitution verification, classifier fixtures, both plugin typechecks and tests, and package dry-run checks. Runtime pin: `.node-version` (`22.19`); root and both plugins require Node `>=22.19`.
+
+Coverage: `npm run test:coverage` enforces floor thresholds in `plugin/.c8rc.json` and `plugin-trust/.c8rc.json` (measured from the 2026-07-10 baseline). Raise thresholds only after new tests lift the measured floor — never lower them to hide regressions.
+
 ## Signing (for maintainers)
 
 Preferred (release / CI):

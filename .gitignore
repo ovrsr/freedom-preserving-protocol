@@ -13,12 +13,22 @@ package/
 # npm pack artifacts
 *.tgz
 
+# Coverage reports
+coverage/
+plugin/coverage/
+plugin-trust/coverage/
+.nyc_output/
+plugin/.nyc_output/
+plugin-trust/.nyc_output/
+
+# Local assurance artifacts (CI uploads these)
+assurance-artifacts/
+
 # Locally-generated maintainer signing key (never commit)
 .signing-key.ed25519.local
 
 # Praxiscode local state
 .praxiscode/
-.github/
 .cursor/
 .claude/
 .agents
@@ -26,3 +36,8 @@ CLAUDE.md
 PRAXISCODE_LEARNINGS.md
 operator_scratchpad.md
 .operator_scratchpad/
+
+# Praxiscode-managed GitHub content (workflows are tracked)
+.github/*
+!.github/workflows/
+!.github/workflows/**

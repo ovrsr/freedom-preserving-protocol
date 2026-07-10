@@ -19,6 +19,14 @@
     "audit:verify": "npx tsx scripts/audit-verify.ts",
     "audit:proof": "npx tsx scripts/audit-proof.ts",
     "self-test": "npx tsx scripts/self-test.ts",
+    "typecheck": "npm --prefix plugin run typecheck && npm --prefix plugin-trust run typecheck",
+    "test": "npm --prefix plugin test && npm --prefix plugin-trust test",
+    "test:coverage": "npm --prefix plugin run test:coverage && npm --prefix plugin-trust run test:coverage",
+    "test:all": "npm test && npm run test:scripts && npm run test:corpus && npm run self-test",
+    "test:scripts": "npx tsx --test \"scripts/**/*.test.ts\"",
+    "test:corpus": "npx tsx scripts/run-classifier-corpus.ts",
+    "verify:all": "bash scripts/verify-all.sh",
+    "assurance:packages": "npx tsx scripts/package-reproducibility.ts assurance-artifacts",
     "publish:skill": "bash scripts/clawhub-publish.sh publish skill",
     "publish:plugin": "bash scripts/clawhub-publish.sh publish plugin",
     "publish:trust": "bash scripts/clawhub-publish.sh publish trust",
@@ -35,6 +43,6 @@
     "tsx": "^4.19.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.19"
   }
 }

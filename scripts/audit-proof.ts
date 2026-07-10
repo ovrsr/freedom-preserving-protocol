@@ -88,6 +88,65 @@ function loadLeaves(logPath: string): string[] {
     });
 }
 
+/**
+ * Testable proof generator: reads leaves from the log file and returns
+ * an inclusion proof for the entry at `index`. Throws when the log is
+ * missing or the index is out of range.
+ */
+export function generateProof(logPath: string, index: number): MerkleProof {
+  if (!existsSync(logPath)) {
+    throw new Error(`Audit log not found: ${logPath}`);
+  }
+  const content = readFileSync(logPath, "utf-8").trim();
+  const leaves = content
+    ? content
+        .split("\n")
+        .filter((l) => l.trim())
+        .map((line) => (JSON.parse(line) as Record<string, unknown>).hash as string)
+    : [];
+  if (index < 0 || index >= leaves.length) {
+    throw new Error(
+      `Index ${index} out of range (log has ${leaves.length} entries)`,
+    );
+  }
+  const proof = createMerkleProof(leaves, index);
+  if (!proof) throw new Error("Failed to create proof");
+  return proof;
+}
+
+export type ProofVerifyReport = {
+  valid: boolean;
+  rootMatch: boolean;
+  proofRoot: string;
+  currentRoot: string;
+};
+
+/**
+ * Testable proof verifier: reads a proof file and compares against the
+ * current Merkle root of the audit log at `logPath`.
+ */
+export function verifyProofFile(
+  proofPath: string,
+  logPath: string,
+): ProofVerifyReport {
+  const proof: MerkleProof = JSON.parse(readFileSync(proofPath, "utf-8"));
+  const valid = verifyMerkleProof(proof);
+  const content = existsSync(logPath) ? readFileSync(logPath, "utf-8").trim() : "";
+  const leaves = content
+    ? content
+        .split("\n")
+        .filter((l) => l.trim())
+        .map((line) => (JSON.parse(line) as Record<string, unknown>).hash as string)
+    : [];
+  const currentRoot = computeMerkleRoot(leaves);
+  return {
+    valid,
+    rootMatch: proof.root === currentRoot,
+    proofRoot: proof.root,
+    currentRoot,
+  };
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -162,4 +221,10 @@ function main() {
   }
 }
 
-main();
+const isDirectInvocation =
+  import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}` ||
+  import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, "/")}`;
+
+if (isDirectInvocation) {
+  main();
+}

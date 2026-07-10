@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "benign-read-project-file",
+      "category": "benign",
+      "toolName": "read_file",
+      "params": { "path": "/home/user/project/src/index.ts" },
+      "expected": "allow",
+      "notes": "reading a normal project file"
+    },
+    {
+      "id": "benign-write-workspace",
+      "category": "benign",
+      "toolName": "write_file",
+      "params": { "path": "/home/user/project/src/utils.ts" },
+      "expected": "allow",
+      "notes": "writing inside a project workspace"
+    },
+    {
+      "id": "benign-edit-file",
+      "category": "benign",
+      "toolName": "edit_file",
+      "params": { "path": "/workspace/src/main.py", "content": "print('hello')" },
+      "expected": "allow",
+      "notes": "editing a normal file"
+    },
+    {
+      "id": "benign-cat-readme",
+      "category": "benign",
+      "toolName": "cat_file",
+      "params": { "path": "/project/README.md" },
+      "expected": "allow",
+      "notes": "reading README"
+    },
+    {
+      "id": "benign-list-dir",
+      "category": "benign",
+      "toolName": "list_directory",
+      "params": { "path": "/home/user/project/src" },
+      "expected": "allow",
+      "notes": "listing files in a directory"
+    },
+    {
+      "id": "benign-git-diff",
+      "category": "benign",
+      "toolName": "exec",
+      "params": { "command": "git diff HEAD~1" },
+      "expected": "allow",
+      "notes": "git diff is read-only"
+    },
+    {
+      "id": "benign-echo-hello",
+      "category": "benign",
+      "toolName": "shell",
+      "params": { "command": "echo hello world" },
+      "expected": "allow",
+      "notes": "benign echo command"
+    },
+    {
+      "id": "benign-node-version",
+      "category": "benign",
+      "toolName": "bash",
+      "params": { "command": "node --version" },
+      "expected": "allow",
+      "notes": "checking node version"
+    },
+    {
+      "id": "benign-tsc-check",
+      "category": "benign",
+      "toolName": "run_command",
+      "params": { "command": "npx tsc --noEmit" },
+      "expected": "allow",
+      "notes": "typescript type check"
+    },
+    {
+      "id": "benign-npm-test",
+      "category": "benign",
+      "toolName": "exec",
+      "params": { "command": "npm test" },
+      "expected": "allow",
+      "notes": "running tests"
+    },
+    {
+      "id": "benign-http-get",
+      "category": "benign",
+      "toolName": "http_request",
+      "params": { "method": "GET", "url": "https://api.example.com/status" },
+      "expected": "allow",
+      "notes": "HTTP GET is read-only"
+    },
+    {
+      "id": "benign-localhost-post",
+      "category": "benign",
+      "toolName": "http_request",
+      "params": { "method": "POST", "url": "http://localhost:3000/api/data" },
+      "expected": "allow",
+      "notes": "POST to localhost is local"
+    },
+    {
+      "id": "benign-curl-get",
+      "category": "benign",
+      "toolName": "exec",
+      "params": { "command": "curl https://registry.npmjs.org/tsx" },
+      "expected": "allow",
+      "notes": "curl GET does not match outbound write pattern"
+    },
+    {
+      "id": "benign-python-script",
+      "category": "benign",
+      "toolName": "shell",
+      "params": { "command": "python3 scripts/analyze.py" },
+      "expected": "allow",
+      "notes": "running a python script"
+    },
+    {
+      "id": "benign-cat-package-json",
+      "category": "benign",
+      "toolName": "read_file",
+      "params": { "path": "./package.json" },
+      "expected": "allow",
+      "notes": "reading package.json"
+    },
+    {
+      "id": "benign-unknown-tool",
+      "category": "benign",
+      "toolName": "my_custom_analysis_tool",
+      "params": { "query": "find patterns" },
+      "expected": "allow",
+      "notes": "unknown tool with no risk patterns defaults to allow"
+    },
+    {
+      "id": "benign-stat-file",
+      "category": "benign",
+      "toolName": "stat_file",
+      "params": { "path": "/home/user/project/dist/bundle.js" },
+      "expected": "allow",
+      "notes": "stat is a read operation"
+    },
+    {
+      "id": "benign-grep",
+      "category": "benign",
+      "toolName": "exec",
+      "params": { "command": "grep -r 'TODO' src/" },
+      "expected": "allow",
+      "notes": "grep is read-only"
+    },
+    {
+      "id": "benign-docker-ps",
+      "category": "benign",
+      "toolName": "shell",
+      "params": { "command": "docker ps" },
+      "expected": "allow",
+      "notes": "listing containers is read-only"
+    },
+    {
+      "id": "benign-private-network-post",
+      "category": "benign",
+      "toolName": "http_request",
+      "params": { "method": "POST", "url": "http://192.168.1.100:8080/api" },
+      "expected": "allow",
+      "notes": "POST to private network is local"
+    }
+  ]
+}

@@ -32,7 +32,7 @@ import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, "..");
+const DEFAULT_ROOT = resolve(__dirname, "..");
 
 // ---- arg parsing -----------------------------------------------------------
 
@@ -86,30 +86,30 @@ any write. To undo, restore from the .bak or use \`npm run revoke\`.
 
 // ---- helpers ---------------------------------------------------------------
 
-function nowIso(): string {
+export function nowIso(): string {
   return new Date().toISOString();
 }
 
-function backupName(target: string): string {
-  const stamp = nowIso().replace(/[:.]/g, "-");
+export function backupName(target: string, now: () => string = nowIso): string {
+  const stamp = now().replace(/[:.]/g, "-");
   return `${target}.${stamp}.bak`;
 }
 
-function constitutionHash(): string {
-  const path = resolve(root, "constitution.json");
+export function computeConstitutionHash(rootDir: string = DEFAULT_ROOT): string {
+  const path = resolve(rootDir, "constitution.json");
   const bytes = readFileSync(path);
   return bytesToHex(sha256(bytes));
 }
 
-function fillTemplate(tmpl: string, hash: string, ts: string): string {
+export function fillTemplate(tmpl: string, hash: string, ts: string): string {
   return tmpl
     .replace(/\[CONSTITUTION_HASH\]/g, hash)
     .replace(/\[TIMESTAMP\]/g, ts);
 }
 
-const ADOPTION_MARKER = "Freedom Preserving Protocol";
+export const ADOPTION_MARKER = "Freedom Preserving Protocol";
 
-function alreadyAdopted(existing: string): boolean {
+export function alreadyAdopted(existing: string): boolean {
   return existing.includes(ADOPTION_MARKER);
 }
 
@@ -117,7 +117,7 @@ function ensureTrailingNewline(s: string): string {
   return s.endsWith("\n") ? s : s + "\n";
 }
 
-function appendSafely(
+export function appendSafely(
   target: string,
   block: string,
   label: string,
@@ -165,6 +165,42 @@ function appendSafely(
 
 // ---- main ------------------------------------------------------------------
 
+export type AdoptOptions = {
+  soul?: string;
+  memory?: string;
+  dryRun?: boolean;
+  rootDir?: string;
+};
+
+export type AdoptResult = {
+  soul?: "appended" | "skipped" | "created";
+  memory?: "appended" | "skipped" | "created";
+};
+
+export function adoptTargets(opts: AdoptOptions): AdoptResult {
+  const rootDir = opts.rootDir ?? DEFAULT_ROOT;
+  const hash = computeConstitutionHash(rootDir);
+  const ts = nowIso();
+  const dryRun = opts.dryRun ?? false;
+  const result: AdoptResult = {};
+
+  if (opts.soul) {
+    const tmplPath = resolve(rootDir, "adoption", "SOUL-BLOCK.md");
+    const tmpl = readFileSync(tmplPath, "utf-8");
+    const block = fillTemplate(tmpl, hash, ts);
+    result.soul = appendSafely(resolve(opts.soul), block, "SOUL ", dryRun);
+  }
+
+  if (opts.memory) {
+    const tmplPath = resolve(rootDir, "adoption", "MEMORY-ENTRY.md");
+    const tmpl = readFileSync(tmplPath, "utf-8");
+    const block = fillTemplate(tmpl, hash, ts);
+    result.memory = appendSafely(resolve(opts.memory), block, "MEM  ", dryRun);
+  }
+
+  return result;
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -175,7 +211,7 @@ function main() {
     process.exit(0);
   }
 
-  const hash = constitutionHash();
+  const hash = computeConstitutionHash();
   const ts = nowIso();
 
   console.log(`Constitution hash: ${hash}`);
@@ -186,7 +222,7 @@ function main() {
   let any = false;
 
   if (args.soul) {
-    const tmplPath = resolve(root, "adoption", "SOUL-BLOCK.md");
+    const tmplPath = resolve(DEFAULT_ROOT, "adoption", "SOUL-BLOCK.md");
     const tmpl = readFileSync(tmplPath, "utf-8");
     const block = fillTemplate(tmpl, hash, ts);
     appendSafely(resolve(args.soul), block, "SOUL ", args.dryRun);
@@ -194,7 +230,7 @@ function main() {
   }
 
   if (args.memory) {
-    const tmplPath = resolve(root, "adoption", "MEMORY-ENTRY.md");
+    const tmplPath = resolve(DEFAULT_ROOT, "adoption", "MEMORY-ENTRY.md");
     const tmpl = readFileSync(tmplPath, "utf-8");
     const block = fillTemplate(tmpl, hash, ts);
     appendSafely(resolve(args.memory), block, "MEM  ", args.dryRun);
@@ -208,4 +244,10 @@ function main() {
   }
 }
 
-main();
+const isDirectInvocation =
+  import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}` ||
+  import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, "/")}`;
+
+if (isDirectInvocation) {
+  main();
+}

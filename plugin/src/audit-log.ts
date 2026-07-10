@@ -64,6 +64,7 @@ export type EnforcementEvent = {
   agentId?: string | undefined;
   runId?: string | undefined;
   sessionKey?: string | undefined;
+  toolCallId?: string | undefined;
   classification: string;
   decision: "block" | "approval" | "allow";
   reason: string;
@@ -99,6 +100,7 @@ export function appendEnforcementEntry(
     agentId: event.agentId ?? null,
     runId: event.runId ?? null,
     sessionKey: event.sessionKey ?? null,
+    toolCallId: event.toolCallId ?? null,
     reason: event.reason.slice(0, 280),
     constitutionHash: event.constitutionHash,
   };

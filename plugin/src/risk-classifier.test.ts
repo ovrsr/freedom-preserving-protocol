@@ -12,6 +12,17 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { classifyToolCall } from "./risk-classifier.js";
+import { createTempWorkspace } from "./test-helpers.js";
+
+test("test helper workspace is isolated from .openclaw", () => {
+  const ws = createTempWorkspace("fpp-classifier-");
+  try {
+    assert.ok(!/[\\/]\.openclaw([\\/]|$)/.test(ws.path));
+    ws.writeFile("marker.txt", "ok");
+  } finally {
+    ws.cleanup();
+  }
+});
 
 test("delete on .ssh/id_ed25519 is fs.delete.protected -> block", () => {
   const r = classifyToolCall("filesystem_delete", { path: "/home/user/.ssh/id_ed25519" });

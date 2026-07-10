@@ -1,6 +1,6 @@
 # Engineering Assurance Foundation
 
-**Status:** PENDING
+**Status:** COMPLETE
 **Created:** 2026-07-10
 **Scope:** In: CI, deterministic local verification, broader baseline tests, coverage reporting, fail-hard publishing, runtime pinning, package/SBOM checks. Out: protocol-v2 semantics, security-default changes, conformance receipts, governance mechanisms, and signed release attestations.
 
@@ -33,18 +33,18 @@ This is Plan 2 of 7. Implement after the immediate documentation reconciliation 
 
 ## Progress Tracking
 
-- [ ] Task 1: Add tracked continuous integration
-- [ ] Task 2: Add one root verification entry point and pin the supported runtime
-- [ ] Task 3: Add coverage instrumentation and initial thresholds
-- [ ] Task 4: Build reusable plugin test harnesses
-- [ ] Task 5: Cover enforcement configuration, audit, and hook integration
-- [ ] Task 6: Cover trust handshake, graph, persistence, group, and tool wiring
-- [ ] Task 7: Make root operational scripts testable
-- [ ] Task 8: Establish an independent adversarial fixture corpus
-- [ ] Task 9: Make every publish path fail hard on verification errors
-- [ ] Task 10: Verify package reproducibility and generate SBOMs
+- [x] Task 1: Add tracked continuous integration
+- [x] Task 2: Add one root verification entry point and pin the supported runtime
+- [x] Task 3: Add coverage instrumentation and initial thresholds
+- [x] Task 4: Build reusable plugin test harnesses
+- [x] Task 5: Cover enforcement configuration, audit, and hook integration
+- [x] Task 6: Cover trust handshake, graph, persistence, group, and tool wiring
+- [x] Task 7: Make root operational scripts testable
+- [x] Task 8: Establish an independent adversarial fixture corpus
+- [x] Task 9: Make every publish path fail hard on verification errors
+- [x] Task 10: Verify package reproducibility and generate SBOMs
 
-**Total Tasks:** 10 | **Completed:** 0 | **Remaining:** 10
+**Total Tasks:** 10 | **Completed:** 10 | **Remaining:** 0
 
 ## Implementation Tasks
 
@@ -68,10 +68,10 @@ This is Plan 2 of 7. Implement after the immediate documentation reconciliation 
 5. Validate the workflow syntax and run safe local equivalents of every command.
 
 **Definition of Done:**
-- [ ] CI is tracked by Git
-- [ ] Every existing verification command runs in CI
-- [ ] The workflow uses a supported Node version
-- [ ] Package checks have no registry side effects
+- [x] CI is tracked by Git
+- [x] Every existing verification command runs in CI
+- [x] The workflow uses a supported Node version
+- [x] Package checks have no registry side effects
 
 ### Task 2: Add one root verification entry point and pin the supported runtime
 
@@ -95,10 +95,10 @@ This is Plan 2 of 7. Implement after the immediate documentation reconciliation 
 5. Run each component command separately, then run the aggregate command.
 
 **Definition of Done:**
-- [ ] One root command covers all packages
-- [ ] Root and plugin Node requirements agree
-- [ ] Lockfile metadata matches the manifest
-- [ ] Documentation names the canonical command
+- [x] One root command covers all packages
+- [x] Root and plugin Node requirements agree
+- [x] Lockfile metadata matches the manifest
+- [x] Documentation names the canonical command
 
 ### Task 3: Add coverage instrumentation and initial thresholds
 
@@ -120,10 +120,10 @@ This is Plan 2 of 7. Implement after the immediate documentation reconciliation 
 5. Wire coverage into CI and document how thresholds may be raised.
 
 **Definition of Done:**
-- [ ] Coverage commands pass
-- [ ] CI fails below documented thresholds
-- [ ] Thresholds are sourced from a fresh baseline
-- [ ] No production paths are hidden without rationale
+- [x] Coverage commands pass
+- [x] CI fails below documented thresholds
+- [x] Thresholds are sourced from a fresh baseline
+- [x] No production paths are hidden without rationale
 
 ### Task 4: Build reusable plugin test harnesses
 
@@ -145,10 +145,10 @@ This is Plan 2 of 7. Implement after the immediate documentation reconciliation 
 5. Run type checks and both test suites.
 
 **Definition of Done:**
-- [ ] Test workspaces are isolated and cleaned
-- [ ] Hook registration and callback behavior can be asserted
-- [ ] Time-dependent tests do not busy-wait
-- [ ] Both plugin suites pass
+- [x] Test workspaces are isolated and cleaned
+- [x] Hook registration and callback behavior can be asserted
+- [x] Time-dependent tests do not busy-wait
+- [x] Both plugin suites pass
 
 ### Task 5: Cover enforcement configuration, audit, and hook integration
 
@@ -170,10 +170,10 @@ This is Plan 2 of 7. Implement after the immediate documentation reconciliation 
 5. Run enforcement tests, typecheck, and coverage.
 
 **Definition of Done:**
-- [ ] Block, approval, resolution, and allow branches are covered
-- [ ] Config precedence is explicit
-- [ ] Correlation identifiers survive the hook boundary
-- [ ] No Plan 4 behavior change is implemented early
+- [x] Block, approval, resolution, and allow branches are covered
+- [x] Config precedence is explicit
+- [x] Correlation identifiers survive the hook boundary
+- [x] No Plan 4 behavior change is implemented early
 
 ### Task 6: Cover trust handshake, graph, persistence, group, and tool wiring
 
@@ -196,10 +196,10 @@ This is Plan 2 of 7. Implement after the immediate documentation reconciliation 
 5. Run trust tests, typecheck, and coverage.
 
 **Definition of Done:**
-- [ ] Every named trust module has direct tests
-- [ ] Tests use temporary paths and deterministic time
-- [ ] Existing valid signed behavior remains covered
-- [ ] Security flaws are not frozen as compatibility guarantees
+- [x] Every named trust module has direct tests
+- [x] Tests use temporary paths and deterministic time
+- [x] Existing valid signed behavior remains covered
+- [x] Security flaws are not frozen as compatibility guarantees
 
 ### Task 7: Make root operational scripts testable
 
@@ -226,10 +226,10 @@ This is Plan 2 of 7. Implement after the immediate documentation reconciliation 
 5. Run root tests, constitution verification, and both plugin suites.
 
 **Definition of Done:**
-- [ ] Critical root scripts have direct automated tests
-- [ ] CLI behavior remains backward compatible
-- [ ] Tests never touch real agent workspaces
-- [ ] Aggregate verification passes
+- [x] Critical root scripts have direct automated tests
+- [x] CLI behavior remains backward compatible
+- [x] Tests never touch real agent workspaces
+- [x] Aggregate verification passes
 
 ### Task 8: Establish an independent adversarial fixture corpus
 
@@ -251,10 +251,10 @@ This is Plan 2 of 7. Implement after the immediate documentation reconciliation 
 5. Run the corpus in CI and report false-negative/false-positive counts by category.
 
 **Definition of Done:**
-- [ ] Fixtures are independent of classifier source
-- [ ] Corpus reports results by risk category
-- [ ] Benign controls prevent one-sided hardening
-- [ ] CI runs the corpus
+- [x] Fixtures are independent of classifier source
+- [x] Corpus reports results by risk category
+- [x] Benign controls prevent one-sided hardening
+- [x] CI runs the corpus
 
 ### Task 9: Make every publish path fail hard on verification errors
 
@@ -275,10 +275,10 @@ This is Plan 2 of 7. Implement after the immediate documentation reconciliation 
 5. Exercise all publish targets in dry-run mode with simulated failures.
 
 **Definition of Done:**
-- [ ] Enforcement and trust tests are mandatory
-- [ ] Typecheck and build failures stop publication
-- [ ] Dry-run tests cover every publish target
-- [ ] No registry publication occurs during tests
+- [x] Enforcement and trust tests are mandatory
+- [x] Typecheck and build failures stop publication
+- [x] Dry-run tests cover every publish target
+- [x] No registry publication occurs during tests
 
 ### Task 10: Verify package reproducibility and generate SBOMs
 
@@ -300,10 +300,10 @@ This is Plan 2 of 7. Implement after the immediate documentation reconciliation 
 5. Add CI artifacts for checksums, file inventories, and SBOMs.
 
 **Definition of Done:**
-- [ ] Package contents are compared deterministically
-- [ ] SBOMs are generated for all distributable artifacts
-- [ ] CI retains assurance artifacts
-- [ ] No signed-manifest claim is made before Plan 6
+- [x] Package contents are compared deterministically
+- [x] SBOMs are generated for all distributable artifacts
+- [x] CI retains assurance artifacts
+- [x] No signed-manifest claim is made before Plan 6
 
 ## Testing Strategy
 
