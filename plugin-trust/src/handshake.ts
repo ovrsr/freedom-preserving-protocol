@@ -24,6 +24,7 @@ import {
   verifyMerkleProof,
   type MerkleProof,
 } from "./merkle-bridge.js";
+import type { LegacyConstitutionalClaimV1 } from "@ovrsr/fpp-protocol-core";
 
 export enum HandshakeState {
   INITIATED = "initiated",
@@ -34,15 +35,8 @@ export enum HandshakeState {
   FAILED = "failed",
 }
 
-export interface ConstitutionalClaim {
-  agentId: string;
-  constitutionHash: string;
-  adoptedAt: string;
-  auditMerkleRoot: string;
-  auditEntryCount: number;
-  chainIntact: boolean;
-  recentLaws: string[];
-}
+/** Legacy v1 claim shape — declaration-only when parsed via parseClaim. */
+export type ConstitutionalClaim = LegacyConstitutionalClaimV1;
 
 export interface HandshakeEvidence {
   type:

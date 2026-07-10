@@ -1,11 +1,12 @@
 # Compatibility
 
-Freedom Preserving Protocol ships two installable artifacts at two layers. Each has different compatibility requirements. Read this before installing.
+Freedom Preserving Protocol ships installable artifacts at three layers. Each has different compatibility requirements. Read this before installing.
 
 ## Layer summary
 
 | Layer | Artifact | What it can do | What it cannot do |
 |-------|----------|----------------|-------------------|
+| Protocol contracts | `@ovrsr/fpp-protocol-core` | Shared schemas, canonicalization, Merkle, identity, claim/freshness/receipt contracts used by both plugins. | Enforce policy at runtime; emit receipts by itself. |
 | Prompt-layer | This skill (`freedom-preserving-protocol`) | Add normative text to the agent's context; shape reasoning; describe a five-question check the model runs in-context. | Mechanically veto a tool call. Survive prompt injection. Survive a hostile skill loaded after this one. |
 | Dispatcher-layer | Companion plugin (`@ovrsr/openclaw-fpp-plugin`) | Register a real `before_tool_call` hook. Return `block: true` / `blockReason` for clear violations. Return `requireApproval` for ambiguous cases. Write enforcement events to a parallel audit log. | Survive a malicious operator with shell access. Survive a compromised OpenClaw runtime. Survive a user who manually disables the plugin via `openclaw plugins disable`. |
 
@@ -180,12 +181,14 @@ The plugin reads its configuration from your OpenClaw config:
 
 If you do not set these, sensible defaults apply (see `plugin/src/config.ts` and `plugin-trust/openclaw.plugin.json`). The trust plugin uses `fallbackAuditLogPath` when `constitution-audit.jsonl` has no entries yet, so handshakes can bootstrap from enforcement audit activity before the first heartbeat. Set `fallbackAuditLogPath` to `null` if you run trust without the enforcement plugin.
 
-## Claim-format migration terminology (reserved)
+## Claim-format migration terminology
 
-A future protocol-core revision (see `docs/plans/` — "protocol core v2 contracts") will introduce a versioned claim schema. To keep documentation stable across that migration, the following terms are **reserved now** and must be used consistently by later plans:
+`@ovrsr/fpp-protocol-core` is the shared contract package. Published plugins pin an **exact** core version (no ranges) so protocol drift cannot happen silently. Local development uses npm workspaces; isolated plugin installs must resolve core with `--ignore-scripts` (OpenClaw install style).
 
-- **Legacy-v1 claim** — the current handshake claim format produced by `plugin-trust` v1.x: timestamped, optionally Ed25519-signed (`requireSignedClaims` defaults to `false`), no schema-version field, no freshness nonce.
-- **v2 claim** — the future claim format: carries an explicit `schemaVersion`, mandatory signature, and freshness challenge. Does not exist yet; anything describing v2 behavior is `PROPOSED` (see `docs/CAPABILITY_STATUS.md`).
+Release order: build/test/pack core → skill → enforcement plugin → trust plugin. Rollback: restore the previous exact core version before rolling back dependent plugins. See `docs/RELEASE_ASSURANCE.md`.
+
+- **Legacy-v1 claim** — handshake claim format without `schemaVersion`: timestamped, optionally Ed25519-signed (`requireSignedClaims` defaults to `false`), no freshness nonce. Parsed as **declaration-only**; never silently escalated to v2 assurance.
+- **v2 claim** — carries explicit `schemaVersion: 2`, key-bound agent ID (`fpp:ed25519:<fingerprint>`), claim class, and optional freshness envelope. Runtime-validated by `parseClaim`.
 - **Migration window** — the period during which a verifier accepts both formats. Verifiers must report *which* format a peer presented rather than silently normalizing.
 - **Legacy acceptance policy** — a verifier-local setting for whether legacy-v1 claims are accepted, warned about, or rejected during the migration window.
 

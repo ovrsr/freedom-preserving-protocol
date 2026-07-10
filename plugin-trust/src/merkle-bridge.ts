@@ -2,103 +2,32 @@
  * Merkle bridge for the FPP trust plugin.
  *
  * Reads the constitution audit JSONL log and provides Merkle root computation
- * and proof generation/verification. Used during handshakes so agents can
- * prove they are actually running their constitutional audit checks.
- *
- * Implementation mirrors scripts/merkle.ts from the parent skill package
- * but uses node:crypto SHA-256 (consistent with trust-graph.ts) and is
- * self-contained — no cross-package dependency.
+ * and proof generation/verification. Merkle primitives live in
+ * `@ovrsr/fpp-protocol-core`; this module retains file selection and leaf
+ * extraction only.
  *
  * Fallback: when the primary audit log (constitution-audit.jsonl) has zero
  * entries, the bridge optionally falls back to a secondary path (e.g. the
- * enforcement plugin's fpp-plugin-audit.jsonl). This allows the trust
- * handshake to bootstrap from enforcement audit entries when no heartbeat/
- * adoption entries exist yet.
+ * enforcement plugin's fpp-plugin-audit.jsonl).
  */
 
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  computeMerkleRoot,
+  createMerkleProof,
+  verifyMerkleProof,
+  type MerkleProof,
+  type MerkleProofStep,
+} from "@ovrsr/fpp-protocol-core";
 
-function sha256Hex(data: string): string {
-  return createHash("sha256").update(data, "utf8").digest("hex");
-}
-
-function hashPair(a: string, b: string): string {
-  return sha256Hex(a + b);
-}
-
-export function computeMerkleRoot(leaves: string[]): string {
-  if (leaves.length === 0) return "0".repeat(64);
-  if (leaves.length === 1) return leaves[0]!;
-
-  const level: string[] = [];
-  for (let i = 0; i < leaves.length; i += 2) {
-    const left = leaves[i]!;
-    const right = leaves[i + 1] ?? left;
-    level.push(hashPair(left, right));
-  }
-  return computeMerkleRoot(level);
-}
-
-export type MerkleProofStep = {
-  hash: string;
-  position: "left" | "right";
+export {
+  computeMerkleRoot,
+  createMerkleProof,
+  verifyMerkleProof,
+  type MerkleProof,
+  type MerkleProofStep,
 };
-
-export type MerkleProof = {
-  leaf: string;
-  index: number;
-  path: MerkleProofStep[];
-  root: string;
-};
-
-export function createMerkleProof(
-  leaves: string[],
-  index: number,
-): MerkleProof | null {
-  if (index < 0 || index >= leaves.length || leaves.length === 0) return null;
-
-  const path: MerkleProofStep[] = [];
-  let currentLevel = [...leaves];
-  let idx = index;
-
-  while (currentLevel.length > 1) {
-    if (currentLevel.length % 2 === 1) {
-      currentLevel.push(currentLevel[currentLevel.length - 1]!);
-    }
-    const siblingIdx = idx % 2 === 0 ? idx + 1 : idx - 1;
-    path.push({
-      hash: currentLevel[siblingIdx]!,
-      position: idx % 2 === 0 ? "right" : "left",
-    });
-
-    const nextLevel: string[] = [];
-    for (let i = 0; i < currentLevel.length; i += 2) {
-      nextLevel.push(hashPair(currentLevel[i]!, currentLevel[i + 1]!));
-    }
-    currentLevel = nextLevel;
-    idx = Math.floor(idx / 2);
-  }
-
-  return {
-    leaf: leaves[index]!,
-    index,
-    path,
-    root: currentLevel[0]!,
-  };
-}
-
-export function verifyMerkleProof(proof: MerkleProof): boolean {
-  let current = proof.leaf;
-  for (const step of proof.path) {
-    current =
-      step.position === "left"
-        ? hashPair(step.hash, current)
-        : hashPair(current, step.hash);
-  }
-  return current === proof.root;
-}
 
 /**
  * Reads the audit JSONL log and collects per-entry hashes (the `hash` field
@@ -133,9 +62,14 @@ export class MerkleBridge {
    *   When the primary log has zero entries, the fallback is used. This bridges
    *   the enforcement plugin's audit trail into the trust handshake.
    */
-  constructor(auditLogPath: string, basePath: string = process.cwd(), fallbackLogPath?: string | null) {
+  constructor(
+    auditLogPath: string,
+    basePath: string = process.cwd(),
+    fallbackLogPath?: string | null,
+  ) {
     this.auditLogPath = resolve(basePath, auditLogPath);
-    this.fallbackLogPath = fallbackLogPath != null ? resolve(basePath, fallbackLogPath) : null;
+    this.fallbackLogPath =
+      fallbackLogPath != null ? resolve(basePath, fallbackLogPath) : null;
   }
 
   private getActiveLeaves(): string[] {

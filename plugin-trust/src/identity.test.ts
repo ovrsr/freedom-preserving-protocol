@@ -14,5 +14,8 @@ describe("identity", () => {
     const b = loadOrCreateIdentity(keyPath, "/");
     assert.equal(a.agentId, b.agentId);
     assert.equal(a.publicKeyHex, b.publicKeyHex);
+    assert.match(a.agentId, /^fpp:ed25519:[0-9a-f]{64}$/);
+    assert.match(a.legacyAlias, /^fpp-[0-9a-f]{16}$/);
+    assert.equal(a.keyAlgorithm, "ed25519");
   });
 });

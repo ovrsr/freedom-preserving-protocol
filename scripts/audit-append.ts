@@ -38,41 +38,12 @@ import {
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sha256 } from "@noble/hashes/sha256";
-import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
+import { bytesToHex } from "@noble/hashes/utils";
+import { hashEntryV1 as hashEntry } from "@ovrsr/fpp-protocol-core";
 import { computeMerkleRoot } from "./merkle.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
-
-// ---- canonical JSON --------------------------------------------------------
-
-/**
- * Canonical JSON: sorted keys, no extra whitespace. This is required so the
- * hash is reproducible across runtimes and verifiers.
- */
-function canonicalize(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return "[" + value.map(canonicalize).join(",") + "]";
-  }
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return (
-    "{" +
-    keys
-      .map((k) => JSON.stringify(k) + ":" + canonicalize(obj[k]))
-      .join(",") +
-    "}"
-  );
-}
-
-function hashEntry(entry: Record<string, unknown>): string {
-  const { hash: _ignored, ...rest } = entry;
-  void _ignored;
-  return bytesToHex(sha256(utf8ToBytes(canonicalize(rest))));
-}
 
 // ---- args ------------------------------------------------------------------
 

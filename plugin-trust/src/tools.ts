@@ -8,6 +8,7 @@
  */
 
 import { Type, type Static } from "@sinclair/typebox";
+import { parseClaim } from "@ovrsr/fpp-protocol-core";
 import type { AgentIdentity } from "./identity.js";
 import { signClaim } from "./claims.js";
 import type { ConstitutionalClaim, HandshakeResult } from "./handshake.js";
@@ -148,12 +149,16 @@ export function executeHandshakeVerify(
     );
   }
 
-  const peerClaim = parsed as unknown as ConstitutionalClaim;
-  if (!peerClaim.agentId || !peerClaim.constitutionHash) {
+  const claimParse = parseClaim(parsed);
+  if (!claimParse.ok) {
     return failResult(
-      "Invalid claim: missing agentId or constitutionHash.",
+      `Invalid claim: ${claimParse.error}. ${claimParse.diagnostics.join("; ")}`,
     );
   }
+  if (claimParse.kind === "legacy-v1") {
+    // Accepted for compatibility window as declaration-only — never escalated.
+  }
+  const peerClaim = claimParse.claim as ConstitutionalClaim;
 
   const merkleProof = parsed.auditMerkleProof as MerkleProof | undefined;
 

@@ -3,6 +3,9 @@ plugin/dist/
 plugin/node_modules/
 plugin-trust/dist/
 plugin-trust/node_modules/
+packages/*/dist/
+packages/*/node_modules/
+packages/*/coverage/
 
 # Runtime audit logs (per-agent; not committed)
 .openclaw/

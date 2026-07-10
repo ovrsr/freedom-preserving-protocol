@@ -9,6 +9,12 @@
     "type": "git",
     "url": "https://github.com/ovrsr/freedom-preserving-protocol"
   },
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "plugin",
+    "plugin-trust"
+  ],
   "scripts": {
     "sign": "npx tsx scripts/sign-constitution.ts",
     "verify": "npx tsx scripts/verify-constitution.ts",
@@ -19,11 +25,13 @@
     "audit:verify": "npx tsx scripts/audit-verify.ts",
     "audit:proof": "npx tsx scripts/audit-proof.ts",
     "self-test": "npx tsx scripts/self-test.ts",
-    "typecheck": "npm --prefix plugin run typecheck && npm --prefix plugin-trust run typecheck",
-    "test": "npm --prefix plugin test && npm --prefix plugin-trust test",
-    "test:coverage": "npm --prefix plugin run test:coverage && npm --prefix plugin-trust run test:coverage",
-    "test:all": "npm test && npm run test:scripts && npm run test:corpus && npm run self-test",
+    "build:core": "npm run build -w @ovrsr/fpp-protocol-core",
+    "typecheck": "npm run typecheck -w @ovrsr/fpp-protocol-core && npm run typecheck -w @ovrsr/openclaw-fpp-plugin && npm run typecheck -w @ovrsr/openclaw-fpp-trust",
+    "test": "npm run test -w @ovrsr/fpp-protocol-core && npm run test -w @ovrsr/openclaw-fpp-plugin && npm run test -w @ovrsr/openclaw-fpp-trust",
+    "test:coverage": "npm run test:coverage -w @ovrsr/openclaw-fpp-plugin && npm run test:coverage -w @ovrsr/openclaw-fpp-trust",
+    "test:all": "npm test && npm run test:scripts && npm run test:interop && npm run test:corpus && npm run self-test",
     "test:scripts": "npx tsx --test \"scripts/**/*.test.ts\"",
+    "test:interop": "npx tsx --test \"test/protocol-core-interoperability.test.ts\"",
     "test:corpus": "npx tsx scripts/run-classifier-corpus.ts",
     "verify:all": "bash scripts/verify-all.sh",
     "assurance:packages": "npx tsx scripts/package-reproducibility.ts assurance-artifacts",

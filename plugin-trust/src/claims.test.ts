@@ -86,6 +86,45 @@ describe("signClaim / verifyClaim", () => {
     assert.equal(result.valid, false);
   });
 
+  it("rejects mismatched agentId and publicKey", () => {
+    const identity = loadOrCreateIdentity(keyPath, "/");
+    const claim: ConstitutionalClaim = {
+      agentId: identity.agentId,
+      constitutionHash: "e".repeat(64),
+      adoptedAt: "2026-01-01T00:00:00Z",
+      auditMerkleRoot: "f".repeat(64),
+      auditEntryCount: 1,
+      chainIntact: true,
+      recentLaws: [],
+    };
+    const signed = signClaim(claim, identity);
+    signed.agentId = "fpp:ed25519:" + "0".repeat(64);
+    const result = verifyClaim(signed);
+    assert.equal(result.valid, false);
+    assert.match(result.reason, /agentId does not match/i);
+  });
+
+  it("binds v2 agentId and keyAlgorithm into the signed claim", () => {
+    const identity = loadOrCreateIdentity(keyPath, "/");
+    assert.match(identity.agentId, /^fpp:ed25519:[0-9a-f]{64}$/);
+    assert.match(identity.legacyAlias, /^fpp-[0-9a-f]{16}$/);
+    const signed = signClaim(
+      {
+        agentId: "ignored-will-be-replaced",
+        constitutionHash: "1".repeat(64),
+        adoptedAt: "2026-01-01T00:00:00Z",
+        auditMerkleRoot: "2".repeat(64),
+        auditEntryCount: 0,
+        chainIntact: true,
+        recentLaws: [],
+      },
+      identity,
+    );
+    assert.equal(signed.agentId, identity.agentId);
+    assert.equal(signed.keyAlgorithm, "ed25519");
+    assert.equal(verifyClaim(signed).valid, true);
+  });
+
   // cleanup
   after(() => {
     rmSync(tmp, { recursive: true, force: true });

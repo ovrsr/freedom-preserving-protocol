@@ -11,6 +11,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { parseClaim } from "@ovrsr/fpp-protocol-core";
 import type { AgentIdentity } from "./identity.js";
 import { signClaim, verifyClaim, type SignedClaim } from "./claims.js";
 import type { ConstitutionalClaim } from "./handshake.js";
@@ -194,7 +195,20 @@ export function registerFppTrustCli(
 
       let claim: SignedClaim;
       try {
-        claim = JSON.parse(raw) as SignedClaim;
+        const parsed: unknown = JSON.parse(raw);
+        const claimParse = parseClaim(parsed);
+        if (!claimParse.ok) {
+          console.error(`Invalid claim: ${claimParse.error}`);
+          for (const d of claimParse.diagnostics) console.error(`  - ${d}`);
+          process.exitCode = 2;
+          return;
+        }
+        if (claimParse.assurance === "declaration-only") {
+          console.error(
+            "Note: legacy v1 claim accepted as declaration-only (not escalated to v2).",
+          );
+        }
+        claim = parsed as SignedClaim;
       } catch {
         console.error("File does not contain valid JSON.");
         process.exitCode = 2;

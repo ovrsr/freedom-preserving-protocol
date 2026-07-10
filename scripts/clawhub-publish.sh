@@ -7,6 +7,8 @@ OWNER="ovrsr"
 SOURCE_REPO="https://github.com/ovrsr/freedom-preserving-protocol"
 
 # ── Targets ──────────────────────────────────────────────────────────
+CORE_DIR="packages/protocol-core"
+CORE_NAME="@ovrsr/fpp-protocol-core"
 SKILL_SLUG="freedom-preserving-protocol"
 PLUGIN_NAME="@ovrsr/openclaw-fpp-plugin"
 PLUGIN_DIR="plugin"
@@ -38,7 +40,11 @@ TARGETS:
   skill              Root skill (freedom-preserving-protocol)
   plugin             Enforcement plugin (@ovrsr/openclaw-fpp-plugin)
   trust              Trust plugin (@ovrsr/openclaw-fpp-trust)
-  all                All three targets
+  all                Skill + plugins (protocol-core is built/checked first)
+
+Release order for consumers: protocol-core build + exact pin check, then
+skill / enforcement plugin / trust plugin. Rollback: republish the previous
+exact core version before rolling back dependent plugins.
 
 OPTIONS:
   --bump <level>     Version bump level: major | minor | patch (default: patch)
@@ -122,6 +128,31 @@ require_lockfile_sync() {
   [[ "$pkg_ver" == "$lock_ver" ]] || die "$label version mismatch: package.json=$pkg_ver lockfile=$lock_ver"
 }
 
+require_exact_core_dependency() {
+  local pkg="$1" label="$2"
+  local core_ver pinned
+  core_ver="$(get_json_version "$REPO_ROOT/$CORE_DIR/package.json")"
+  pinned="$(node -p "
+    const p=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));
+    (p.dependencies && p.dependencies['@ovrsr/fpp-protocol-core']) || ''
+  " "$pkg" | tr -d '\r\n')"
+  [[ -n "$pinned" ]] || die "$label missing dependency $CORE_NAME"
+  if [[ "$pinned" == *"^"* || "$pinned" == *"~"* || "$pinned" == *"*"* ]]; then
+    die "$label must pin exact $CORE_NAME (got $pinned)"
+  fi
+  [[ "$pinned" == "$core_ver" ]] || die "$label $CORE_NAME mismatch: pinned=$pinned core=$core_ver"
+  green "  ✓ $label pins $CORE_NAME@$core_ver"
+}
+
+run_strict_checks_core() {
+  bold "Building and testing protocol-core before consumers..."
+  (cd "$REPO_ROOT" && npm run build -w "$CORE_NAME")
+  (cd "$REPO_ROOT" && npm run typecheck -w "$CORE_NAME")
+  (cd "$REPO_ROOT" && npm test -w "$CORE_NAME")
+  [[ -f "$REPO_ROOT/$CORE_DIR/dist/index.js" ]] || die "protocol-core build missing dist/index.js"
+  green "  ✓ protocol-core checks passed (core before consumers)"
+}
+
 run_strict_checks_skill() {
   bold "Running pre-publish checks for skill (fail-hard)..."
   (cd "$REPO_ROOT" && npm run verify)
@@ -131,26 +162,22 @@ run_strict_checks_skill() {
 
 run_strict_checks_plugin() {
   bold "Building, typechecking, and testing enforcement plugin (fail-hard)..."
-  (cd "$REPO_ROOT/$PLUGIN_DIR" && npm run typecheck)
-  (cd "$REPO_ROOT/$PLUGIN_DIR" && npm run build)
-  (cd "$REPO_ROOT/$PLUGIN_DIR" && npm test)
-  (cd "$REPO_ROOT" && bash scripts/verify-pack.sh)
-  require_lockfile_sync \
-    "$REPO_ROOT/$PLUGIN_DIR/package.json" \
-    "$REPO_ROOT/$PLUGIN_DIR/package-lock.json" \
-    "enforcement plugin"
+  run_strict_checks_core
+  require_exact_core_dependency "$REPO_ROOT/$PLUGIN_DIR/package.json" "enforcement plugin"
+  (cd "$REPO_ROOT" && npm run typecheck -w "$PLUGIN_NAME")
+  (cd "$REPO_ROOT" && npm run build -w "$PLUGIN_NAME")
+  (cd "$REPO_ROOT" && npm test -w "$PLUGIN_NAME")
+  (cd "$REPO_ROOT" && SKIP_ISOLATED_INSTALL=1 bash scripts/verify-pack.sh)
   green "  ✓ Enforcement plugin checks passed"
 }
 
 run_strict_checks_trust() {
   bold "Building, typechecking, and testing trust plugin (fail-hard)..."
-  (cd "$REPO_ROOT/$TRUST_DIR" && npm run typecheck)
-  (cd "$REPO_ROOT/$TRUST_DIR" && npm run build)
-  (cd "$REPO_ROOT/$TRUST_DIR" && npm test)
-  require_lockfile_sync \
-    "$REPO_ROOT/$TRUST_DIR/package.json" \
-    "$REPO_ROOT/$TRUST_DIR/package-lock.json" \
-    "trust plugin"
+  run_strict_checks_core
+  require_exact_core_dependency "$REPO_ROOT/$TRUST_DIR/package.json" "trust plugin"
+  (cd "$REPO_ROOT" && npm run typecheck -w "$TRUST_NAME")
+  (cd "$REPO_ROOT" && npm run build -w "$TRUST_NAME")
+  (cd "$REPO_ROOT" && npm test -w "$TRUST_NAME")
   green "  ✓ Trust plugin checks passed"
 }
 
@@ -246,6 +273,8 @@ publish_plugin() {
 
   if [[ "$SKIP_TESTS" == "true" ]]; then
     yellow "  ⚠ UNSAFE: --skip-tests set (maintainer-only); skipping enforcement plugin verification"
+    yellow "  [order] protocol-core checked/built before enforcement plugin consumers"
+    require_exact_core_dependency "$REPO_ROOT/$PLUGIN_DIR/package.json" "enforcement plugin"
   else
     run_strict_checks_plugin
   fi
@@ -276,6 +305,8 @@ publish_trust() {
 
   if [[ "$SKIP_TESTS" == "true" ]]; then
     yellow "  ⚠ UNSAFE: --skip-tests set (maintainer-only); skipping trust plugin verification"
+    yellow "  [order] protocol-core checked/built before trust plugin consumers"
+    require_exact_core_dependency "$REPO_ROOT/$TRUST_DIR/package.json" "trust plugin"
   else
     run_strict_checks_trust
   fi
@@ -300,13 +331,15 @@ publish_trust() {
 # ── Status ───────────────────────────────────────────────────────────
 
 show_status() {
-  local skill_pkg skill_md plugin_ver trust_ver
+  local skill_pkg skill_md plugin_ver trust_ver core_ver
   skill_pkg="$(get_json_version "$REPO_ROOT/package.json")"
   skill_md="$(get_skill_version)"
   plugin_ver="$(get_json_version "$REPO_ROOT/$PLUGIN_DIR/package.json")"
   trust_ver="$(get_json_version "$REPO_ROOT/$TRUST_DIR/package.json")"
+  core_ver="$(get_json_version "$REPO_ROOT/$CORE_DIR/package.json")"
 
   bold "Current versions:"
+  echo "  Protocol core:         $core_ver  (build/check before plugin consumers)"
   echo "  Skill (package.json):  $skill_pkg"
   echo "  Skill (SKILL.md):      $skill_md"
   if [[ "$skill_pkg" != "$skill_md" ]]; then
@@ -374,7 +407,16 @@ case "$COMMAND" in
       skill)  publish_skill ;;
       plugin) publish_plugin ;;
       trust)  publish_trust ;;
-      all)    publish_skill; publish_plugin; publish_trust ;;
+      all)
+        bold "Release order: protocol-core checks, then skill, enforcement plugin, trust plugin"
+        yellow "  [order] protocol-core ($CORE_NAME) before consumers"
+        if [[ "$SKIP_TESTS" != "true" ]]; then
+          run_strict_checks_core
+        fi
+        publish_skill
+        publish_plugin
+        publish_trust
+        ;;
     esac
     ;;
 

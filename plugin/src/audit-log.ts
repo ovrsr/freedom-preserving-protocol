@@ -17,29 +17,9 @@ import {
   mkdirSync,
 } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { createHash } from "node:crypto";
+import { hashEntryV1 as hashEntry } from "@ovrsr/fpp-protocol-core";
 
 const ZERO = "0".repeat(64);
-
-function canonicalize(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return "[" + value.map(canonicalize).join(",") + "]";
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return (
-    "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalize(obj[k])).join(",") + "}"
-  );
-}
-
-function sha256Hex(s: string): string {
-  return createHash("sha256").update(s, "utf8").digest("hex");
-}
-
-function hashEntry(entry: Record<string, unknown>): string {
-  const { hash: _ignored, ...rest } = entry;
-  void _ignored;
-  return sha256Hex(canonicalize(rest));
-}
 
 function readPreviousHash(logPath: string): string {
   if (!existsSync(logPath)) return ZERO;

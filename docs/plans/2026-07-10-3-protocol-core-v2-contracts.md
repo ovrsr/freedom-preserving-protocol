@@ -1,6 +1,6 @@
 # Protocol Core and Versioned V2 Contracts
 
-**Status:** PENDING
+**Status:** COMPLETE
 **Created:** 2026-07-10
 **Scope:** In: a shared versioned protocol-core package, canonical serialization, Merkle primitives, key-bound identity, versioned claim classes, freshness envelopes, receipt/capsule/adoption schemas, and legacy-v1 parsing. Out: runtime policy changes, replay-cache persistence, receipt emission, trust scoring, governance ratification, and release publication itself.
 
@@ -55,17 +55,17 @@ No listed feature is intentionally removed. Legacy verification remains read-onl
 
 ## Progress Tracking
 
-- [ ] Task 1: Establish the workspace and protocol-core package
-- [ ] Task 2: Centralize canonical JSON and versioned digests
-- [ ] Task 3: Centralize legacy and v2 Merkle primitives
-- [ ] Task 4: Define key-bound agent identity and signing
-- [ ] Task 5: Define versioned claim envelopes and legacy migration
-- [ ] Task 6: Define freshness and replay contracts
-- [ ] Task 7: Define receipt, capsule, adoption, and evidence schemas
-- [ ] Task 8: Migrate both plugins and root scripts to shared contracts
-- [ ] Task 9: Harden package build, install, and release ordering
+- [x] Task 1: Establish the workspace and protocol-core package
+- [x] Task 2: Centralize canonical JSON and versioned digests
+- [x] Task 3: Centralize legacy and v2 Merkle primitives
+- [x] Task 4: Define key-bound agent identity and signing
+- [x] Task 5: Define versioned claim envelopes and legacy migration
+- [x] Task 6: Define freshness and replay contracts
+- [x] Task 7: Define receipt, capsule, adoption, and evidence schemas
+- [x] Task 8: Migrate both plugins and root scripts to shared contracts
+- [x] Task 9: Harden package build, install, and release ordering
 
-**Total Tasks:** 9 | **Completed:** 0 | **Remaining:** 9
+**Total Tasks:** 9 | **Completed:** 9 | **Remaining:** 0
 
 ## Implementation Tasks
 

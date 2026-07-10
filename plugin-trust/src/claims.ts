@@ -3,51 +3,47 @@
  *
  * A ConstitutionalClaim is canonicalized (sorted-key JSON), then signed
  * with the agent's Ed25519 identity key. Peers verify by checking the
- * signature against the embedded publicKey.
+ * signature against the embedded publicKey and that agentId matches the key.
  */
 
+import {
+  KEY_ALGORITHM,
+  canonicalize,
+  publicKeyMatchesAgentId,
+} from "@ovrsr/fpp-protocol-core";
 import type { AgentIdentity } from "./identity.js";
 import { verifySignature } from "./identity.js";
 import type { ConstitutionalClaim } from "./handshake.js";
-
-function canonicalize(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return "[" + value.map(canonicalize).join(",") + "]";
-  }
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return (
-    "{" +
-    keys
-      .map((k) => JSON.stringify(k) + ":" + canonicalize(obj[k]))
-      .join(",") +
-    "}"
-  );
-}
 
 export { canonicalize };
 
 export interface SignedClaim extends ConstitutionalClaim {
   publicKey: string;
   signature: string;
+  keyAlgorithm?: string;
 }
 
 /**
  * Produce a signed claim from raw claim fields + identity.
  * The signature covers the canonical JSON of all claim fields except
- * `signature` and `publicKey` themselves.
+ * `signature` and `publicKey` themselves. The v2 agentId and key algorithm
+ * are bound into the signed payload.
  */
 export function signClaim(
   claim: ConstitutionalClaim,
   identity: AgentIdentity,
 ): SignedClaim {
-  const payload = canonicalize(claim);
+  const toSign: ConstitutionalClaim & { keyAlgorithm: string } = {
+    ...claim,
+    agentId: identity.agentId,
+    keyAlgorithm: identity.keyAlgorithm,
+  };
+  const { keyAlgorithm, ...claimFields } = toSign;
+  const payload = canonicalize({ ...claimFields, keyAlgorithm });
   const sig = identity.sign(new TextEncoder().encode(payload));
   return {
-    ...claim,
+    ...claimFields,
+    keyAlgorithm,
     publicKey: identity.publicKeyHex,
     signature: Buffer.from(sig).toString("hex"),
   };
@@ -59,7 +55,8 @@ export interface ClaimVerification {
 }
 
 /**
- * Verify that a signed claim's signature matches its publicKey and content.
+ * Verify that a signed claim's agentId matches its publicKey and that the
+ * signature covers the canonical claim content.
  */
 export function verifyClaim(claim: SignedClaim): ClaimVerification {
   if (!claim.publicKey || !claim.signature) {
@@ -82,10 +79,24 @@ export function verifyClaim(claim: SignedClaim): ClaimVerification {
     return { valid: false, reason: "signature must be 64 bytes (128 hex chars)" };
   }
 
+  if (!publicKeyMatchesAgentId(claim.agentId, claim.publicKey)) {
+    return {
+      valid: false,
+      reason: "agentId does not match publicKey fingerprint",
+    };
+  }
+
+  if (
+    claim.keyAlgorithm !== undefined &&
+    claim.keyAlgorithm !== KEY_ALGORITHM
+  ) {
+    return { valid: false, reason: "unsupported keyAlgorithm" };
+  }
+
   const { publicKey: _pk, signature: _sig, ...rest } = claim;
   void _pk;
   void _sig;
-  const payload = canonicalize(rest as ConstitutionalClaim);
+  const payload = canonicalize(rest);
   const ok = verifySignature(
     new TextEncoder().encode(payload),
     sigBytes,

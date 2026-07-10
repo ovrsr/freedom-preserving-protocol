@@ -1,0 +1,46 @@
+{
+  "name": "@ovrsr/fpp-protocol-core",
+  "version": "1.0.0",
+  "description": "Shared versioned schemas and cryptographic contracts for the Freedom Preserving Protocol",
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "ovrsr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ovrsr/freedom-preserving-protocol",
+    "directory": "packages/protocol-core"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit --declaration false --declarationMap false",
+    "test": "tsx --test src/**/*.test.ts"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.1.0",
+    "@noble/hashes": "^1.4.0",
+    "@sinclair/typebox": "^0.34.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=22.19"
+  }
+}

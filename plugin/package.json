@@ -39,6 +39,9 @@
     "test": "tsx --test src/**/*.test.ts",
     "test:coverage": "c8 tsx --test src/**/*.test.ts"
   },
+  "dependencies": {
+    "@ovrsr/fpp-protocol-core": "1.0.0"
+  },
   "peerDependencies": {
     "openclaw": ">=2026.3.24-beta.2"
   },
