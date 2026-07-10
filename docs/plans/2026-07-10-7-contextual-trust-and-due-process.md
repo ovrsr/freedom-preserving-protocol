@@ -10,6 +10,15 @@ Replace the current single local reputation graph with contextual, revisable tru
 
 This is Plan 7 of 7. It depends on the governance specifications in Plan 5 and signed evidence from Plan 6.
 
+**Governance citations (Plan 5):** Implement due-process and contextual trust only
+per `docs/governance/IMPLEMENTATION_READINESS.md`. Required references:
+`docs/governance/DUE_PROCESS_AND_REHABILITATION.md`,
+`docs/governance/EVIDENCE_SEMANTICS.md`,
+`docs/governance/KEY_GOVERNANCE.md`,
+`docs/governance/THREAT_MODEL_AND_RIGHTS_FLOOR.md`.
+Respect anti-washing rules and the `blocked` ratification decision
+(`docs/governance/RATIFICATION_DECISION_RECORD.md`).
+
 ## Architecture Notes
 
 - Trust is relational: `Trust(A → B, capability, context, time)`.

@@ -41,6 +41,11 @@ word "verified":
   compliance cryptographically.** A valid signature proves a statement was
   signed, not that it is morally or factually correct.
 
+Governance-oriented claim-class burdens (identity, configuration, runtime,
+event, completeness, behavioral), evidence kinds, and uncertainty labels are
+specified in `docs/governance/EVIDENCE_SEMANTICS.md`. That document is
+`PROVISIONAL` specification; it does not change the matrix rows below.
+
 ## Capability matrix
 
 | Capability | Status | Evidence / gap |

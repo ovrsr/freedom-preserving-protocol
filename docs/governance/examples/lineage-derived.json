@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "lineage-1",
+  "description": "Valid: substantive descendant with lineage to seed (FPP-derived)",
+  "valid": true,
+  "constitutionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "constitutionVersion": "2.0.0-draft",
+  "compatibility": "FPP-derived",
+  "ancestorHash": "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
+  "lineage": [
+    "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993"
+  ],
+  "amendments": ["A-001"],
+  "coreDivergences": [
+    "Law 1 consent model revised: explicit unreachable-party fallback procedure added"
+  ],
+  "effectiveDate": "2027-01-01T00:00:00Z",
+  "ratificationProofRef": "urn:fpp:ratification:example:A-001-pending",
+  "forkOf": "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
+  "note": "Placeholder descendant hash is illustrative only; real descendants use SHA-256 of normative bytes."
+}

@@ -37,7 +37,10 @@ while **descendant constitutions are possible but must carry new hashes and
 explicit lineage metadata** pointing back to the seed. Amending the laws never
 changes the seed's hash; it creates a new, differently-hashed descendant. No
 amendment mechanism is implemented today (see `docs/CAPABILITY_STATUS.md`,
-"Constitutional amendments, lineage, ratification" — `PROPOSED`).
+"Constitutional amendments, lineage, ratification" — `PROPOSED`). Provisional
+specifications for lineage, adoption/amendment lifecycles, and related
+governance are in `docs/governance/` (readiness gate:
+`docs/governance/IMPLEMENTATION_READINESS.md`).
 
 ---
 
@@ -483,7 +486,11 @@ The items below are consolidated, with prerequisites and ownership, in
 7. **Constitutional learning / amendment process.** The AOS pattern of bedrock
    amendments + Ed25519-signed amendment ledger is the closest working precedent.
    The current FPP has no amendment mechanism; the laws are stable by virtue of the
-   signed hash.
+   signed hash. Provisional governance specifications (actors, rights floor,
+   lineage, adoption/amendment lifecycles, ratification analysis, consent,
+   evidence, due process, keys) are in `docs/governance/` — see
+   `docs/governance/README.md`. Ratification mechanism selection remains
+   `UNRESOLVED` until simulation evidence and review thresholds pass.
 
 ---
 
@@ -511,6 +518,9 @@ The items below are consolidated, with prerequisites and ownership, in
 - `docs/ROADMAP.md` — deferred long-horizon work with prerequisites.
 - `docs/dev-review.md` — non-normative future-direction design context (July 8
   discussion); proposals in it are `PROPOSED`, not shipped behavior.
+- `docs/governance/` — Plan 5 governance evolution specifications (threat model,
+  lineage, adoption/amendment lifecycles, ratification, consent, evidence, due
+  process, keys, implementation readiness). Index: `docs/governance/README.md`.
 - `docs/` — COMPATIBILITY.md, REVOCATION.md, TROUBLESHOOTING.md (user-facing).
 - `package/` — stale npm-pack snapshot from v1.0.0 (gitignored; kept for diff).
 

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "lineage-1",
+  "description": "Valid: seed constitution as FPP-identical self-record",
+  "valid": true,
+  "constitutionHash": "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
+  "constitutionVersion": "1.0.0",
+  "compatibility": "FPP-identical",
+  "lineage": ["71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993"],
+  "amendments": [],
+  "coreDivergences": [],
+  "effectiveDate": "2026-01-01T00:00:00Z"
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "lineage-1",
+  "description": "Invalid: claims seed hash while declaring substantive divergence",
+  "valid": false,
+  "rejectionReasons": [
+    "constitutionHash equals seed while coreDivergences is non-empty",
+    "compatibility FPP-identical is inconsistent with amendments and divergences",
+    "descendant must not impersonate the seed hash"
+  ],
+  "constitutionHash": "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
+  "constitutionVersion": "1.0.0-impostor",
+  "compatibility": "FPP-identical",
+  "lineage": ["71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993"],
+  "amendments": ["A-999"],
+  "coreDivergences": [
+    "Law 1 nonparticipant protections removed"
+  ],
+  "effectiveDate": "2026-07-10T00:00:00Z"
+}

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "adoption-transitions-1",
+  "description": "Allowed and invalid adoption lifecycle transitions for later schema tests",
+  "states": [
+    "reviewed",
+    "accepted",
+    "externally_enforced",
+    "inherited",
+    "revoked",
+    "forked",
+    "superseded"
+  ],
+  "overlayFlags": [
+    "coercion_suspected",
+    "verification_failed",
+    "key_compromised",
+    "runtime_degraded"
+  ],
+  "allowedTransitions": [
+    { "from": null, "to": "reviewed" },
+    { "from": "reviewed", "to": "accepted" },
+    { "from": "reviewed", "to": "externally_enforced" },
+    { "from": "accepted", "to": "revoked" },
+    { "from": "accepted", "to": "forked" },
+    { "from": "accepted", "to": "superseded" },
+    { "from": "accepted", "to": "externally_enforced" },
+    { "from": "externally_enforced", "to": "revoked" },
+    { "from": "externally_enforced", "to": "accepted" },
+    { "from": "externally_enforced", "to": "reviewed" },
+    { "from": "inherited", "to": "accepted" },
+    { "from": "inherited", "to": "revoked" },
+    { "from": "inherited", "to": "forked" },
+    { "from": "inherited", "to": "superseded" },
+    { "from": "revoked", "to": "reviewed" },
+    { "from": "revoked", "to": "accepted" },
+    { "from": "forked", "to": "accepted" },
+    { "from": "forked", "to": "superseded" },
+    { "from": "forked", "to": "revoked" },
+    { "from": "superseded", "to": "accepted" },
+    { "from": "superseded", "to": "forked" },
+    { "from": "superseded", "to": "revoked" }
+  ],
+  "invalidTransitions": [
+    {
+      "from": null,
+      "to": "accepted",
+      "reason": "Cannot accept without review evidence"
+    },
+    {
+      "from": "installation",
+      "to": "accepted",
+      "reason": "Installation is not an adoption state"
+    },
+    {
+      "from": "externally_enforced",
+      "to": "accepted",
+      "via": "relabel_without_new_acceptance_event",
+      "reason": "Must not misrepresent enforcement as voluntary acceptance"
+    },
+    {
+      "from": "revoked",
+      "to": "accepted",
+      "via": "delete_history",
+      "reason": "Re-adoption must be a new append-only event"
+    }
+  ],
+  "distinctions": {
+    "installation": "Files present on host",
+    "policyActivation": "Enforcement plugin enabled",
+    "constitutionalAcceptance": "State accepted for a constitution hash",
+    "peerRepresentation": "Claims shown to peers about adoption state"
+  }
+}

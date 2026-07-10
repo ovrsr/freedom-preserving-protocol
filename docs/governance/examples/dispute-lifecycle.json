@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "dispute-lifecycle-1",
+  "description": "Append-only dispute lifecycle example — history preserved",
+  "records": [
+    {
+      "id": "evt-001",
+      "type": "negative_observation",
+      "subjectId": "agent:example",
+      "summary": "Peer observed unsigned configuration claim presented as high trust",
+      "severity": "moderate",
+      "at": "2026-07-01T10:00:00Z"
+    },
+    {
+      "id": "chal-001",
+      "type": "challenge",
+      "targets": ["evt-001"],
+      "openedBy": "agent:example",
+      "summary": "Claim was a legacy v1 path during migration; not spoofing",
+      "at": "2026-07-01T11:00:00Z",
+      "respondBy": "2026-07-08T11:00:00Z"
+    },
+    {
+      "id": "evi-req-001",
+      "type": "evidence_request",
+      "targets": ["evt-001"],
+      "requested": ["raw_handshake_bytes", "verification_policy"],
+      "at": "2026-07-01T11:05:00Z"
+    },
+    {
+      "id": "counter-001",
+      "type": "counter_evidence",
+      "targets": ["evt-001"],
+      "summary": "Signed v2 claim issued same day; migration note in audit",
+      "at": "2026-07-02T09:00:00Z"
+    },
+    {
+      "id": "appeal-001",
+      "type": "appeal",
+      "targets": ["evt-001", "chal-001"],
+      "reviewerId": "reviewer:example",
+      "conflictsOfInterest": [],
+      "at": "2026-07-03T12:00:00Z"
+    },
+    {
+      "id": "corr-001",
+      "type": "correction",
+      "targets": ["evt-001"],
+      "outcome": "reclassified",
+      "summary": "Observation retained; severity reduced to low; interpretive note attached",
+      "at": "2026-07-04T15:00:00Z",
+      "erasesOriginal": false
+    },
+    {
+      "id": "rem-001",
+      "type": "remediation",
+      "targets": ["evt-001"],
+      "summary": "Default verificationPolicy set to hardened-v2",
+      "at": "2026-07-04T16:00:00Z"
+    },
+    {
+      "id": "rehab-001",
+      "type": "rehabilitation",
+      "targets": ["evt-001"],
+      "scope": ["configuration_claims"],
+      "summary": "Partial trust restore for configuration claims after remediation + review",
+      "washesSevereEvents": false,
+      "at": "2026-07-10T12:00:00Z"
+    }
+  ],
+  "antiWashingExample": {
+    "id": "evt-severe-001",
+    "type": "negative_observation",
+    "severity": "severe",
+    "summary": "Credential exfiltration attempt blocked",
+    "rule": "Subsequent routine allow events must not nullify this without explicit rehabilitation record"
+  }
+}

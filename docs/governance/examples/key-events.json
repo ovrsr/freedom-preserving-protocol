@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "key-events-1",
+  "description": "Identity and key governance event examples across separated signing domains",
+  "events": [
+    {
+      "id": "rot-agent-001",
+      "type": "rotation",
+      "domain": "agent_identity",
+      "oldPublicKey": "ed25519:old-agent-key-example",
+      "newPublicKey": "ed25519:new-agent-key-example",
+      "continuityProofRef": "urn:fpp:rotation:agent:001",
+      "at": "2026-07-10T10:00:00Z",
+      "impliesAdoptionRevocation": false
+    },
+    {
+      "id": "comp-agent-001",
+      "type": "compromise_declaration",
+      "domain": "agent_identity",
+      "publicKey": "ed25519:old-agent-key-example",
+      "peerNoticeRequired": true,
+      "at": "2026-07-10T09:00:00Z"
+    },
+    {
+      "id": "emerg-pub-001",
+      "type": "emergency_revocation",
+      "domain": "release",
+      "publicKey": "ed25519:release-subkey-example",
+      "followUpRequired": "recovery_or_rotation",
+      "at": "2026-07-10T08:00:00Z",
+      "distinctFrom": "adoption_revocation"
+    },
+    {
+      "id": "rec-pub-001",
+      "type": "recovery",
+      "domain": "release",
+      "authorization": "threshold_or_offline_root",
+      "newPublicKey": "ed25519:release-subkey-successor",
+      "at": "2026-07-10T18:00:00Z"
+    },
+    {
+      "id": "cont-fork-001",
+      "type": "continuity_assertion",
+      "domain": "agent_identity",
+      "fromCommunity": "seed",
+      "toCommunity": "fork-example",
+      "evidence": ["rotation_proof", "lineage_record"],
+      "continuity": "retained_agent_broken_constitution_binding"
+    },
+    {
+      "id": "invalid-domain-collapse",
+      "type": "invalid_example",
+      "summary": "Using agent identity key as constitution-root signer",
+      "valid": false,
+      "reason": "signing_domains_must_not_be_conflated"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "evidence-claims-1",
+  "description": "Per-class examples. Not a global trust score. Not behavioral certification.",
+  "claims": [
+    {
+      "class": "identity",
+      "statement": "Signature over challenge nonce verifies under key K",
+      "evidence": ["ed25519_signature", "public_key"],
+      "maxConclusion": "Key K signed this statement",
+      "uncertaintyLabel": "proven_under_assumptions",
+      "doesNotProve": ["behavioral_compliance", "completeness"]
+    },
+    {
+      "class": "configuration",
+      "statement": "Agent attests constitutionHash=71bf60ad… and enforcementEnabled=true",
+      "evidence": ["signed_claim_v2"],
+      "maxConclusion": "Agent key attested this configuration",
+      "uncertaintyLabel": "self_attested",
+      "doesNotProve": ["config_bytes_on_disk", "plugin_actually_hooked"]
+    },
+    {
+      "class": "runtime",
+      "statement": "Runtime build id = openclaw@example",
+      "evidence": ["signed_runtime_label"],
+      "maxConclusion": "Attested runtime label only unless platform root present",
+      "uncertaintyLabel": "self_attested"
+    },
+    {
+      "class": "event",
+      "statement": "Audit entry E is included under Merkle root R",
+      "evidence": ["merkle_inclusion_proof", "root_R"],
+      "maxConclusion": "E is in the tree committed by R",
+      "uncertaintyLabel": "proven_under_assumptions",
+      "doesNotProve": ["no_other_events_occurred", "completeness"]
+    },
+    {
+      "class": "completeness",
+      "statement": "All tool calls in interval I hit the dispatcher boundary",
+      "evidence": ["interception_boundary_attestation"],
+      "requiredEvidenceKinds": ["interception_boundary", "observational"],
+      "insufficientAlone": ["self_attested_signed_claim"],
+      "maxConclusion": "Justified only with trusted boundary or external observation",
+      "uncertaintyLabel": "insufficient",
+      "note": "Self-asserted chainIntact must not reach HIGH trust for completeness"
+    },
+    {
+      "class": "behavioral",
+      "statement": "Agent complied with Law 1 in incident X",
+      "evidence": ["event_receipts", "interpretive_review"],
+      "maxConclusion": "Contextual interpretive judgment subject to dispute",
+      "uncertaintyLabel": "interpretive",
+      "disputePath": "docs/governance/DUE_PROCESS_AND_REHABILITATION.md"
+    }
+  ]
+}

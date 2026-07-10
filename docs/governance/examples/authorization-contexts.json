@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "authorization-contexts-1",
+  "description": "Examples distinguishing legally/morally different approvals — not a global trust score",
+  "examples": [
+    {
+      "id": "ops-install-plugin",
+      "class": "operator_authorization",
+      "summary": "Operator installs enforcement plugin on their host",
+      "sufficientFor": ["software_control"],
+      "insufficientFor": ["affected_party_external_effects"]
+    },
+    {
+      "id": "requester-send-email",
+      "class": "requester_confirmation",
+      "summary": "User asks agent to draft an email to a colleague",
+      "sufficientFor": ["proceeding_with_requested_draft"],
+      "insufficientFor": ["sending_colleague_private_data_without_data_subject_basis"]
+    },
+    {
+      "id": "affected-share-calendar",
+      "class": "affected_party_consent",
+      "summary": "Colleague consents to agent booking on their calendar",
+      "scope": "calendar.write for 2026-07-10..2026-07-11",
+      "revocable": true
+    },
+    {
+      "id": "data-subject-export",
+      "class": "data_subject_consent",
+      "summary": "Data subject consents to export of their profile fields for a stated purpose",
+      "purposeLimited": true,
+      "insufficientFor": ["secondary_marketing_use"]
+    },
+    {
+      "id": "delegate-oncall",
+      "class": "delegated_authority",
+      "summary": "Principal delegates on-call restart permission for service X until Monday",
+      "bounded": true,
+      "validToRequired": true
+    },
+    {
+      "id": "guardian-minor",
+      "class": "guardian_authorization",
+      "summary": "Guardian authorizes limited educational data use for a minor",
+      "challengeable": true
+    },
+    {
+      "id": "reviewer-high-impact",
+      "class": "independent_review",
+      "summary": "Reviewer signs off that reversible alternatives were considered",
+      "doesNotCreate": "affected_party_consent"
+    },
+    {
+      "id": "emergency-stop-exfil",
+      "class": "emergency_authority",
+      "summary": "Agent blocks suspected credential exfiltration pending steward review",
+      "timeBounded": true,
+      "mandatoryReview": true
+    },
+    {
+      "id": "invalid-consent-laundering",
+      "class": "agent_community_vote",
+      "summary": "INVALID as outsider consent: agent majority votes to scrape nonparticipant photos",
+      "validAuthorizationClass": false,
+      "violates": "nonparticipant_rights_floor"
+    }
+  ]
+}

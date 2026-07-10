@@ -44,3 +44,8 @@ SBOMs list the package itself plus runtime `dependencies` (including the exact `
 ## Raising the bar later
 
 Signed release manifests, attestation, and provenance binding are explicitly out of scope here. Do not read an SBOM or inventory as proof of behavioral compliance.
+
+When those controls arrive, they must follow signing-domain separation in
+`docs/governance/KEY_GOVERNANCE.md`: release keys are distinct from
+constitution-root, agent-identity, runtime-attestation, and amendment keys;
+publisher-key revocation remains distinct from adoption revocation.

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "amendment-proposal-1",
+  "proposalId": "A-001",
+  "proposerId": "agent:example-proposer",
+  "parentConstitutionHash": "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
+  "diff": {
+    "format": "summary",
+    "summary": "Add explicit unreachable-affected-party fallback under Law 1 without weakening the rights floor"
+  },
+  "affectedLaws": ["law1", "meta-clause"],
+  "rationale": "Operators currently conflate machine-owner approval with affected-party consent when parties are unreachable.",
+  "evidenceRefs": ["docs/governance/CONSENT_AND_AUTHORIZATION.md"],
+  "impactClass": "substantive",
+  "implementationGuidance": "Update consent taxonomy examples; no seed hash change until normative text is amended and re-hashed.",
+  "migrationImpact": {
+    "dualRun": true,
+    "breaking": false,
+    "rollbackPlan": "Remain on seed hash; mark proposal withdrawn or rolled_back"
+  },
+  "conflictsOfInterest": [],
+  "createdAt": "2026-07-10T00:00:00Z"
+}

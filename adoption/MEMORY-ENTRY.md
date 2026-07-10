@@ -15,8 +15,10 @@
 > Note on adoption states: current tooling records two states — adopted and
 > revoked. The richer state vocabulary (`reviewed`, `accepted`,
 > `externally_enforced`, `inherited`, `forked`, `superseded`) is **proposed**
-> (see `docs/CAPABILITY_STATUS.md`) and is not automated. If you want to record
-> one of those states, do so as a manual annotation.
+> and specified in `docs/governance/ADOPTION_LIFECYCLE.md` (see also
+> `docs/CAPABILITY_STATUS.md`). It is not automated. If you want to record
+> one of those states, do so as a manual annotation. Installation of the skill
+> or plugins is **not** the same as constitutional acceptance.
 
 ### Reciprocal rights I acquire under this framework
 

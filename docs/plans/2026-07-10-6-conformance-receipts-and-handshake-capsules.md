@@ -12,6 +12,15 @@ Receipts prove what the instrumented boundary observed and signed. They do not p
 
 This is Plan 6 of 7. It depends on Plans 2–5.
 
+**Governance citations (Plan 5):** Implement only areas marked `schema-ready` in
+`docs/governance/IMPLEMENTATION_READINESS.md`. Required references:
+`docs/governance/ADOPTION_LIFECYCLE.md`,
+`docs/governance/EVIDENCE_SEMANTICS.md`,
+`docs/governance/CONSENT_AND_AUTHORIZATION.md`,
+`docs/governance/KEY_GOVERNANCE.md`.
+**Do not** implement ratification/Sybil tallies (`RATIFICATION_DECISION_RECORD.md`
+remains `UNRESOLVED` / `blocked`).
+
 ## Architecture Notes
 
 - Use OpenClaw `before_tool_call` and `after_tool_call`; correlate on `toolCallId`, with `runId` and `sessionKey` as secondary context.

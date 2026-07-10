@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "amendment-decision-1",
+  "proposalId": "A-001",
+  "outcome": "delayed_activation",
+  "rationale": "Deliberation complete for process demo; ratification weighting mechanism remains UNRESOLVED — cannot move to active.",
+  "dissentRefs": [
+    {
+      "partyId": "agent:example-dissenter",
+      "summary": "Prefers deferring any Law 1 text change until unreachable-party simulations exist"
+    }
+  ],
+  "conflictsOfInterestNoted": [],
+  "ratificationProofRef": null,
+  "ratificationStatus": "UNRESOLVED_MECHANISM",
+  "activation": {
+    "earliestEffectiveDate": null,
+    "implementationGuidanceVersion": "draft-1",
+    "migrationGatePassed": false
+  },
+  "emergency": {
+    "used": false,
+    "reviewDeadline": null,
+    "reviewOutcome": null
+  },
+  "immutableRecordIds": ["proposal:A-001", "dissent:A-001:1"],
+  "decidedAt": "2026-07-10T12:00:00Z"
+}

@@ -10,10 +10,22 @@ Adoption of the Freedom Preserving Protocol is fully revocable at any time. This
 |-------|----------------------|---------------|
 | **Adoption revocation** | *This agent's* commitment to the constitution. The agent stops operating under FPP. | `npm run revoke` — the procedure below. |
 | **Agent-key revocation** | An agent's Ed25519 identity key (e.g., the `identityKeyPath` seed used by the trust plugin) is compromised or retired. Peers should stop trusting claims signed by it. | No automated mechanism. Manual: delete/rotate the key file, notify peers out-of-band, and ask them to remove the old key from their trust seeds (`openclaw fpp-trust` CLI). |
-| **Publisher-key revocation** | The *publisher's* signing key (`pubkey.ed25519.txt`) is compromised. All signatures it produced become suspect, including the constitution's. | No automated mechanism. Treat as a supply-chain incident: stop adopting, quarantine, watch the upstream repo for a re-signed release. |
-| **Constitutional-version revocation** | A community decides a descendant constitution version should no longer be used. | Proposed only — no amendment or lineage mechanism exists yet (see `docs/CAPABILITY_STATUS.md`). |
+| **Publisher-key revocation** | The *publisher's* signing key (`pubkey.ed25519.txt`) is compromised. All signatures it produced become suspect, including the constitution's. | No automated mechanism. Treat as a supply-chain incident: stop adopting, quarantine, watch the upstream repo for a re-signed release. See also `docs/governance/KEY_GOVERNANCE.md` (signing-domain separation; publisher revocation ≠ adoption revocation). |
+| **Constitutional-version revocation** | A community decides a descendant constitution version should no longer be used. | Proposed only — lineage/amendment specs in `docs/governance/`; no runtime mechanism yet (see `docs/CAPABILITY_STATUS.md`). |
 
 Revoking your adoption does not rotate any keys, and rotating a key does not revoke your adoption. If a key compromise is why you are revoking, you likely need to do both.
+
+## Relationship to the adoption lifecycle
+
+The full provisional state machine (`reviewed`, `accepted`, `externally_enforced`,
+`inherited`, `revoked`, `forked`, `superseded`) is specified in
+`docs/governance/ADOPTION_LIFECYCLE.md`. Today's `npm run revoke` implements the
+`accepted → revoked` (or coarse adopted → revoked) path with history preservation
+and peer-notice guidance. It does **not** yet automate `forked` / `superseded`
+transitions or overlay flags (`coercion_suspected`, `runtime_degraded`, etc.).
+
+Exit preserves history: annotations and append-only audit entries, never silent
+deletion of the fact of prior adoption.
 
 ## Why revocation needs to be a deliberate procedure
 

@@ -46,8 +46,14 @@ Purpose: Preserve the project’s intent, architectural reasoning, emerging deci
 > RFC, telemetry, remote sub-agent guarantees, ZK proofs, post-quantum keys)
 > are tracked with prerequisites in `docs/ROADMAP.md`.
 >
-> *(Editorial preface added 2026-07-10 during documentation reconciliation. The
-> original July 8 text below is preserved unmodified.)*
+> Governance evolution specifications (Plan 5) live under `docs/governance/`.
+> Start with `docs/governance/THREAT_MODEL_AND_RIGHTS_FLOOR.md` for actors,
+> authority boundaries, and the nonparticipant rights floor. The index and
+> implementation-readiness gate are in `docs/governance/README.md`.
+>
+> *(Editorial preface added 2026-07-10 during documentation reconciliation;
+> governance pointer updated 2026-07-10. The original July 8 text below is
+> preserved unmodified.)*
 
 ---
 
@@ -479,6 +485,10 @@ Trust should be relational and scoped, not an intrinsic universal property of an
 
 The protocol should clearly distinguish among claim types.
 
+> **Editorial note (2026-07-10):** Provisional evidence semantics:
+> `docs/governance/EVIDENCE_SEMANTICS.md` and
+> `docs/governance/examples/evidence-claims.json`.
+
 Identity Claim
 
 A key controls or represents a declared agent identity.
@@ -515,6 +525,10 @@ Behavioral compliance usually requires interpretation, evidence review, and disp
 
 FPP should not treat all approval as equivalent to consent.
 
+> **Editorial note (2026-07-10):** Provisional taxonomy and rules:
+> `docs/governance/CONSENT_AND_AUTHORIZATION.md` with examples in
+> `docs/governance/examples/authorization-contexts.json`.
+
 The protocol should distinguish among:
 
 - operator authorization;
@@ -538,6 +552,10 @@ An agent community may govern relations among participating agents, but it canno
 
 > Status: `PROPOSED` — no amendment mechanism is implemented. The seed hash is
 > immutable; descendants would carry new hashes and explicit lineage.
+>
+> **Editorial note (2026-07-10):** Provisional lineage and compatibility-class
+> specification: `docs/governance/CONSTITUTIONAL_LINEAGE.md` with examples in
+> `docs/governance/examples/lineage-*.json`.
 
 A future amendment protocol should include:
 
@@ -604,6 +622,10 @@ No single factor should automatically confer governing supremacy.
 
 > Status: `PROPOSED` — no challenge, appeal, correction, or rehabilitation
 > record types exist.
+>
+> **Editorial note (2026-07-10):** Provisional specification:
+> `docs/governance/DUE_PROCESS_AND_REHABILITATION.md` with
+> `docs/governance/examples/dispute-lifecycle.json`.
 
 Trust and constitutional enforcement require procedures for correction.
 
@@ -630,6 +652,10 @@ Immutability should preserve history, not abolish mercy.
 
 > Status: `PROPOSED` — only the constitution is signed today; release manifests,
 > provenance attestations, and key-governance mechanisms do not exist.
+>
+> **Editorial note (2026-07-10):** Provisional key-governance specification:
+> `docs/governance/KEY_GOVERNANCE.md` with
+> `docs/governance/examples/key-events.json`.
 
 The signed constitution protects the integrity of the normative seed but does not by itself authenticate the implementation.
 
@@ -789,6 +815,14 @@ Unresolved
 - The proper relationship among operators, agents, affected parties, and constitutional institutions.
 - The conditions under which trust can propagate across contexts.
 - The mechanism for recognizing agent identity continuity through upgrades, forks, and key rotations.
+
+> **Editorial note (2026-07-10):** Provisional specifications addressing several
+> of the bullets above now exist under `docs/governance/` (threat model and
+> rights floor, lineage, adoption lifecycle, amendment lifecycle, ratification
+> analysis, consent taxonomy, evidence semantics, due process, key governance).
+> Items marked `UNRESOLVED` inside those specs — especially ratification /
+> Sybil-resistance mechanism selection — remain unresolved. See
+> `docs/governance/IMPLEMENTATION_READINESS.md`.
 
 ---
 

@@ -9,7 +9,11 @@ this page is current behavior.
 Items that are designed-but-unbuilt with nearer-term intent (`PROPOSED` status:
 conformance receipts, trust capsules, amendments, due process, release
 manifests, richer adoption states) are tracked in `docs/dev-review.md` and its
-Appendix A acceptance criteria, not here.
+Appendix A acceptance criteria, not here. Governance evolution specifications
+(actors, lineage, adoption/amendment lifecycles, consent, evidence, due process,
+keys) and the implementation-readiness gate live under `docs/governance/` —
+see `docs/governance/README.md`. Ratification/Sybil mechanism selection remains
+`blocked` until `docs/governance/RATIFICATION_DECISION_RECORD.md` changes.
 
 ## 1. Gateway-level enforcement RFC
 
