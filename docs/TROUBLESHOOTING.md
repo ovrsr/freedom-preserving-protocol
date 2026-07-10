@@ -206,6 +206,48 @@ Same root cause as #11. The approval description field exceeded the gateway's 25
 
 If you see this in audit logs as `approval_requested` entries with no corresponding steward resolution, those represent the corrigibility gap — approvals were attempted but never reached the operator. After upgrading, these orphaned entries are safe to ignore (they document the failure, not a successful bypass).
 
+## 13. "Handshake reports trust but the peer's claim was never signed"
+
+Not a bug — a default. `requireSignedClaims` defaults to `false` in the trust plugin, so a handshake will accept an **unsigned** claim and still update the trust graph. Diagnose:
+
+```bash
+# Inspect what the peer actually presented
+openclaw fpp-trust verify claim.json
+# Look for the signature field: absent/empty means configuration claim only, no signature verification
+```
+
+If you expected signature verification, set `requireSignedClaims: true` (and consider `requireMerkleProof: true`) under `plugins.entries.openclaw-fpp-trust.config` and restart the gateway. Existing trust-graph entries formed from unsigned claims are **not** retroactively invalidated — re-run handshakes with hardened settings if that matters to you.
+
+## 14. "A peer presented an old claim / I suspect replay"
+
+Claims carry an issuance timestamp but the current handshake has no freshness nonce and no automatic staleness rejection (see `plugin-trust/README.md`, Limitations). Diagnose by inspecting the claim's timestamp field in the exchanged JSON. Mitigations today:
+
+- ask the peer for a **fresh** `fpp_handshake_offer` and compare timestamps;
+- treat claims older than your own tolerance as unverified and set trust manually via seeds;
+- do not build automation that accepts stored claim files as proof of current state.
+
+Do not delete the peer's entry from the trust graph as a "fix" — record your assessment and move on. Removing entries erases the evidence trail of how the trust was formed.
+
+## 15. "Strict mode is not escalating tool calls" / strict-state parse failure
+
+The enforcement plugin reads `strictModeStatePath` (default `.openclaw/workspace/fpp-strict-sessions.json`) on each gated call. If that file is **missing or malformed JSON, the enforcement plugin silently ignores it** (`readStrictModeState` returns null) — strict mode simply stops applying, with no error surfaced. Diagnose:
+
+```bash
+# Is the file valid JSON with version 1?
+cat .openclaw/workspace/fpp-strict-sessions.json | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log('version', d.version, 'sessions', Object.keys(d.sessions||{}).length)"
+
+# What does the trust plugin think?
+openclaw fpp-trust strict list
+```
+
+Also check `respectTrustStrictMode` has not been set to `false` in the enforcement plugin config, and that the session entry has not expired (`expiresAt`).
+
+**Recovery:** if the file is corrupt, copy it aside (`fpp-strict-sessions.json.corrupt.<timestamp>`) before recreating it via `openclaw fpp-trust strict` commands. Do not just delete it — the corrupt file is evidence of what went wrong.
+
+## 16. "Trust plugin fails to start after an unclean shutdown"
+
+If the persisted trust graph (`fpp-trust-graph.json`) is malformed, the trust plugin **fails at startup rather than silently discarding trust state** — this is intentional. Copy the malformed file aside (`fpp-trust-graph.json.corrupt.<timestamp>`), then either restore from a backup or start fresh with an empty graph and re-seed (`openclaw fpp-trust seed ...`). Never hand-edit the live file, and never delete it without keeping the copy: it is the only record of how your trust relationships were formed.
+
 ## When you're stuck
 
 1. Run `npm run verify-install -- --json` and paste the output.

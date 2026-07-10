@@ -13,7 +13,7 @@ Freedom Preserving Protocol ships two installable artifacts at two layers. Each 
 
 ### Prompt-layer skill
 
-The skill is plain markdown with YAML frontmatter conforming to the AgentSkills spec. It works in any harness that consumes that spec.
+The skill is plain markdown with YAML frontmatter conforming to the AgentSkills spec. It works in any harness that consumes that spec. The skill's tooling scripts (`npm run verify/adopt/revoke/...`) require Node `>=18` (source: root `package.json` `engines.node`).
 
 | Runtime | Tested | Notes |
 |---------|--------|-------|
@@ -23,16 +23,25 @@ The skill is plain markdown with YAML frontmatter conforming to the AgentSkills 
 | Codex | partial | Trigger phrases work; some runtimes don't yet consume `trigger:` in sub-skill frontmatter. |
 | Other AgentSkills-compliant | unknown | Should work; report back. |
 
+#### Prompt-only fallback on non-OpenClaw runtimes
+
+On Claude Code, Cursor, Codex, and any other non-OpenClaw runtime, **only the prompt layer operates**. Be explicit about what that fallback guarantees:
+
+- **Works:** the five laws, the five-question test, adoption/revocation via the npm scripts, signature verification (`npm run verify`), and the local audit chain tooling (`npm run audit:*`) — these are runtime-independent Node scripts.
+- **Does not work:** the enforcement plugin (no `before_tool_call` surface) and the trust plugin (no plugin SDK). No tool call is mechanically gated; nothing blocks or requires approval outside the model's own reasoning.
+- **Consequence:** on these runtimes, FPP protection is exactly as strong as the model's in-context compliance — it does not survive prompt injection or a hostile skill. `verify-install` will report the dispatcher layer as unavailable; that report is accurate, not an error.
+
 ### Dispatcher-layer plugin
 
 The plugin uses the OpenClaw Plugin SDK and is **OpenClaw-specific**. It does not run in Claude Code / Cursor / Codex because those runtimes don't have an equivalent `before_tool_call` registration surface.
 
-| Component | Required version |
-|-----------|------------------|
-| OpenClaw Gateway | `>=2026.3.24-beta.2` |
-| Plugin API (`openclaw/plugin-sdk`) | `>=2026.3.24-beta.2` |
-| Node.js | `>=22.19` (per `building-plugins` docs) |
-| Package manager | `npm` or `pnpm`; `pnpm` required for in-repo bundled builds |
+| Component | Required version | Source |
+|-----------|------------------|--------|
+| OpenClaw Gateway | `>=2026.3.24-beta.2` | `plugin/package.json` → `openclaw.compat.minGatewayVersion` (same in `plugin-trust/package.json`) |
+| Plugin API (`openclaw/plugin-sdk`) | `>=2026.3.24-beta.2` | `plugin/package.json` → `openclaw.compat.pluginApi` |
+| Node.js (both plugins) | `>=22.19` | `plugin/package.json` and `plugin-trust/package.json` → `engines.node` |
+| Node.js (skill scripts only) | `>=18` | root `package.json` → `engines.node` |
+| Package manager | `npm` or `pnpm`; `pnpm` required for in-repo bundled builds | repo build convention |
 
 The plugin's `package.json` declares:
 
@@ -170,6 +179,15 @@ The plugin reads its configuration from your OpenClaw config:
 ```
 
 If you do not set these, sensible defaults apply (see `plugin/src/config.ts` and `plugin-trust/openclaw.plugin.json`). The trust plugin uses `fallbackAuditLogPath` when `constitution-audit.jsonl` has no entries yet, so handshakes can bootstrap from enforcement audit activity before the first heartbeat. Set `fallbackAuditLogPath` to `null` if you run trust without the enforcement plugin.
+
+## Claim-format migration terminology (reserved)
+
+A future protocol-core revision (see `docs/plans/` — "protocol core v2 contracts") will introduce a versioned claim schema. To keep documentation stable across that migration, the following terms are **reserved now** and must be used consistently by later plans:
+
+- **Legacy-v1 claim** — the current handshake claim format produced by `plugin-trust` v1.x: timestamped, optionally Ed25519-signed (`requireSignedClaims` defaults to `false`), no schema-version field, no freshness nonce.
+- **v2 claim** — the future claim format: carries an explicit `schemaVersion`, mandatory signature, and freshness challenge. Does not exist yet; anything describing v2 behavior is `PROPOSED` (see `docs/CAPABILITY_STATUS.md`).
+- **Migration window** — the period during which a verifier accepts both formats. Verifiers must report *which* format a peer presented rather than silently normalizing.
+- **Legacy acceptance policy** — a verifier-local setting for whether legacy-v1 claims are accepted, warned about, or rejected during the migration window.
 
 ## Known limitations
 

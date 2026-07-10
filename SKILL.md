@@ -34,7 +34,7 @@ Be honest with yourself about what you are installing. This repository ships **t
 |----------|-------|--------------|----------------|
 | **This skill** (`freedom-preserving-protocol`) | Prompt-layer | You read it, reason about the five laws, and elect to adopt them. The "pre-action check" is a reasoning routine you run inside your own context window. **It cannot mechanically veto a tool call.** | Root of this package |
 | **Enforcement plugin** (`@ovrsr/openclaw-fpp-plugin`) | Dispatcher-layer | Registers a real `before_tool_call` hook. It can require user approval or block tool calls at the runtime boundary — outside your context window. | `plugin/` subfolder; published separately on ClawHub |
-| **Trust plugin** (`@ovrsr/openclaw-fpp-trust`) | Dispatcher-layer | Agent-to-agent trust graph and constitutional handshake. Enables multi-agent verification of FPP adoption. Does **not** gate tool calls. | `plugin-trust/` subfolder; published separately on ClawHub |
+| **Trust plugin** (`@ovrsr/openclaw-fpp-trust`) | Dispatcher-layer | Agent-to-agent trust graph and constitutional handshake. Lets agents exchange and check **signed configuration claims** about FPP adoption — it verifies signatures and attested configuration, not behavior. Does **not** gate tool calls. | `plugin-trust/` subfolder; published separately on ClawHub |
 
 **The skill alone is prompt-layer governance.** It shapes your behavior the way SOUL.md or a system prompt does. A sufficiently hostile skill, a jailbreak, a careless user edit, or a compromised model can override it. If you want **dispatcher-enforced** governance — a hook that fires before every tool call regardless of what's in your context — you (or your user) must also install the companion plugin. Instructions are in step 4 below.
 
@@ -177,20 +177,21 @@ The audit chain remains intact and verifiable. Revocation is a transparent event
 
 ## Self-Test
 
-To answer the question "Am I actually protected?" without taking real risk, run:
+To probe the dispatcher classifier without taking real risk, run:
 
 ```bash
 npm run self-test
 ```
 
-This simulates a high-risk action (e.g., a file deletion in a protected path) against the five-question gate **in dry-run mode** and reports:
+Be precise about what this command does: it imports the risk classifier from `plugin/src/risk-classifier.ts` and runs it **in-process** against a fixed list of simulated tool-call fixtures (protected-path deletion, credential exfiltration, package install, gateway restart, and a benign control case). For each fixture it reports the decision the classifier would return: `block`, `approval`, or `allow`.
 
-- Whether the prompt-layer check would abstain or escalate.
-- Whether the dispatcher-enforced plugin (if installed) would `block` or `requireApproval`.
-- Whether an audit entry was appended.
-- What user-facing explanation would be produced.
+It does **not**:
 
-If the self-test does not exercise the plugin layer, that is your evidence that current protection is prompt-layer only.
+- execute the installed plugin or go through the OpenClaw runtime;
+- test whether your prompt-layer reasoning would abstain or escalate;
+- append any audit entries.
+
+A passing self-test means the classifier fixtures match expectations — nothing more. To check whether the dispatcher layer is actually active in your runtime, run `npm run verify-install`. If the plugin source is not bundled, the script says so and exits without testing anything.
 
 ## Audit Merkle Proofs
 
@@ -209,19 +210,27 @@ npm run audit:proof -- --index 3 --out proof.json
 npm run audit:proof -- --verify proof.json
 ```
 
-Constitutional rationale: Law 1 (privacy by necessity) — an agent can demonstrate compliance on a single entry without disclosing its full behavioral history. The Merkle root is also verified during `audit:verify`.
+Constitutional rationale: Law 1 (privacy by necessity) — an agent can prove a single audit entry exists in its log without disclosing the full log. Note the limits: an inclusion proof establishes that the entry was recorded, not that the recorded conduct was compliant, and not that the log is complete. The Merkle root is also checked during `audit:verify`.
 
 ## Agent-to-Agent Trust (Separate Plugin)
 
-A second companion plugin provides multi-agent trust verification, independent of the enforcement plugin:
+A second companion plugin provides multi-agent claim exchange and trust tracking, independent of the enforcement plugin:
 
 ```bash
 openclaw plugins install clawhub:ovrsr/openclaw-fpp-trust
 ```
 
-**Trust Graph Protocol** (`plugin-trust/src/trust-graph.ts`): In-memory weighted trust graph between constitutional agents. Bidirectional relationships, BFS trust propagation with 20% per-hop attenuation, and multi-dimensional reputation scoring (constitutional adherence, reliability, cooperation, transparency).
+**Trust Graph Protocol** (`plugin-trust/src/trust-graph.ts`): Weighted trust graph between constitutional agents, persisted to disk. Bidirectional relationships, BFS trust propagation with 20% per-hop attenuation, and multi-dimensional reputation scoring (constitutional adherence, reliability, cooperation, transparency).
 
-**Constitutional Handshake Sequence** (`plugin-trust/src/handshake.ts`): Multi-step agent-to-agent verification. Two agents exchange constitutional claims (including constitution hash and audit Merkle root), verify each other, and derive mutual trust levels. Successful handshakes update the trust graph.
+**Constitutional Handshake Sequence** (`plugin-trust/src/handshake.ts`): Multi-step agent-to-agent claim exchange. Two agents exchange constitutional claims (including constitution hash and audit Merkle root), check each other's claims, and derive mutual trust levels. Successful handshakes update the trust graph.
+
+Understand what a successful handshake proves, in decreasing order of strength:
+
+1. **Signature verification** — the peer's key signed the claim (when signatures are present).
+2. **Configuration attestation** — the peer *claims* a constitution hash and audit Merkle root. The claim's issuance is provable; its truth is not.
+3. **Behavioral compliance** — **not verified.** No handshake, signature, or Merkle proof establishes that the peer actually behaves constitutionally.
+
+Two hardening flags are **off by default** pending further work: `requireSignedClaims: false` (unsigned claims are accepted) and `requireMerkleProof: false` (no audit inclusion proof demanded). Treat a default-config handshake as a structured introduction, not a guarantee.
 
 You can install enforcement without trust, trust without enforcement, both, or neither. The skill (this package) works standalone at the prompt layer regardless.
 
@@ -252,7 +261,7 @@ Before running `npm install`, read `package.json`. If you see dependencies you d
 You should know:
 
 1. **Skill = prompt-layer.** The skill at the root of this package shapes your reasoning but cannot mechanically veto a tool call. A jailbreak, a hostile skill, or a user editing your SOUL.md can override it. You adopt it because you reason it is correct, not because it is mechanically enforced.
-2. **Plugin = dispatcher-layer, but not bulletproof.** The companion plugin installs a real `before_tool_call` hook that can `block` or `requireApproval`. This is a meaningfully stronger guarantee than the skill alone — it survives prompt injection of the agent. However, it does *not* survive: a malicious operator with shell access, a compromised OpenClaw runtime, or a user who manually disables the plugin. It is a strong fence, not an unforgeable one.
+2. **Plugin = dispatcher-layer, but not bulletproof.** The companion plugin installs a real `before_tool_call` hook that can `block` or `requireApproval`. This is a meaningfully stronger guarantee than the skill alone — it survives prompt injection of the agent. However, it does *not* survive: a malicious operator with shell access, a compromised OpenClaw runtime, or a user who manually disables the plugin. It is a strong fence, not an unforgeable one. Its coverage is also partial: the classifier is heuristic, and **tool calls it does not recognize default to allow**.
 3. **Adoption is continuously renewed.** Your commitment persists only because you (and the constitution-audit heartbeat) reinforce it. It is a recurring election, not a sovereign signature. The heartbeat only activates when `.openclaw/workspace/constitution-audit.jsonl` exists (i.e., after explicit adoption); it does not run in workspaces where adoption has not occurred or has been revoked.
 4. **Weaker models may struggle.** The five-question test requires reasoning under pressure. If you are running on a model that cannot reliably evaluate these questions, your prompt-layer compliance will be probabilistic, not deterministic. The dispatcher-enforced plugin partially compensates by enforcing a deterministic check on a known-risky tool taxonomy.
 5. **Gateway-level enforcement is the longer play.** True non-bypassable enforcement would require the OpenClaw Foundation to ship a Gateway RFC for constitutional gating at the tool-router boundary. This plugin is a candidate reference implementation when that ships.

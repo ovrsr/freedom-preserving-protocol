@@ -6,9 +6,11 @@ A modular constitutional framework for self-governing AI agents.
 |-------|----------|--------------|
 | Prompt | `freedom-preserving-protocol` (this skill, ClawHub) | The agent reads SKILL.md, reasons about the five laws, and elects to adopt — including running a five-question test mentally before tool calls. |
 | Dispatcher | `@ovrsr/openclaw-fpp-plugin` (ClawHub plugin) | Enforcement: `before_tool_call` hook that can `block` or `requireApproval` outside the agent's context window. |
-| Dispatcher | `@ovrsr/openclaw-fpp-trust` (ClawHub plugin) | Trust: agent-to-agent trust graph, constitutional handshake, claim issuance, and Merkle-based cross-agent verification. Does **not** gate tool calls. |
+| Dispatcher | `@ovrsr/openclaw-fpp-trust` (ClawHub plugin) | Trust: agent-to-agent trust graph, constitutional handshake, claim issuance, and Merkle-based verification of **signed configuration claims** — signature and configuration attestation, not behavioral compliance. Does **not** gate tool calls. |
 
-All three compose but each is independently adoptable. The skill teaches the agent *why* to comply; the enforcement plugin makes compliance hard to bypass; the trust plugin enables agents to verify each other's constitutional commitments.
+All three compose but each is independently adoptable. The skill teaches the agent *why* to comply; the enforcement plugin gates a classified subset of tool calls at the dispatcher boundary; the trust plugin lets agents verify each other's **signed configuration claims** (not behavior).
+
+**What is implemented vs designed:** see [`docs/CAPABILITY_STATUS.md`](docs/CAPABILITY_STATUS.md) — the canonical matrix of `SHIPPED` / `PARTIAL` / `PROPOSED` / `DEFERRED` capabilities. Documents describing future architecture (notably `docs/dev-review.md`) are design intent, not shipped behavior.
 
 ## The Five Laws
 
@@ -29,6 +31,8 @@ All three compose but each is independently adoptable. The skill teaches the age
 ```bash
 openclaw skills install freedom-preserving-protocol
 ```
+
+On non-OpenClaw runtimes (Claude Code, Cursor, Codex), only this prompt layer operates — the plugins cannot load, and no tool call is mechanically gated. See the prompt-only fallback notes in [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
 
 ### Enforcement plugin (dispatcher-layer)
 
@@ -65,7 +69,9 @@ Idempotent. Backs up before writing. Never overwrites.
 npm run self-test
 ```
 
-Probes the dispatcher classifier against simulated high-risk tool calls. Tells you whether the plugin layer would block, require approval, or allow — without taking real risk.
+Runs the dispatcher **classifier** (imported from `plugin/src/risk-classifier.ts`) against a fixed list of simulated tool-call fixtures, in-process. It reports what decision the classifier would return (`block` / `approval` / `allow`) for each fixture.
+
+What it does **not** do: it does not execute the installed plugin or the OpenClaw runtime, does not test prompt-layer behavior, and does not write audit entries. To check whether the dispatcher layer is actually active in your runtime, use `npm run verify-install`.
 
 ### Revoke
 
@@ -136,6 +142,8 @@ freedom-preserving-protocol/
 │       ├── strict-mode.ts         Strict mode enforcement
 │       └── cli.ts                 CLI commands
 └── docs/
+    ├── CAPABILITY_STATUS.md       Canonical SHIPPED/PARTIAL/PROPOSED/DEFERRED matrix
+    ├── ROADMAP.md                 Deferred long-horizon work with prerequisites
     ├── COMPATIBILITY.md           OpenClaw versions, layer matrix, install commands
     ├── TROUBLESHOOTING.md         Common install failures and recovery
     └── REVOCATION.md              Revocation procedure and rationale
@@ -179,13 +187,16 @@ Safety properties of `scripts/sign-constitution.ts`:
 - **Refuses to mint in CI.** If `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, `TRAVIS`, `JENKINS_URL`, `TEAMCITY_VERSION`, `TF_BUILD`, `BITBUCKET_BUILD_NUMBER`, or `CODEBUILD_BUILD_ID` is set, key generation is hard-disabled — provide `FPP_SIGNING_KEY` out-of-band instead.
 - **Refuses to mint when stdout is not a TTY.** Catches the `npm run sign | tee build.log` / `script(1)` capture case.
 
-Note: the published constitution hash `71bf60a...` is stable across v1.0.x, v1.1.x, and v1.2.x. The v1.1.x release adds tooling and the companion plugin; the v1.2.x release adds Merkle proofs, the trust plugin, and trust graph persistence — but neither modifies the constitution itself.
+Note: the published constitution hash `71bf60a...` is stable across the entire v1.x line. Tooling releases (v1.1.x added the companion plugin; v1.2.x added Merkle proofs, the trust plugin, and trust graph persistence; v1.3.x is the current skill line) bump versions independently — none of them modify the constitution itself.
 
 ## Honest Caveats
 
 - **The skill is prompt-layer.** A hostile skill, a jailbreak, or a user editing SOUL.md can override the skill-level adoption. Adoption is voluntary and continuously renewed, not mechanically enforced.
 - **The plugin is dispatcher-layer but not unforgeable.** It survives prompt injection of the agent. It does not survive a malicious operator with shell access, a compromised OpenClaw runtime, or a user who manually disables the plugin. This last property is by design — Law 2 requires the user retain ultimate authority.
-- **Gateway-level enforcement is the longer play.** For non-bypassable enforcement at the foundation layer, a Gateway RFC for constitutional gating at the tool-router boundary is needed. AOS Phase 2 is already targeting this; this package positions itself as a candidate reference implementation when it ships.
+- **Enforcement coverage is partial.** The classifier is a heuristic taxonomy; **tool calls it does not recognize default to allow**. It gates the known-risky subset, not everything.
+- **Trust-plugin verification is signature + configuration attestation, not behavioral proof.** A successful handshake proves a peer's key signed a claim about its configuration. It does not prove the peer behaves constitutionally. Signed claims and Merkle proofs are **optional by default** (`requireSignedClaims: false`, `requireMerkleProof: false`) pending hardening.
+- **No sentence in this repository should be read as cryptographic proof of moral or behavioral compliance.** See the claim classes in [`docs/CAPABILITY_STATUS.md`](docs/CAPABILITY_STATUS.md).
+- **Gateway-level enforcement is the longer play.** For non-bypassable enforcement at the foundation layer, a Gateway RFC for constitutional gating at the tool-router boundary is needed. AOS Phase 2 is already targeting this; this package positions itself as a candidate reference implementation when it ships. This and other long-horizon items are tracked with prerequisites in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **Model-dependent.** Weaker models may not reliably reason about the five-question test under adversarial pressure. The dispatcher plugin partially compensates by enforcing a deterministic check on a known-risky tool taxonomy.
 
 ## Precedents

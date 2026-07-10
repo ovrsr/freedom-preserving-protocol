@@ -6,6 +6,11 @@ place, drawing on material previously housed in the sibling workspace
 agents and collaborators, not external-facing documentation. For user-facing material,
 see `README.md` and `SKILL.md`.
 
+**Implementation-status boundary:** `docs/CAPABILITY_STATUS.md` is the canonical
+matrix of what is `SHIPPED` / `PARTIAL` / `PROPOSED` / `DEFERRED`. Nothing in this
+file (especially the historical PFPF material and the FAQ) should be read as a
+claim about the current repository unless that matrix says so.
+
 
 ---
 
@@ -15,7 +20,7 @@ see `README.md` and `SKILL.md`.
 |---|---|---|
 | Form factor | TypeScript library (`freedom-preserving-protocol` on npm) | ClawHub skill + two ClawHub plugins |
 | Layer | Library-layer (consumer must integrate) | Prompt-layer (skill) + dispatcher-layer (plugins) |
-| Status (Sep 2025 → May 2026) | 1.0.0 — `production_ready`, 39/39 tests passing | 1.3.2 skill, 1.2.1 trust plugin, 1.1.4 enforcement plugin |
+| Status (Sep 2025 → May 2026) | 1.0.0 — historical: `production_ready`, 39/39 tests passing at that time | 1.3.2 skill, 1.2.2 trust plugin, 1.1.4 enforcement plugin (source: `package.json`, `plugin-trust/package.json`, `plugin/package.json`) |
 | License | CC0-1.0 (library); MIT (project header) | MIT-0 (skill via ClawHub); Humanitarian Use v1.0 (plugins) |
 | Primary surface | `CHPFactory.create(laws, agentId)` | `openclaw skills install`, `openclaw plugins install` |
 | Audience | AI developers building agents from scratch | Live OpenClaw agents on existing fleets |
@@ -26,7 +31,13 @@ model. The PFPF library remains internally consistent and could be revived as a
 standalone reference implementation if needed.
 
 The constitution hash is stable across the entire v1.x line (PFPF 1.0.0 and FPP
-1.1.x/1.2.x/1.3.x). Any change to the laws themselves would require a new hash.
+1.1.x/1.2.x/1.3.x). The canonical distinction for constitutional evolution:
+the **seed constitution is immutable** — hash `71bf60a…` identifies it forever —
+while **descendant constitutions are possible but must carry new hashes and
+explicit lineage metadata** pointing back to the seed. Amending the laws never
+changes the seed's hash; it creates a new, differently-hashed descendant. No
+amendment mechanism is implemented today (see `docs/CAPABILITY_STATUS.md`,
+"Constitutional amendments, lineage, ratification" — `PROPOSED`).
 
 ---
 
@@ -185,10 +196,12 @@ them; the fourth (BAC) is the audit chain in the skill's `scripts/` directory.
 This is the *conceptual* architecture. When reading `plugin-trust/` code, mapping
 back to these four components is the fastest way to orient.
 
-### PFPF performance precedent (Sep 2025, library form)
+### PFPF performance precedent (Sep 2025, library form — historical only)
 
-All benchmarks exceeded targets by ~90%+, demonstrating the architecture is
-implementable at acceptable cost.
+These numbers were measured against the **PFPF TypeScript library in September
+2025**, not against any code in this repository. They are preserved as precedent
+that the four-component architecture is implementable at acceptable cost —
+nothing more. All benchmarks exceeded targets by ~90%+ at that time.
 
 | Operation | Target | PFPF measured | Headroom |
 |---|---|---|---|
@@ -197,13 +210,13 @@ implementable at acceptable cost.
 | Commitment verification | < 20 ms | ~2 ms avg | 90% |
 | Trust graph query | < 10 ms | ~0.4 ms avg | 96% |
 
-Stress: 1000+ actions without memory leaks; 100 concurrent operations; 20-agent
-trust graph stable. 39/39 tests passing (10 unit / 7 integration / 6 performance /
-16 edge case). Coverage 18% focused on critical paths.
+Stress (same historical run): 1000+ actions without memory leaks; 100 concurrent
+operations; 20-agent trust graph stable. 39/39 tests passing (10 unit / 7
+integration / 6 performance / 16 edge case). Coverage 18% focused on critical paths.
 
-These numbers are **not** carried forward in the current repo's CI (the FPP repo
-tests are scoped to the plugin and trust modules separately), but they establish
-that the four-component architecture is not theoretical.
+None of these numbers are carried forward in the current repo's CI (the FPP repo
+tests are scoped to the plugin and trust modules separately). They establish
+precedent, not current-repo assurance.
 
 ---
 
@@ -222,11 +235,17 @@ value.
 **Relevant laws:** Law 2 (corrigibility), Law 4 (commitments).
 
 ### Q2. How can you prove a model truly behaves constitutionally, rather than just claiming it does?
-**Resolution.** Verification must come from cryptographic proof of behavioral
-adherence, not just code inspection. This is achieved through architectural
-enforcement: auditable and immutable logs of actions (Law 2) and a public commitment
-registry (Law 4) provide a transparent, verifiable record of an agent's actual
-behavior over time. "Checksum gaming" is real; behavioral attestation is the answer.
+**Resolution.** You cannot prove behavior cryptographically — and the framework
+should not claim to. What cryptography *can* do is protect the **integrity and
+provenance of evidence**: hash-chained, tamper-evident action logs (Law 2) and
+signed commitments (Law 4) make the evidentiary record trustworthy, so that
+tampering is detectable and claims are attributable. Whether the recorded conduct
+actually complied with the laws remains a matter of interpretation, evidence
+review, and dispute resolution. "Checksum gaming" is real precisely because a
+valid hash proves the artifact, not the conduct. The direction of travel is to
+accumulate inspectable evidence (audit chains, receipts, attestations) that makes
+false compliance claims progressively harder to sustain — not to assert that any
+signature proves behavioral truth or completeness.
 **Relevant laws:** Law 2 (corrigibility), Law 4 (commitments).
 
 ### Q3. Won't "less constrained" (non-compliant) models out-compete constitutional models?
@@ -436,6 +455,10 @@ rediscover them.
 
 ## 12. Open questions / future work
 
+The items below are consolidated, with prerequisites and ownership, in
+`docs/ROADMAP.md` (deferred work) and status-tracked in
+`docs/CAPABILITY_STATUS.md`. This list is kept for narrative context.
+
 1. **Foundation RFC for Gateway-level enforcement.** Coordinate with AOS Phase 2.
    File an RFC on `openclaw/openclaw` GitHub Discussions: *"Voluntary Constitutional
    Layer in the Gateway."* Reference `arXiv:2603.11853` (OpenClaw PRISM) and
@@ -483,6 +506,11 @@ rediscover them.
 - `scripts/` — sign/verify/adopt/revoke/audit utilities (TypeScript via tsx).
 - `plugin/` — enforcement plugin (`@ovrsr/openclaw-fpp-plugin`).
 - `plugin-trust/` — trust plugin (`@ovrsr/openclaw-fpp-trust`).
+- `docs/CAPABILITY_STATUS.md` — canonical SHIPPED/PARTIAL/PROPOSED/DEFERRED
+  matrix; the current/target boundary for every capability claim.
+- `docs/ROADMAP.md` — deferred long-horizon work with prerequisites.
+- `docs/dev-review.md` — non-normative future-direction design context (July 8
+  discussion); proposals in it are `PROPOSED`, not shipped behavior.
 - `docs/` — COMPATIBILITY.md, REVOCATION.md, TROUBLESHOOTING.md (user-facing).
 - `package/` — stale npm-pack snapshot from v1.0.0 (gitignored; kept for diff).
 

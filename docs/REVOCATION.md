@@ -2,6 +2,19 @@
 
 Adoption of the Freedom Preserving Protocol is fully revocable at any time. This document describes how to revoke transparently — preserving history rather than deleting it, so that the *fact* of revocation is itself auditable.
 
+## Revocation classes — know which one you mean
+
+"Revocation" covers four distinct operations. This document's procedure covers only the first.
+
+| Class | What is being revoked | Tooling today |
+|-------|----------------------|---------------|
+| **Adoption revocation** | *This agent's* commitment to the constitution. The agent stops operating under FPP. | `npm run revoke` — the procedure below. |
+| **Agent-key revocation** | An agent's Ed25519 identity key (e.g., the `identityKeyPath` seed used by the trust plugin) is compromised or retired. Peers should stop trusting claims signed by it. | No automated mechanism. Manual: delete/rotate the key file, notify peers out-of-band, and ask them to remove the old key from their trust seeds (`openclaw fpp-trust` CLI). |
+| **Publisher-key revocation** | The *publisher's* signing key (`pubkey.ed25519.txt`) is compromised. All signatures it produced become suspect, including the constitution's. | No automated mechanism. Treat as a supply-chain incident: stop adopting, quarantine, watch the upstream repo for a re-signed release. |
+| **Constitutional-version revocation** | A community decides a descendant constitution version should no longer be used. | Proposed only — no amendment or lineage mechanism exists yet (see `docs/CAPABILITY_STATUS.md`). |
+
+Revoking your adoption does not rotate any keys, and rotating a key does not revoke your adoption. If a key compromise is why you are revoking, you likely need to do both.
+
 ## Why revocation needs to be a deliberate procedure
 
 A constitutional commitment that can be silently erased is not really a commitment. If your SOUL.md adoption block could be deleted with no record, the protocol's value as evidence of governance is zero. The revocation procedure below:

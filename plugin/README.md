@@ -46,11 +46,18 @@ On every tool call your agent attempts, OpenClaw invokes this plugin's `before_t
    - `http.public-write` — POST/PUT/PATCH/DELETE to a non-private URL.
    - `message.external` — outbound message to a third party.
    - many others; see the source for the full list.
-2. **Decides** based on your config:
+2. **Decides** based on your config (`plugin/src/index.ts`, `decide()`):
    - if the classification is in `blockOn`, return `{ block: true, blockReason }`.
-   - if in `approvalOn`, return `{ requireApproval: { ... } }`.
-   - otherwise, return nothing (allow).
+   - if in `approvalOn` (or escalated by trust-plugin strict mode), return `{ requireApproval: { ... } }`.
+   - if the classifier itself recommends `block` but your config doesn't list the classification, the decision is downgraded to `requireApproval` (not allow).
+   - otherwise, **allow**. This includes every tool call the classifier does not recognize: **unknown tools and unmatched parameter shapes default to allow** (they are audited as `allowed`, not gated). Enforcement coverage is the classified taxonomy, not all tool calls.
 3. **Audits** the decision to `.openclaw/workspace/fpp-plugin-audit.jsonl` as a hash-chained entry (same format as the skill's audit log; cross-verifiable with `npm run audit:verify` in the parent package).
+
+**Audit-write failure behavior (current, pending hardening):** audit entries are written with a synchronous append and no fallback. If the write throws (permissions, disk full), the exception propagates to the OpenClaw runtime — the plugin does **not** guarantee fail-closed behavior ("no audit, no action"). Until that hardening lands, treat the audit log as best-effort evidence, not a completeness guarantee.
+
+**Approval timeout:** approvals wait `approvalTimeoutMs` (default 60000 ms) and then apply `approvalTimeoutBehavior` (default `deny`).
+
+**Strict mode:** when `respectTrustStrictMode` is `true` (default), the hook reads the trust plugin's strict-mode state file (`strictModeStatePath`) on each call and escalates listed classifications to `requireApproval` for flagged sessions.
 
 ## Configuration
 
@@ -73,11 +80,21 @@ Set these under `plugins.entries.openclaw-fpp-plugin.config` in your OpenClaw co
   ],
   "approvalTimeoutMs": 60000,
   "approvalTimeoutBehavior": "deny",
-  "constitutionHash": "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993"
+  "constitutionHash": "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
+  "strictModeStatePath": ".openclaw/workspace/fpp-strict-sessions.json",
+  "respectTrustStrictMode": true
 }
 ```
 
-All fields are optional; defaults match the conservative set above. The defaults are designed to never block routine, low-risk work — only the genuinely irreversible-or-exfiltrative shapes.
+All fields are optional; the values above are the runtime defaults from `src/config.ts` (`DEFAULT_CONFIG`). The defaults are designed to never block routine, low-risk work — only the genuinely irreversible-or-exfiltrative shapes.
+
+> **Known drift:** the manifest (`openclaw.plugin.json`) declares a shorter
+> `approvalOn` default (`fs.delete.workspace`, `pkg.install`,
+> `http.public-write` — 3 entries) than `src/config.ts` (9 entries, above).
+> The runtime merges your config against `src/config.ts`, so **the 9-entry set
+> is what actually applies** when you set nothing. The manifest default is
+> display metadata only; this drift is tracked for correction in a future
+> release.
 
 To tune, edit your OpenClaw config and restart the gateway (`openclaw gateway reload` if your version supports it; otherwise `openclaw gateway restart` — note that restart itself is a `gateway.restart` event the plugin will log).
 
@@ -94,6 +111,7 @@ The published artifact ships pre-built `dist/`. Source is included in the npm ta
 
 ## Limitations (read this)
 
+0. **Unknown tools are allowed, not gated.** The hook only blocks or escalates classifications it recognizes. A tool call outside the taxonomy passes through with an `allowed` audit entry. Do not describe this plugin as gating "all" tool calls.
 1. **Heuristic classification can be evaded.** The classifier pattern-matches on tool name and parameter shape. A determined adversary can route through a tool name that doesn't match, or encode payloads (base64, nested templates) that the regex doesn't see. This is a strong-but-not-unforgeable fence, not an oracle.
 2. **A malicious operator can disable it.** The plugin honors `openclaw plugins disable openclaw-fpp-plugin` (as it must, per Law 2). If your threat model includes a hostile operator on the same machine, this plugin is not sufficient.
 3. **Audit log integrity depends on filesystem permissions.** The hash chain makes tampering *detectable* but not *preventable*. For tamper-evident archival, pipe the audit log to an append-only external store.

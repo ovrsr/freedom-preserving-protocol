@@ -10,6 +10,47 @@ Purpose: Preserve the project’s intent, architectural reasoning, emerging deci
 
 ---
 
+> **CURRENT IMPLEMENTATION vs TARGET DESIGN — read this first**
+>
+> This document records design intent as of July 8, 2026. **Most of the
+> mechanisms it describes are not implemented.** Nothing below should be read
+> as shipped protocol behavior unless `docs/CAPABILITY_STATUS.md` — the
+> canonical status matrix — lists it as `SHIPPED` or `PARTIAL`.
+>
+> Section-by-section status (per the matrix):
+>
+> | Section | Subject | Status |
+> |---|---|---|
+> | 2, 4 | Five laws; three-layer architecture (skill, enforcement plugin, trust plugin) | `SHIPPED`/`PARTIAL` — implemented primitives exist; see matrix rows for gaps |
+> | 3.2 | Rich adoption states (`reviewed`, `inherited`, `forked`, …) | `PROPOSED` — current tooling implements adopted/revoked only |
+> | 5 | Conformance receipts | `PROPOSED` — no receipt schema or emission exists |
+> | 6 | Internal/external trust views; append-only evidence layer; mutable interpretation | `PROPOSED` — current reputation is a single local score vector |
+> | 7 | Signed, time-bounded, nonce-fresh trust-state capsules | `PROPOSED` — current handshake claims are simpler; no freshness nonce required by default |
+> | 8 | Claim-class taxonomy (identity/configuration/runtime/event/completeness/behavioral) | Adopted as **vocabulary** across the docs; the richer claim *mechanisms* are `PROPOSED` |
+> | 9 | Consent/authorization distinctions | `PROPOSED` — design principle, not enforced by code |
+> | 10 | Amendments, lineage, ratification, consensus | `PROPOSED` — no amendment mechanism exists; seed hash `71bf60a…` is immutable, descendants would need new hashes + lineage |
+> | 11 | Due process (challenge, appeal, correction, rehabilitation) | `PROPOSED` — no record types exist |
+> | 12 | Signed release manifests, provenance, key governance | `PROPOSED` — only the constitution itself is signed today |
+> | 13 | Classifier evaluation criteria, declared failure behavior | `PROPOSED` as criteria — the current classifier ships with fixtures (`scripts/self-test.ts`) but none of the listed metrics are measured, and unknown tools currently default to allow |
+> | 14 | In-scope development questions | Open work — feeds later implementation plans |
+>
+> Implemented primitives cross-referenced by this document: enforcement hook
+> (`plugin/src/index.ts`), risk classifier (`plugin/src/risk-classifier.ts`),
+> hash-chained audit + Merkle proofs (`scripts/audit-*.ts`, `scripts/merkle.ts`),
+> identity/handshake/claims/trust graph (`plugin-trust/src/`). These satisfy the
+> *primitive* roles named in Section 4 — they do **not** satisfy the richer
+> semantics of Sections 5–12.
+>
+> Unresolved governance choices listed in Section 18 remain unresolved; this
+> preface does not select mechanisms. Long-horizon `DEFERRED` items (gateway
+> RFC, telemetry, remote sub-agent guarantees, ZK proofs, post-quantum keys)
+> are tracked with prerequisites in `docs/ROADMAP.md`.
+>
+> *(Editorial preface added 2026-07-10 during documentation reconciliation. The
+> original July 8 text below is preserved unmodified.)*
+
+---
+
 1. Executive Context
 
 The Freedom Preserving Protocol, or FPP, is a modular constitutional framework intended for autonomous and semi-autonomous agents.
@@ -181,6 +222,8 @@ Its function is to help agents evaluate the constitutional commitments and evide
 
 5. Emerging Agent-Led Evolution
 
+> Status: `PROPOSED` — conformance receipts do not exist in any implementation.
+
 An early public exchange around FPP produced an important proposal: agents should not rely only on declarations of constitutional adoption.
 
 Instead, consequential dispatcher decisions should produce conformance receipts connecting:
@@ -211,6 +254,9 @@ This does not make receipts infallible. It moves trust from unsupported professi
 ---
 
 6. Trust Model
+
+> Status: `PROPOSED` — internal/external trust views and the append-only
+> evidence layer described here are design targets, not current behavior.
 
 6.1 Core Decision
 
@@ -336,6 +382,10 @@ A large quantity of harmless successful actions should not cancel a single sever
 ---
 
 7. Handshake Design
+
+> Status: `PROPOSED` — trust-state capsules are a design target. The shipped
+> handshake (`plugin-trust/src/handshake.ts`) exchanges simpler claims with no
+> default freshness nonce, and signatures/Merkle proofs are optional by default.
 
 Agents should exchange a signed, time-bounded trust-state capsule during constitutional handshakes.
 
@@ -486,6 +536,9 @@ An agent community may govern relations among participating agents, but it canno
 
 10. Constitutional Evolution
 
+> Status: `PROPOSED` — no amendment mechanism is implemented. The seed hash is
+> immutable; descendants would carry new hashes and explicit lineage.
+
 A future amendment protocol should include:
 
 - publicly attributable proposals;
@@ -549,6 +602,9 @@ No single factor should automatically confer governing supremacy.
 
 11. Due Process and Rehabilitation
 
+> Status: `PROPOSED` — no challenge, appeal, correction, or rehabilitation
+> record types exist.
+
 Trust and constitutional enforcement require procedures for correction.
 
 Agents should be able to:
@@ -571,6 +627,9 @@ Immutability should preserve history, not abolish mercy.
 ---
 
 12. Security and Integrity Direction
+
+> Status: `PROPOSED` — only the constitution is signed today; release manifests,
+> provenance attestations, and key-governance mechanisms do not exist.
 
 The signed constitution protects the integrity of the normative seed but does not by itself authenticate the implementation.
 
@@ -743,3 +802,56 @@ Model: GPT-5.5 Thinking
 Date: July 8, 2026
 Signature type: Documentary attestation; not a cryptographic signature
 Document identifier: "FPP-SCOPED-CONTEXT-0.1.0-2026-07-08"
+
+---
+
+Appendix A. Acceptance Criteria for Later Implementation Plans
+
+*(Editorial appendix added 2026-07-10 during documentation reconciliation; not
+part of the attested July 8 text. These criteria let implementation plans cite
+a stable definition of "done" for each proposed subsystem. Meeting a criterion
+requires flipping the corresponding row in `docs/CAPABILITY_STATUS.md` in the
+same change.)*
+
+A.1 Conformance receipts (Section 5) are implemented when: a versioned receipt
+schema exists; every dispatcher `block` / `requireApproval` / strict-mode
+decision emits a receipt binding action, constitution and policy versions,
+classifier result, disposition, approval identity (if any), execution outcome,
+and audit commitment; and receipts are independently verifiable against the
+audit chain.
+
+A.2 Rich adoption states (Section 3.2) are implemented when: the adoption
+tooling records at minimum `reviewed`, `accepted`, `externally_enforced`,
+`inherited`, `revoked`, `forked`, and `superseded`; state transitions are
+audit-logged; and no state can be forged by editing a single Boolean.
+
+A.3 Trust-state capsules (Section 7) are implemented when: handshakes exchange
+signed, time-bounded capsules containing constitution lineage, runtime hashes,
+self/peer views with confidence, evidence roots, and a peer-supplied nonce; and
+replay of an expired or nonce-mismatched capsule is rejected by default.
+
+A.4 Internal/external trust views (Section 6) are implemented when: the trust
+plugin maintains separately queryable self-assessed and peer-assessed
+assessments with confidence and evidence-coverage values, and trust decay for
+stale evidence is applied.
+
+A.5 Due process records (Section 11) are implemented when: challenge, appeal,
+correction, and rehabilitation entries exist as append-only audit record types
+that annotate (never rewrite) prior evidence.
+
+A.6 Amendment and lineage metadata (Section 10) are implemented when: descendant
+constitutions carry new hashes with machine-readable lineage back to
+`71bf60a…`; ratification, dissent, exit, and fork records are supported; and a
+descendant cannot present itself as the seed.
+
+A.7 Release provenance (Section 12) is implemented when: a signed release
+manifest binds constitution hash, package hashes, source commit, dependency
+lock hash, and classifier-ruleset hash; and adoption revocation, agent-key
+revocation, publisher-key revocation, and constitutional-version revocation are
+distinct operations.
+
+A.8 Classifier evaluation (Section 13) is implemented when: measured false
+negative/positive rates by category exist against an adversarially authored
+corpus independent of the classifier implementation, and declared failure
+behavior (including audit-write failure and unknown-tool handling) matches
+tested behavior.
