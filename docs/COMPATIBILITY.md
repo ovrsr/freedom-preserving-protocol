@@ -198,5 +198,6 @@ Release order: build/test/pack core → skill → enforcement plugin → trust p
 2. **The skill cannot survive `openclaw plugins disable`.** A user (or anyone with shell access) can disable the dispatcher hook at any time. This is by design — Law 2 (corrigibility) requires that the user retain ultimate authority.
 3. **No cross-host enforcement.** If your OpenClaw agent invokes a sub-agent on a remote host, that sub-agent must independently install the framework. There is no transitive guarantee.
 4. **Heartbeat skills are model-driven.** The constitution-audit heartbeat is a sub-skill the agent runs voluntarily. Until OpenClaw exposes a `cron`-style scheduler that can run the audit script unconditionally, the audit log's completeness depends on the agent's continued cooperation.
+5. **Trust is local policy, not a global score.** Contextual trust assessments, due-process status, and steward overrides are host-local. Sensitivity share checks are **advisory** unless the host provides an interception hook. Sybil/collusion resistance is partial (source independence), not complete.
 
 For the path to closing limitation #4 (Gateway-level enforcement of the heartbeat), see the AOS Phase 2 plan and the open Foundation RFC tracker.

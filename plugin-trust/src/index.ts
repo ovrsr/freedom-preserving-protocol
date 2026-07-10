@@ -33,12 +33,14 @@ import {
   TrustStatusParams,
   AttestationExportParams,
   ClusterStatusParams,
+  SensitivityShareParams,
   executeHandshakeChallenge,
   executeHandshakeOffer,
   executeHandshakeVerify,
   executeTrustStatus,
   executeAttestationExport,
   executeClusterStatus,
+  executeSensitivityShareCheck,
   ReceiptVerifyParams,
   ReceiptProofExportParams,
   CapsuleOfferParams,
@@ -106,6 +108,36 @@ export type {
   ClusterTrustState,
 } from "./group-context.js";
 
+export {
+  TrustEventLedger,
+  appendTrustEvent,
+  verifyTrustEvent,
+  computeEventRoot,
+  buildSnapshotFromEvents,
+  verifySnapshot,
+  LEGACY_CONFIDENCE_CEILING,
+} from "./trust-events.js";
+export type {
+  TrustEventKind,
+  SignedTrustEvent,
+  TrustSnapshotV2,
+  LegacyObservation,
+} from "./trust-events.js";
+
+export { migrateV1ToV2 } from "./persistence.js";
+
+export {
+  TrustViewStore,
+  computeViewDivergence,
+  PROPAGATED_WEIGHT_CEILING,
+  SELF_WEIGHT_CEILING,
+} from "./trust-views.js";
+export type {
+  EvidenceViewSummary,
+  ViewDivergence,
+  EvidenceChannel,
+} from "./trust-views.js";
+
 // ── Config ─────────────────────────────────────────────────────────
 
 export type TrustConfigDiagnostic = {
@@ -119,6 +151,8 @@ interface FppTrustConfig {
   trustAttenuationFactor: number;
   handshakeTimeoutMs: number;
   maxPropagationDepth: number;
+  propagationMinEdgeConfidence: number;
+  propagationEvidenceCeiling: number;
   trustGraphPath: string;
   identityKeyPath: string;
   auditLogPath: string;
@@ -185,6 +219,14 @@ function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
       typeof cfg.maxPropagationDepth === "number"
         ? cfg.maxPropagationDepth
         : 3,
+    propagationMinEdgeConfidence:
+      typeof cfg.propagationMinEdgeConfidence === "number"
+        ? cfg.propagationMinEdgeConfidence
+        : 0.2,
+    propagationEvidenceCeiling:
+      typeof cfg.propagationEvidenceCeiling === "number"
+        ? cfg.propagationEvidenceCeiling
+        : 0.45,
     trustGraphPath:
       typeof cfg.trustGraphPath === "string"
         ? cfg.trustGraphPath
@@ -256,10 +298,17 @@ export function createTrustStack(rawConfig?: Record<string, unknown>): {
   config: FppTrustConfig;
 } {
   const config = mergeConfig(rawConfig);
+  const identity = loadOrCreateIdentity(config.identityKeyPath);
   const trustGraph = loadTrustGraph(config.trustGraphPath, undefined, {
     attenuationFactor: config.trustAttenuationFactor,
+    identity,
   });
-  const identity = loadOrCreateIdentity(config.identityKeyPath);
+  trustGraph.setPropagationPolicy({
+    maxDepth: config.maxPropagationDepth,
+    attenuationFactor: config.trustAttenuationFactor,
+    minEdgeConfidence: config.propagationMinEdgeConfidence,
+    evidenceClassCeiling: config.propagationEvidenceCeiling,
+  });
   const replayCache = new ReplayCache({ path: config.replayCachePath });
   const handshake = new ConstitutionalHandshake(trustGraph, config.constitutionHash, {
     timeoutMs: config.handshakeTimeoutMs,
@@ -307,7 +356,9 @@ function initStack(api: OpenClawPluginApi): {
       if (!dirty) return;
       dirty = false;
       try {
-        await saveTrustGraph(config.trustGraphPath, trustGraph);
+        await saveTrustGraph(config.trustGraphPath, trustGraph, undefined, {
+          identity,
+        });
       } catch (err) {
         dirty = true;
         console.error("[fpp-trust] failed to persist trust graph:", err);
@@ -322,7 +373,9 @@ function initStack(api: OpenClawPluginApi): {
     }
     if (!dirty) return;
     dirty = false;
-    saveTrustGraphSync(config.trustGraphPath, trustGraph);
+    saveTrustGraphSync(config.trustGraphPath, trustGraph, undefined, {
+      identity,
+    });
   }
 
   trustGraph.setOnChange(scheduleSave);
@@ -402,6 +455,14 @@ function initStack(api: OpenClawPluginApi): {
     description: "Check verification state of a trust cluster (multi-agent group).",
     risk: "low",
     tags: ["fpp", "trust", "cluster"],
+  });
+  api.registerToolMetadata({
+    toolName: "fpp_sensitivity_share_check",
+    displayName: "FPP Sensitivity Share Check",
+    description:
+      "Advisory check whether content at a declared sensitivity may be shared with a cluster. Host must enforce.",
+    risk: "low",
+    tags: ["fpp", "trust", "cluster", "advisory"],
   });
   api.registerToolMetadata({
     toolName: "fpp_receipt_verify",
@@ -539,6 +600,19 @@ export default defineToolPlugin({
       execute(params, _config, ctx) {
         const { deps } = initStack(ctx.api);
         return executeClusterStatus(params, deps);
+      },
+    }),
+
+    tool({
+      name: "fpp_sensitivity_share_check",
+      label: "FPP Sensitivity Share Check",
+      description:
+        "ADVISORY: check whether content at a declared sensitivity (0-3) may be shared " +
+        "with a cluster under current scoped standing. Does not enforce; host interception required.",
+      parameters: SensitivityShareParams,
+      execute(params, _config, ctx) {
+        const { deps } = initStack(ctx.api);
+        return executeSensitivityShareCheck(params, deps);
       },
     }),
 

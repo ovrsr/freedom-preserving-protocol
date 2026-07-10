@@ -10,6 +10,22 @@
  */
 
 import { createHash } from "node:crypto";
+import {
+  TrustViewStore,
+  computeViewDivergence,
+  type EvidenceViewSummary,
+  type ViewDivergence,
+} from "./trust-views.js";
+import {
+  ScopedTrustStore,
+  DEFAULT_SCOPE,
+  type TrustScope,
+  type ScopedAssessment,
+} from "./trust-scope.js";
+import {
+  assessEvidenceQuality,
+  type QualityEvidenceItem,
+} from "./evidence-quality.js";
 
 export enum TrustLevel {
   UNKNOWN = 0,
@@ -88,7 +104,18 @@ export interface TrustPropagation {
   trustLevel: TrustLevel;
   confidence: number;
   attenuation: number;
+  deductions: string[];
+  evidenceClass: "propagated";
+  /** True when a direct assessment exists and takes precedence. */
+  directPrecedenceApplied: boolean;
 }
+
+export type PropagationPolicy = {
+  maxDepth: number;
+  attenuationFactor: number;
+  minEdgeConfidence: number;
+  evidenceClassCeiling: number;
+};
 
 export interface TrustUpdateEvent {
   type: "node_added" | "node_removed" | "new_relationship" | "trust_change";
@@ -107,15 +134,110 @@ export interface TrustGraphStats {
 const DEFAULT_ATTENUATION_FACTOR = 0.8;
 const MAX_EVENTS = 1000;
 
+export interface LegacyObservationRef {
+  source: "legacy_v1";
+  confidence: number;
+  nodeId?: string;
+  relationshipKey?: string;
+  data: unknown;
+}
+
 export class TrustGraphProtocol {
   private nodes = new Map<string, TrustNode>();
   private relationships = new Map<string, TrustRelationship>();
   private updateEvents: TrustUpdateEvent[] = [];
   private onChangeCallback?: () => void;
   private attenuationFactor: number;
+  private propagationPolicy: PropagationPolicy;
+  private legacyObservations: LegacyObservationRef[] = [];
+  /** In-memory event ledger root for v2 persistence (optional). */
+  private eventRoot: string | null = null;
+  private eventCount = 0;
+  private viewStore = new TrustViewStore();
+  private scopedStore = new ScopedTrustStore();
 
-  constructor(options?: { attenuationFactor?: number }) {
-    this.attenuationFactor = options?.attenuationFactor ?? DEFAULT_ATTENUATION_FACTOR;
+  constructor(options?: {
+    attenuationFactor?: number;
+    propagationPolicy?: Partial<PropagationPolicy>;
+  }) {
+    this.attenuationFactor =
+      options?.attenuationFactor ?? DEFAULT_ATTENUATION_FACTOR;
+    this.propagationPolicy = {
+      maxDepth: options?.propagationPolicy?.maxDepth ?? 3,
+      attenuationFactor:
+        options?.propagationPolicy?.attenuationFactor ?? this.attenuationFactor,
+      minEdgeConfidence: options?.propagationPolicy?.minEdgeConfidence ?? 0.2,
+      evidenceClassCeiling:
+        options?.propagationPolicy?.evidenceClassCeiling ?? 0.45,
+    };
+  }
+
+  setPropagationPolicy(policy: Partial<PropagationPolicy>): void {
+    this.propagationPolicy = { ...this.propagationPolicy, ...policy };
+  }
+
+  getPropagationPolicy(): PropagationPolicy {
+    return { ...this.propagationPolicy };
+  }
+
+  getViewStore(): TrustViewStore {
+    return this.viewStore;
+  }
+
+  getScopedStore(): ScopedTrustStore {
+    return this.scopedStore;
+  }
+
+  /**
+   * Record a directed scoped assessment. Does not create a symmetric reverse edge.
+   */
+  recordScopedAssessment(assessment: ScopedAssessment): void {
+    this.scopedStore.put(assessment);
+    this.onChangeCallback?.();
+  }
+
+  evaluateScopedTrust(
+    from: string,
+    to: string,
+    scope: Partial<TrustScope>,
+    atMs: number = Date.now(),
+    options?: { allowConservativeDefault?: boolean },
+  ): ScopedAssessment | null {
+    return this.scopedStore.evaluate(from, to, scope, atMs, options);
+  }
+
+  getEvidenceViews(subjectId: string): {
+    self: EvidenceViewSummary;
+    peer: EvidenceViewSummary;
+    propagated: EvidenceViewSummary;
+    divergence: ViewDivergence;
+  } {
+    const self = this.viewStore.getSelfView(subjectId);
+    const peer = this.viewStore.getPeerView(subjectId);
+    const propagated = this.viewStore.getPropagatedView(subjectId);
+    return {
+      self,
+      peer,
+      propagated,
+      divergence: computeViewDivergence(self, peer),
+    };
+  }
+
+  getLegacyObservations(): LegacyObservationRef[] {
+    return [...this.legacyObservations];
+  }
+
+  setLegacyObservations(obs: LegacyObservationRef[]): void {
+    this.legacyObservations = [...obs];
+  }
+
+  getPersistenceMeta(): { eventRoot: string | null; eventCount: number } {
+    return { eventRoot: this.eventRoot, eventCount: this.eventCount };
+  }
+
+  setPersistenceMeta(meta: { eventRoot: string | null; eventCount: number }): void {
+    this.eventRoot = meta.eventRoot;
+    this.eventCount = meta.eventCount;
   }
 
   setOnChange(cb: () => void): void {
@@ -175,6 +297,7 @@ export class TrustGraphProtocol {
     trustAB: TrustLevel,
     trustBA: TrustLevel,
     evidence: TrustEvidence[] = [],
+    scope: Partial<TrustScope> = DEFAULT_SCOPE,
   ): TrustRelationship | null {
     if (!this.nodes.has(agentA) || !this.nodes.has(agentB)) return null;
     if (agentA === agentB) return null;
@@ -191,6 +314,34 @@ export class TrustGraphProtocol {
       evidence,
     };
     this.relationships.set(key, rel);
+
+    const now = Date.now();
+    const fullScope: TrustScope = {
+      capability: scope.capability ?? DEFAULT_SCOPE.capability,
+      resource: scope.resource ?? "*",
+      audience: scope.audience ?? "*",
+      environment: scope.environment ?? "*",
+    };
+    this.scopedStore.put({
+      from: agentA,
+      to: agentB,
+      scope: fullScope,
+      level: trustAB,
+      confidence: rel.confidence,
+      validFrom: now,
+      validUntil: now + 30 * 24 * 60 * 60 * 1000,
+      source: "direct",
+    });
+    this.scopedStore.put({
+      from: agentB,
+      to: agentA,
+      scope: fullScope,
+      level: trustBA,
+      confidence: rel.confidence,
+      validFrom: now,
+      validUntil: now + 30 * 24 * 60 * 60 * 1000,
+      source: "direct",
+    });
 
     const nodeA = this.nodes.get(agentA)!;
     const nodeB = this.nodes.get(agentB)!;
@@ -219,13 +370,18 @@ export class TrustGraphProtocol {
   }
 
   /**
-   * BFS trust propagation with 20% per-hop attenuation.
+   * Directed BFS trust propagation with receiver-controlled limits.
+   * Uses the edge direction along the path (from→to), not a fixed trustAB field.
    */
   propagateTrust(
     source: string,
     target: string,
-    maxDepth = 3,
+    maxDepth?: number,
   ): TrustPropagation | null {
+    const policy = this.propagationPolicy;
+    const depthLimit = maxDepth ?? policy.maxDepth;
+    const deductions: string[] = [];
+
     if (!this.nodes.has(source) || !this.nodes.has(target)) return null;
     if (source === target) {
       return {
@@ -235,24 +391,77 @@ export class TrustGraphProtocol {
         trustLevel: TrustLevel.MAXIMUM,
         confidence: 1.0,
         attenuation: 0,
+        deductions: [],
+        evidenceClass: "propagated",
+        directPrecedenceApplied: false,
       };
     }
 
-    const path = this.bfsPath(source, target, maxDepth);
-    if (!path) return null;
+    // Direct scoped/relationship evidence takes precedence over propagation
+    const directRel = this.getRelationship(source, target);
+    if (directRel) {
+      const directed = this.directedLevel(directRel, source, target);
+      deductions.push("direct evidence present; propagation not used for standing");
+      return {
+        source,
+        target,
+        path: [source, target],
+        trustLevel: directed.level,
+        confidence: Math.min(directRel.confidence, 1),
+        attenuation: 0,
+        deductions,
+        evidenceClass: "propagated",
+        directPrecedenceApplied: true,
+      };
+    }
+
+    const path = this.bfsPath(source, target, depthLimit);
+    if (!path) {
+      deductions.push("no path within depth limit");
+      return null;
+    }
+    if (path.length - 1 > depthLimit) {
+      deductions.push(`path depth ${path.length - 1} exceeds maxDepth ${depthLimit}`);
+      return null;
+    }
 
     let trust = TrustLevel.MAXIMUM as number;
     let confidence = 1.0;
     let attenuation = 0;
+    const visitedEdges = new Set<string>();
 
     for (let i = 0; i < path.length - 1; i++) {
-      const rel = this.getRelationship(path[i]!, path[i + 1]!);
+      const from = path[i]!;
+      const to = path[i + 1]!;
+      const edgeKey = `${from}->${to}`;
+      if (visitedEdges.has(edgeKey)) {
+        deductions.push(`cycle detected at ${edgeKey}`);
+        return null;
+      }
+      visitedEdges.add(edgeKey);
+
+      const rel = this.getRelationship(from, to);
       if (!rel) return null;
-      const factor = Math.pow(this.attenuationFactor, i);
-      trust = Math.min(trust, rel.trustAB * factor);
-      confidence *= rel.confidence;
+      const directed = this.directedLevel(rel, from, to);
+      if (directed.confidence < policy.minEdgeConfidence) {
+        deductions.push(
+          `edge ${edgeKey} confidence ${directed.confidence.toFixed(2)} below min ${policy.minEdgeConfidence}`,
+        );
+        return null;
+      }
+      const factor = Math.pow(policy.attenuationFactor, i);
+      trust = Math.min(trust, directed.level * factor);
+      confidence *= directed.confidence * factor;
       attenuation += 1 - factor;
+      deductions.push(
+        `hop ${i}: ${from}→${to} level=${directed.level} conf=${directed.confidence.toFixed(2)} ×${factor.toFixed(2)}`,
+      );
     }
+
+    confidence = Math.min(confidence, policy.evidenceClassCeiling);
+    deductions.push(
+      `propagated evidence ceiling applied (${policy.evidenceClassCeiling})`,
+    );
 
     return {
       source,
@@ -261,7 +470,32 @@ export class TrustGraphProtocol {
       trustLevel: Math.floor(trust) as TrustLevel,
       confidence,
       attenuation,
+      deductions,
+      evidenceClass: "propagated",
+      directPrecedenceApplied: false,
     };
+  }
+
+  /** Resolve directed trust along from→to for a stored relationship. */
+  private directedLevel(
+    rel: TrustRelationship,
+    from: string,
+    to: string,
+  ): { level: TrustLevel; confidence: number } {
+    if (rel.agentA === from && rel.agentB === to) {
+      return { level: rel.trustAB, confidence: rel.confidence };
+    }
+    if (rel.agentA === to && rel.agentB === from) {
+      return { level: rel.trustBA, confidence: rel.confidence };
+    }
+    // Key may be unordered relative to stored agentA/agentB labels
+    if (from === rel.agentA) {
+      return { level: rel.trustAB, confidence: rel.confidence };
+    }
+    if (from === rel.agentB) {
+      return { level: rel.trustBA, confidence: rel.confidence };
+    }
+    return { level: TrustLevel.UNKNOWN, confidence: 0 };
   }
 
   updateReputation(
@@ -441,26 +675,22 @@ export class TrustGraphProtocol {
 
   private evidenceConfidence(evidence: TrustEvidence[]): number {
     if (evidence.length === 0) return 0.5;
-    const classCeilings: Record<string, number> = {
-      identity: 0.7,
-      configuration: 0.55,
-      runtime: 0.7,
-      event: 0.75,
-      completeness: 0.65,
-      behavioral: 0.95,
-    };
-    let sum = 0;
-    let n = 0;
-    for (const e of evidence) {
-      const ceiling =
-        e.evidenceClass !== undefined
-          ? (classCeilings[e.evidenceClass] ?? 0.5)
-          : Math.min(e.weight, 0.5);
-      sum += Math.min(e.weight, ceiling);
-      n++;
-    }
-    // Average weight capped by class — never inflate from count alone.
-    return Math.min(sum / n, 1.0);
+    const items: QualityEvidenceItem[] = evidence.map((e, i) => ({
+      id: `${e.source}:${e.timestamp}:${e.type}:${i}`,
+      sourceId: e.source,
+      independenceGroup: e.source,
+      observationType:
+        e.type === "peer_attestation"
+          ? "direct"
+          : e.type === "handshake"
+            ? "direct"
+            : "self",
+      coverage: e.evidenceClass === "completeness" ? "partial" : "unknown",
+      weight: e.weight,
+      observedAtMs: e.timestamp,
+      disputeStatus: "none",
+    }));
+    return assessEvidenceQuality(items, Date.now()).confidence;
   }
 
   private updateScores(a: string, b: string): void {

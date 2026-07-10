@@ -8,7 +8,9 @@ describe("GroupContextManager", () => {
     const graph = new TrustGraphProtocol();
     graph.addAgent("local", "h");
     graph.addAgent("peer", "h");
-    graph.establishTrust("local", "peer", TrustLevel.HIGH, TrustLevel.HIGH);
+    graph.establishTrust("local", "peer", TrustLevel.HIGH, TrustLevel.HIGH, [], {
+      capability: "handshake",
+    });
     const required: string[] = [];
     const mgr = new GroupContextManager(graph, "local", (c, a) => {
       required.push(`${c}:${a}`);
@@ -16,10 +18,38 @@ describe("GroupContextManager", () => {
     mgr.noteAgentJoined("cluster-1", "stranger");
     assert.ok(required.some((x) => x.includes("stranger")));
     mgr.noteAgentJoined("cluster-1", "peer");
-    mgr.markVerified("cluster-1", "peer", TrustLevel.HIGH);
+    mgr.markVerified("cluster-1", "peer", TrustLevel.HIGH, {
+      validUntil: Date.now() + 60_000,
+    });
     const state = mgr.getClusterTrustState("cluster-1");
     assert.ok(state);
     assert.equal(state!.verifiedMembers >= 1, true);
     assert.equal(mgr.shouldShareWithCluster("cluster-1", 0), true);
+  });
+
+  it("downgrades members on expiry and exposes advisory sensitivity checks", () => {
+    const graph = new TrustGraphProtocol();
+    graph.addAgent("local", "h");
+    graph.addAgent("peer", "h");
+    graph.establishTrust("local", "peer", TrustLevel.HIGH, TrustLevel.HIGH, [], {
+      capability: "handshake",
+    });
+    const mgr = new GroupContextManager(graph, "local");
+    mgr.noteAgentJoined("c1", "peer");
+    mgr.markVerified("c1", "peer", TrustLevel.HIGH, {
+      validUntil: Date.now() - 1,
+    });
+    mgr.refreshClusterStanding("c1", Date.now());
+    const state = mgr.getClusterTrustState("c1");
+    assert.ok(state);
+    assert.ok(state!.unverifiedAgents.includes("peer"));
+
+    mgr.markVerified("c1", "peer", TrustLevel.HIGH, {
+      validUntil: Date.now() + 60_000,
+    });
+    const check = mgr.checkSensitivityShare("c1", 3);
+    assert.equal(check.enforcement, "advisory");
+    assert.equal(check.advisory, true);
+    assert.equal(typeof check.allowed, "boolean");
   });
 });

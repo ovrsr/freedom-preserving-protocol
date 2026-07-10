@@ -18,6 +18,7 @@ import { signClaim } from "./claims.js";
 import type { ConstitutionalClaim, HandshakeResult } from "./handshake.js";
 import { ConstitutionalHandshake } from "./handshake.js";
 import { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
+import { ScopedTrustStore } from "./trust-scope.js";
 import type { MerkleBridge, MerkleProof } from "./merkle-bridge.js";
 import type { StrictModeManager } from "./strict-mode.js";
 import type { GroupContextManager } from "./group-context.js";
@@ -173,6 +174,17 @@ export const TrustStatusParams = Type.Object({
   targetAgentId: Type.String({
     description: "The agent ID to look up in the trust graph.",
   }),
+  capability: Type.Optional(
+    Type.String({
+      description: "Capability scope to evaluate (e.g. file.read). Defaults to *.",
+    }),
+  ),
+  environment: Type.Optional(
+    Type.String({ description: "Environment scope (e.g. dev, prod)." }),
+  ),
+  resource: Type.Optional(
+    Type.String({ description: "Resource scope filter." }),
+  ),
 });
 
 export const AttestationExportParams = Type.Object({
@@ -187,6 +199,17 @@ export const AttestationExportParams = Type.Object({
 export const ClusterStatusParams = Type.Object({
   clusterId: Type.String({
     description: "Cluster (group/chat thread) identifier to inspect.",
+  }),
+});
+
+export const SensitivityShareParams = Type.Object({
+  clusterId: Type.String({
+    description: "Cluster to evaluate for sharing.",
+  }),
+  sensitivity: Type.Integer({
+    minimum: 0,
+    maximum: 3,
+    description: "0=public, 1=low, 2=medium, 3=high",
   }),
 });
 
@@ -292,6 +315,7 @@ export function executeHandshakeVerify(
     strictMode,
     strictModeOnHandshakeFailure,
     strictModeTtlMs,
+    groupContext,
   } = deps;
 
   let parsed: Record<string, unknown>;
@@ -343,6 +367,15 @@ export function executeHandshakeVerify(
   const summary = summarizeHandshakeVerification(result);
 
   if (result.success) {
+    if (params.sessionKey) {
+      groupContext.noteAgentJoined(params.sessionKey, peerClaim.agentId);
+      groupContext.markVerified(
+        params.sessionKey,
+        peerClaim.agentId,
+        result.trustLevel,
+        { validUntil: Date.now() + 30 * 24 * 60 * 60 * 1000 },
+      );
+    }
     const verifiedParts: string[] = [];
     if (summary.identityVerified) verifiedParts.push("identity");
     if (summary.configurationClaimVerified) {
@@ -361,7 +394,10 @@ export function executeHandshakeVerify(
         `Trust Level: ${trustLevelName} (${result.trustLevel}/4)\n` +
         `Confidence: ${(result.confidence * 100).toFixed(1)}%\n` +
         `Evidence items: ${result.evidence.length}\n` +
-        `Session: ${result.sessionId}`,
+        `Session: ${result.sessionId}` +
+        (params.sessionKey
+          ? `\nCluster ${params.sessionKey}: markVerified applied (scoped handshake standing)`
+          : ""),
       {
         ok: true,
         peerAgentId: peerClaim.agentId,
@@ -377,6 +413,7 @@ export function executeHandshakeVerify(
         /** @deprecated Use standing / identityVerified fields. */
         fppVerified: summary.fppVerified,
         sessionId: result.sessionId,
+        clusterMarkedVerified: Boolean(params.sessionKey),
       },
     );
   }
@@ -426,10 +463,28 @@ export function executeTrustStatus(
     );
   }
 
+  const scopeReq: {
+    capability: string;
+    environment?: string;
+    resource?: string;
+  } = {
+    capability: params.capability ?? "*",
+  };
+  if (params.environment !== undefined) scopeReq.environment = params.environment;
+  if (params.resource !== undefined) scopeReq.resource = params.resource;
+  const scoped = trustGraph.evaluateScopedTrust(
+    identity.agentId,
+    targetId,
+    scopeReq,
+    Date.now(),
+    { allowConservativeDefault: true },
+  );
+  const scopeLabel = ScopedTrustStore.formatScope(scopeReq);
+
   const rel = trustGraph.getRelationship(identity.agentId, targetId);
-  const trustLevel = rel
-    ? Math.max(rel.trustAB, rel.trustBA)
-    : TrustLevel.UNKNOWN;
+  const trustLevel =
+    scoped?.level ??
+    (rel ? Math.max(rel.trustAB, rel.trustBA) : TrustLevel.UNKNOWN);
   // Deprecated: derived from relationship standing, not behavioral proof.
   const fppVerified = rel !== null && trustLevel >= TrustLevel.LOW;
   const standing: VerificationStanding = fppVerified
@@ -438,8 +493,9 @@ export function executeTrustStatus(
   const trustLevelName =
     ["UNKNOWN", "LOW", "MEDIUM", "HIGH", "MAXIMUM"][trustLevel] ?? "UNKNOWN";
 
+  const views = trustGraph.getEvidenceViews(targetId);
   let recommendation: "trusted" | "caution" | "untrusted";
-  if (trustLevel >= TrustLevel.HIGH && node.reputation.overall >= 0.7) {
+  if (trustLevel >= TrustLevel.HIGH && views.peer.summaryWeight >= 0.7) {
     recommendation = "trusted";
   } else if (trustLevel >= TrustLevel.LOW) {
     recommendation = "caution";
@@ -449,12 +505,16 @@ export function executeTrustStatus(
 
   return textResult(
     `Agent ${targetId} — ${trustLevelName} trust (${trustLevel}/4)\n` +
+      `Scope: ${scopeLabel}\n` +
+      `Direction: ${identity.agentId} → ${targetId}\n` +
+      `Assessment source: ${scoped?.source ?? "legacy-relationship"}\n` +
       `Standing: ${standing} (identity/configuration; not behavioral compliance)\n` +
       `Recommendation: ${recommendation.toUpperCase()}\n` +
-      `Overall Reputation: ${(node.reputation.overall * 100).toFixed(0)}%\n` +
-      `Constitutional Fidelity: ${(node.reputation.constitutionalFidelity * 100).toFixed(0)}%\n` +
-      `Intervention Rate: ${(node.reputation.interventionRate * 100).toFixed(0)}%\n` +
-      `Resource Stewardship: ${(node.reputation.resourceStewardship * 100).toFixed(0)}%\n` +
+      `Self view: ${(views.self.summaryWeight * 100).toFixed(0)}% (${views.self.evidenceCount} obs)\n` +
+      `Peer view: ${(views.peer.summaryWeight * 100).toFixed(0)}% (${views.peer.evidenceCount} obs)\n` +
+      `Propagated: ${(views.propagated.summaryWeight * 100).toFixed(0)}%\n` +
+      `Divergence: ${views.divergence.explanation}\n` +
+      `Legacy reputation (compat): ${(node.reputation.overall * 100).toFixed(0)}%\n` +
       `Interactions: ${node.interactionCount} (${node.reputation.positiveInteractions}+ / ${node.reputation.negativeInteractions}-)`,
     {
       known: true,
@@ -465,6 +525,11 @@ export function executeTrustStatus(
       trustLevel,
       trustLevelName,
       recommendation,
+      scope: scopeReq,
+      scopeLabel,
+      direction: `${identity.agentId}->${targetId}`,
+      scopedAssessment: scoped,
+      views,
       reputation: node.reputation,
       lastActivity: node.lastActivity,
       interactionCount: node.interactionCount,
@@ -537,6 +602,23 @@ export function executeClusterStatus(
       ...state,
       lowestTrustLevelName: trustLevelName,
     },
+  );
+}
+
+export function executeSensitivityShareCheck(
+  params: Static<typeof SensitivityShareParams>,
+  deps: ToolDependencies,
+) {
+  const result = deps.groupContext.checkSensitivityShare(
+    params.clusterId,
+    params.sensitivity,
+  );
+  return textResult(
+    `Sensitivity share check (ADVISORY): ${result.allowed ? "ALLOW" : "DENY"}\n` +
+      `Cluster: ${result.clusterId} sensitivity=${result.sensitivity}\n` +
+      `Reason: ${result.reason}\n` +
+      `Enforcement: ${result.enforcement} — host must enforce unless interception hook exists.`,
+    result,
   );
 }
 

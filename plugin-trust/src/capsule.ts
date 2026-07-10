@@ -18,6 +18,10 @@ import {
 } from "@ovrsr/fpp-protocol-core";
 import type { AgentIdentity } from "./identity.js";
 import { verifySignature } from "./identity.js";
+import type {
+  EvidenceViewSummary,
+  ViewDivergence,
+} from "./trust-views.js";
 
 export type CapsuleView = "self" | "peer-summary";
 
@@ -25,6 +29,13 @@ export type CapsuleCoverageMetrics = {
   metricVersion: number;
   finalizedReceipts: number;
   completeness: "none" | "partial" | "full" | "unknown";
+};
+
+export type CapsuleViewSummaries = {
+  self: EvidenceViewSummary;
+  peer: EvidenceViewSummary;
+  propagated: EvidenceViewSummary;
+  divergence: ViewDivergence;
 };
 
 export type CapsuleBuildInput = {
@@ -38,6 +49,7 @@ export type CapsuleBuildInput = {
   view: CapsuleView;
   lineageRef?: string | undefined;
   selectiveProofRefs?: string[] | undefined;
+  viewSummaries?: CapsuleViewSummaries | undefined;
 };
 
 export type BuiltCapsule = TrustStateCapsuleV2 & {
@@ -46,6 +58,7 @@ export type BuiltCapsule = TrustStateCapsuleV2 & {
   lineageRef?: string | undefined;
   selectiveProofRefs?: string[] | undefined;
   coverageMetricVersion: number;
+  viewSummaries?: CapsuleViewSummaries | undefined;
 };
 
 function toCapsuleCoverage(metrics: CapsuleCoverageMetrics): {
@@ -90,6 +103,9 @@ export function buildTrustStateCapsule(input: CapsuleBuildInput): BuiltCapsule {
   if (input.lineageRef) capsule.lineageRef = input.lineageRef;
   if (input.selectiveProofRefs) {
     capsule.selectiveProofRefs = input.selectiveProofRefs;
+  }
+  if (input.viewSummaries) {
+    capsule.viewSummaries = input.viewSummaries;
   }
 
   const payload = canonicalizeV2(unsignedCapsuleFields(capsule));

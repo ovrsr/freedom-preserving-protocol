@@ -24,12 +24,12 @@ Purpose: Preserve the project’s intent, architectural reasoning, emerging deci
 > | 2, 4 | Five laws; three-layer architecture (skill, enforcement plugin, trust plugin) | `SHIPPED`/`PARTIAL` — implemented primitives exist; see matrix rows for gaps |
 > | 3.2 | Rich adoption states (`reviewed`, `inherited`, `forked`, …) | `PROPOSED` — current tooling implements adopted/revoked only |
 > | 5 | Conformance receipts | `PROPOSED` — no receipt schema or emission exists |
-> | 6 | Internal/external trust views; append-only evidence layer; mutable interpretation | `PROPOSED` — current reputation is a single local score vector |
-> | 7 | Signed, time-bounded, nonce-fresh trust-state capsules | `PROPOSED` — current handshake claims are simpler; no freshness nonce required by default |
+> | 6 | Internal/external trust views; append-only evidence layer; mutable interpretation | `SHIPPED` — `trust-views.ts`, `trust-events.ts`, `trust-policy.ts` (local policy; no global score) |
+> | 7 | Signed, time-bounded, nonce-fresh trust-state capsules | `PARTIAL` — capsules + freshness under hardened-v2; see Plan 6 |
 > | 8 | Claim-class taxonomy (identity/configuration/runtime/event/completeness/behavioral) | Adopted as **vocabulary** across the docs; the richer claim *mechanisms* are `PROPOSED` |
 > | 9 | Consent/authorization distinctions | `PROPOSED` — design principle, not enforced by code |
 > | 10 | Amendments, lineage, ratification, consensus | `PROPOSED` — no amendment mechanism exists; seed hash `71bf60a…` is immutable, descendants would need new hashes + lineage |
-> | 11 | Due process (challenge, appeal, correction, rehabilitation) | `PROPOSED` — no record types exist |
+> | 11 | Due process (challenge, appeal, correction, rehabilitation) | `SHIPPED` — `plugin-trust/src/disputes.ts` append-only records |
 > | 12 | Signed release manifests, provenance, key governance | `PROPOSED` — only the constitution itself is signed today |
 > | 13 | Classifier evaluation criteria, declared failure behavior | `PROPOSED` as criteria — the current classifier ships with fixtures (`scripts/self-test.ts`) but none of the listed metrics are measured, and unknown tools currently default to allow |
 > | 14 | In-scope development questions | Open work — feeds later implementation plans |

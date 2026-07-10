@@ -8,10 +8,12 @@ This plugin provides claim exchange and trust tracking for multi-agent scenarios
 
 Components:
 
-- **Trust Graph Protocol** — weighted trust graph with BFS propagation (20% per-hop attenuation), bidirectional relationships, and multi-dimensional reputation scoring (constitutional fidelity, intervention rate, resource stewardship). Persisted to disk and reloaded after restarts.
+- **Trust Graph Protocol** — directed, capability/context/time scoped assessments with policy-constrained BFS propagation, separate self/peer/propagated views, and local revisable policy (decay, severity floors, anti-washout). Signed v2 event ledger + snapshot cache; v1 graphs import as low-confidence legacy observations.
+- **Due process** — append-only challenge/appeal/correction/remediation/rehabilitation records; evidence history is never deleted.
+- **Key lifecycle** — signed rotation, revocation, recovery; forked identities cannot impersonate ancestors.
 - **Constitutional Handshake Sequence** — multi-step agent-to-agent verification. Two agents exchange signed constitutional claims (including constitution hash, audit Merkle root, and Ed25519 signature), verify each other, and derive mutual trust levels.
-- **LLM-Facing Tools** — five tools registered in the agent's tool list for one-call handshakes, trust queries, and cluster status.
-- **CLI Surface** — `openclaw fpp-trust` commands for graph inspection, manual seed management, attestation export, claim verification, and strict-mode management.
+- **LLM-Facing Tools** — handshake, scoped trust status, cluster status, advisory sensitivity share check, receipt/capsule tools.
+- **CLI Surface** — `openclaw fpp-trust` for graph inspection, `steward-override` (scoped/expiring/audited), override review/revoke, attestation export, claim verification, and strict-mode management. Unaudited `seed` is removed.
 - **Signed Claims** — Ed25519-signed constitutional claims that can't be spoofed by JSON override.
 - **Merkle Audit Bridging** — agents exchange audit Merkle roots during handshakes and can request inclusion proofs to check that a claimed audit entry exists in the peer's log. An inclusion proof establishes that an entry was recorded — not that the log is complete, and not that the recorded conduct was compliant. On fresh installs, the bridge falls back to the enforcement plugin audit log until the constitution heartbeat log has entries.
 - **Group Context Trust** — cluster-based trust for multi-agent chat environments with sensitivity-gated sharing.
@@ -25,15 +27,20 @@ All five tools below are registered in `src/index.ts` and declared in `openclaw.
 |------|-------------|
 | `fpp_handshake_offer` | Generate this agent's signed constitutional claim for sharing with a peer |
 | `fpp_handshake_verify` | Check a peer's claim (signature + configuration + freshness), report precise standing — **not** behavioral compliance |
-| `fpp_trust_status` | Check trust level and reputation of a known agent |
+| `fpp_trust_status` | Check scoped directed standing + self/peer view divergence for a known agent |
+| `fpp_sensitivity_share_check` | **Advisory** check whether content at a sensitivity may be shared with a cluster |
 | `fpp_attestation_export` | Export Merkle root, public key, and optional inclusion proofs |
 | `fpp_cluster_status` | Report group-context (cluster) trust state for multi-agent chat environments |
 
 ## CLI
 
 ```bash
-openclaw fpp-trust list                              # print trust graph
-openclaw fpp-trust seed <agentId> <pubkey> <level>   # add trusted seed
+openclaw fpp-trust list                              # print trust graph + scoped assessments
+openclaw fpp-trust steward-override <agentId> <pubkey> <LOW|MEDIUM|HIGH> \
+  --reason "..." --capability handshake --expires 2026-08-01T00:00:00.000Z
+openclaw fpp-trust override-review
+openclaw fpp-trust override-revoke <agentId> --capability handshake --reason "..."
+# seed is deprecated and exits non-zero — use steward-override
 openclaw fpp-trust export                            # print signed attestation
 openclaw fpp-trust verify <claim.json>               # verify a peer claim file
 openclaw fpp-trust strict list                       # list strict-mode sessions
@@ -87,14 +94,15 @@ Tool and CLI outputs name exactly what was verified (`identityVerified`, `config
 ## Limitations (read this)
 
 1. **Default policy is hardened-v2.** New installs require signed, fresh, non-replayed claims. Explicitly set `verificationPolicy: "legacy-unsafe"` only for controlled migration; the plugin emits a prominent warning. `v2-with-legacy-declarations` keeps v1 inspectable as declaration-only without trust elevation.
-2. **Trust state is local and per-host.** The trust graph, identity key, and strict-mode state live in this host's workspace files. There is no cross-host synchronization and no transitive guarantee: a peer trusted here is not automatically trusted by your other agents.
+2. **Trust state is local and per-host.** Assessments are scoped (capability/context/time) and policy-local. There is no global immutable score, no cross-host synchronization, and no automatic transitive guarantee.
 3. **Challenge-response freshness is required under hardened-v2.** Use `fpp_handshake_challenge` → answer via `fpp_handshake_offer` (`peerChallenge`) → `fpp_handshake_verify` once. Replay keys are persisted in `replayCachePath`.
-4. **Key lifecycle is manual.** The Ed25519 identity seed is generated on first run and reused indefinitely. Public-key replacement on an existing node requires an explicit rotation proof. See `docs/REVOCATION.md`.
-5. **No Sybil resistance.** Nothing prevents an operator from minting many agent identities and having them vouch for each other. Trust propagation attenuates per hop but does not detect coordinated identity clusters.
+4. **Key lifecycle is signed.** Rotation requires the old key; compromise/revocation and steward-authorized recovery are explicit events. See `docs/governance/KEY_GOVERNANCE.md` and `docs/REVOCATION.md`.
+5. **Sensitivity sharing checks are advisory** unless the OpenClaw host provides an authoritative interception hook.
+6. **Partial Sybil resistance only.** Source-independence scoring reduces correlated inflation but does not detect coordinated identity clusters.
 
 ## Persistence
 
-The plugin persists trust graph state to `trustGraphPath` as JSON with mode `0600` via an atomic temp-file rename. If the file does not exist, the plugin starts with an empty graph. If the file is malformed, startup fails rather than silently discarding trust state.
+The plugin persists a **signed v2 snapshot** plus an append-only `.events.jsonl` ledger. Legacy v1 unsigned JSON remains loadable and migrates explicitly via `migrateV1ToV2` (source preserved as `.v1.bak`). Tampered v2 snapshots are rejected.
 
 The Ed25519 identity key seed is persisted to `identityKeyPath` (32 bytes, mode `0600`). Generated on first run and reused thereafter.
 

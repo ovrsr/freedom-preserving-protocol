@@ -283,7 +283,11 @@ file is evidence of what went wrong.
 
 ## 16. "Trust plugin fails to start after an unclean shutdown"
 
-If the persisted trust graph (`fpp-trust-graph.json`) is malformed, the trust plugin **fails at startup rather than silently discarding trust state** — this is intentional. Copy the malformed file aside (`fpp-trust-graph.json.corrupt.<timestamp>`), then either restore from a backup or start fresh with an empty graph and re-seed (`openclaw fpp-trust seed ...`). Never hand-edit the live file, and never delete it without keeping the copy: it is the only record of how your trust relationships were formed.
+If the persisted trust graph (`fpp-trust-graph.json`) is malformed or a **v2 snapshot fails signature/root verification**, the trust plugin **fails at startup rather than silently discarding trust state** — this is intentional. Copy the malformed file aside (`fpp-trust-graph.json.corrupt.<timestamp>`), keep any `.events.jsonl` and `.v1.bak` siblings, then either restore from backup or start fresh. For legacy v1 files, use an explicit migration path rather than hand-editing. Bootstrap peers with `openclaw fpp-trust steward-override ...` (scoped, expiring, audited) — not the removed unaudited `seed` command.
+
+## 17. "Trust status looks different for the same peer in two capabilities"
+
+**Expected.** Trust is `Trust(A→B, capability, context, time)`. A handshake standing does not automatically authorize `shell.exec`. Pass `--capability` / tool params when evaluating standing. There is no global immutable score.
 
 ## When you're stuck
 

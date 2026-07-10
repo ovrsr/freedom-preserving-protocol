@@ -66,8 +66,12 @@ specified in `docs/governance/EVIDENCE_SEMANTICS.md`. That document is
 | Adoption states beyond adopted/revoked (`reviewed`, `inherited`, `forked`, `superseded`, …) | `PARTIAL` | `scripts/adoption-state.ts` append-only ledger; `npm run adopt` / `npm run revoke` update machine-readable states. Gap: verify-install UX still emphasizes human MEMORY/SOUL markers; overlay flags not automated. |
 | Conformance receipts | `PARTIAL` | `plugin/src/receipt-store.ts`, `receipt-signer.ts`, `receipt-log.ts`, `after_tool_call` correlation. Signed, chained, selectively provable. Gap: receipts prove instrumented-boundary observations only — not completeness or behavioral compliance (`test/conformance-receipt-e2e.test.ts`). |
 | Trust-state capsules (signed, time-bounded, nonce-fresh) | `PARTIAL` | `plugin-trust/src/capsule.ts`, `fpp_capsule_offer`. Fresh challenge-bound capsules with evidence/receipt roots and coverage. Gap: legacy claim path still available for migration; capsules do not prove completeness. |
-| Internal vs external trust views | `PROPOSED` | `docs/dev-review.md` §6.2–6.3. Current reputation is a single local score vector. |
-| Due process (challenge, appeal, correction, rehabilitation) | `PROPOSED` | `docs/dev-review.md` §11. No record types exist. |
+| Internal vs external trust views | `SHIPPED` | `plugin-trust/src/trust-views.ts` — self / direct-peer / propagated views with explicit divergence; no global intrinsic score. |
+| Contextual scoped trust | `SHIPPED` | `trust-scope.ts`, `trust-policy.ts`, `evidence-quality.ts` — Trust(A→B, capability, context, time); local policy only. |
+| Signed trust persistence v2 | `SHIPPED` | `trust-events.ts` + `persistence.ts` — signed event ledger; v1 import as low-confidence legacy observations (`.v1.bak` preserved). |
+| Due process (challenge, appeal, correction, rehabilitation) | `SHIPPED` | `plugin-trust/src/disputes.ts` — append-only records; originals never rewritten. |
+| Key rotation / revocation | `SHIPPED` | `plugin-trust/src/key-lifecycle.ts` — signed rotation/revocation/recovery; forks cannot impersonate ancestors. |
+| Steward overrides | `SHIPPED` | CLI `steward-override` (scoped, expiring, audited); unaudited `seed` deprecated. |
 | Constitutional amendments, lineage, ratification | `PROPOSED` | `docs/dev-review.md` §10. The seed constitution keeps its immutable hash `71bf60a…`; descendants would require new hashes and explicit lineage metadata. No amendment mechanism is implemented. |
 | Signed release manifests / build provenance | `PARTIAL` | `scripts/release-manifest.ts`, `scripts/release-manifest-verify.ts`, `npm run release:verify`. Release signing domain separated from constitution/agent keys. Gap: publish automation still optional until offline custody prerequisites in `KEY_GOVERNANCE.md` are met. |
 | Gateway-level (tool-router) enforcement RFC | `DEFERRED` | `docs/ROADMAP.md`. Requires OpenClaw Foundation RFC process. |

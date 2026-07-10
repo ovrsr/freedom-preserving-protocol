@@ -10,6 +10,7 @@
       "fpp_trust_status",
       "fpp_attestation_export",
       "fpp_cluster_status",
+      "fpp_sensitivity_share_check",
       "fpp_receipt_verify",
       "fpp_receipt_proof",
       "fpp_capsule_offer"
@@ -47,7 +48,21 @@
         "minimum": 1,
         "maximum": 10,
         "default": 3,
-        "description": "Maximum BFS depth for trust propagation."
+        "description": "Maximum BFS depth for trust propagation (receiver-local policy)."
+      },
+      "propagationMinEdgeConfidence": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.2,
+        "description": "Minimum per-edge confidence required for a hop to participate in propagation."
+      },
+      "propagationEvidenceCeiling": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.45,
+        "description": "Maximum confidence for propagated (non-direct) evidence."
       },
       "trustGraphPath": {
         "type": "string",

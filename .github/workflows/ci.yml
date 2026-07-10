@@ -46,7 +46,7 @@ jobs:
         env:
           SKIP_INSTALL: "1"
 
-      - name: Conformance receipt e2e
+      - name: Conformance receipt + contextual trust e2e
         run: npm run test:e2e
 
       - name: Security regression suites

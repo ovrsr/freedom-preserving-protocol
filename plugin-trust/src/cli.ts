@@ -26,6 +26,7 @@ import { signClaim, verifyClaim, type SignedClaim } from "./claims.js";
 import type { ConstitutionalClaim } from "./handshake.js";
 import type { ConstitutionalHandshake } from "./handshake.js";
 import { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
+import { ScopedTrustStore } from "./trust-scope.js";
 import type { MerkleBridge } from "./merkle-bridge.js";
 import type { StrictModeManager } from "./strict-mode.js";
 import type { ReplayCache } from "./replay-cache.js";
@@ -45,7 +46,8 @@ interface CliCommand {
   command(name: string): CliCommand;
   description(desc: string): CliCommand;
   argument(arg: string, desc: string): CliCommand;
-  option(flags: string, desc: string): CliCommand;
+  option(flags: string, desc: string, defaultValue?: string): CliCommand;
+  requiredOption(flags: string, desc: string): CliCommand;
   action(fn: (...args: unknown[]) => void | Promise<void>): CliCommand;
 }
 
@@ -112,24 +114,54 @@ export function registerFppTrustCli(
           );
         }
       }
+      const scoped = trustGraph.getScopedStore().list();
+      if (scoped.length > 0) {
+        console.log("\nScoped assessments (directed):");
+        for (const a of scoped) {
+          const names = ["UNK", "LOW", "MED", "HIGH", "MAX"];
+          console.log(
+            `  ${a.from} → ${a.to}  ${names[a.level]}  ` +
+              `scope=${ScopedTrustStore.formatScope(a.scope)}  ` +
+              `source=${a.source}`,
+          );
+        }
+      }
       console.log();
     });
 
-  // --- seed ---
+  // --- steward-override (replaces unaudited seed) ---
   fppTrust
-    .command("seed")
-    .description("Manually add a trusted seed agent to the graph")
-    .argument("<agentId>", "Agent identifier to seed")
+    .command("steward-override")
+    .description(
+      "Authorized, scoped, expiring steward override (operator assertion — not observed trust)",
+    )
+    .argument("<agentId>", "Agent identifier")
     .argument("<publicKeyHex>", "Agent's Ed25519 public key (hex)")
     .argument(
       "<trustLevel>",
-      "Trust level: LOW (1), MEDIUM (2), HIGH (3), MAXIMUM (4)",
+      "Trust level: LOW (1), MEDIUM (2), HIGH (3). MAXIMUM is not allowed for overrides.",
     )
+    .requiredOption("--reason <reason>", "Audit reason for the override")
+    .requiredOption(
+      "--capability <capability>",
+      "Capability scope (e.g. handshake, file.read)",
+    )
+    .requiredOption(
+      "--expires <iso>",
+      "Expiry timestamp (ISO-8601); overrides must expire",
+    )
+    .option("--environment <env>", "Environment scope", "*")
     .action((...args: unknown[]) => {
-      const [agentId, publicKeyHex, trustLevelStr] = args as [
+      const [agentId, publicKeyHex, trustLevelStr, opts] = args as [
         string,
         string,
         string,
+        {
+          reason: string;
+          capability: string;
+          expires: string;
+          environment?: string;
+        },
       ];
       const levelMap: Record<string, TrustLevel> = {
         LOW: TrustLevel.LOW,
@@ -138,14 +170,23 @@ export function registerFppTrustCli(
         "2": TrustLevel.MEDIUM,
         HIGH: TrustLevel.HIGH,
         "3": TrustLevel.HIGH,
-        MAXIMUM: TrustLevel.MAXIMUM,
-        "4": TrustLevel.MAXIMUM,
       };
       const level = levelMap[trustLevelStr.toUpperCase()];
       if (level === undefined) {
         console.error(
-          `Invalid trust level: ${trustLevelStr}. Use LOW, MEDIUM, HIGH, or MAXIMUM.`,
+          `Invalid or uncapped trust level: ${trustLevelStr}. Overrides allow LOW, MEDIUM, or HIGH only.`,
         );
+        process.exitCode = 2;
+        return;
+      }
+      if (!opts.reason?.trim()) {
+        console.error("Missing --reason");
+        process.exitCode = 2;
+        return;
+      }
+      const expiresMs = Date.parse(opts.expires);
+      if (!Number.isFinite(expiresMs) || expiresMs <= Date.now()) {
+        console.error("--expires must be a future ISO-8601 timestamp");
         process.exitCode = 2;
         return;
       }
@@ -167,27 +208,128 @@ export function registerFppTrustCli(
       }
       trustGraph.addLegacyAlias(agentId, deriveLegacyAlias(publicKeyHex));
       trustGraph.addAgent(identity.agentId, constitutionHash);
+
+      const now = Date.now();
+      const scope = {
+        capability: opts.capability,
+        resource: "*",
+        audience: "*",
+        environment: opts.environment ?? "*",
+      };
+      trustGraph.recordScopedAssessment({
+        from: identity.agentId,
+        to: agentId,
+        scope,
+        level,
+        confidence: 0.5,
+        validFrom: now,
+        validUntil: expiresMs,
+        source: "steward-override",
+        rationale: `operator assertion: ${opts.reason}`,
+      });
       trustGraph.establishTrust(
         identity.agentId,
         agentId,
         level,
-        level,
+        TrustLevel.LOW,
         [
           {
             type: "peer_attestation",
-            data: { manual: true, seedCommand: true },
-            weight: 0.9,
-            timestamp: Date.now(),
-            source: "cli-seed",
+            data: {
+              stewardOverride: true,
+              reason: opts.reason,
+              actorId: identity.agentId,
+              expires: opts.expires,
+              capability: opts.capability,
+            },
+            weight: 0.5,
+            timestamp: now,
+            source: "cli-steward-override",
           },
         ],
+        scope,
       );
 
       const trustNames = ["UNKNOWN", "LOW", "MEDIUM", "HIGH", "MAXIMUM"];
       console.log(
-        `Seeded ${agentId} at ${trustNames[level]} trust.\n` +
-          `Public key: ${publicKeyHex}\n`,
+        `Steward override recorded for ${agentId} at ${trustNames[level]} (capped).\n` +
+          `Source: steward-override (operator assertion — NOT observed trust)\n` +
+          `Scope: capability=${scope.capability} env=${scope.environment}\n` +
+          `Expires: ${opts.expires}\n` +
+          `Reason: ${opts.reason}\n` +
+          `Actor: ${identity.agentId}\n`,
       );
+    });
+
+  fppTrust
+    .command("override-revoke")
+    .description("Revoke a steward override for an agent/capability before expiry")
+    .argument("<agentId>", "Target agent id")
+    .requiredOption("--capability <capability>", "Capability scope to revoke")
+    .requiredOption("--reason <reason>", "Audit reason")
+    .action((...args: unknown[]) => {
+      const [agentId, opts] = args as [
+        string,
+        { capability: string; reason: string },
+      ];
+      const now = Date.now();
+      trustGraph.recordScopedAssessment({
+        from: identity.agentId,
+        to: agentId,
+        scope: {
+          capability: opts.capability,
+          resource: "*",
+          audience: "*",
+          environment: "*",
+        },
+        level: TrustLevel.UNKNOWN,
+        confidence: 0,
+        validFrom: now,
+        validUntil: now,
+        source: "steward-override",
+        rationale: `revoked: ${opts.reason}`,
+      });
+      console.log(
+        `Override revoked for ${agentId} capability=${opts.capability}: ${opts.reason}`,
+      );
+    });
+
+  fppTrust
+    .command("override-review")
+    .description("List steward-override assessments still on the graph")
+    .action(() => {
+      const overrides = trustGraph
+        .getScopedStore()
+        .list()
+        .filter((a) => a.source === "steward-override");
+      if (overrides.length === 0) {
+        console.log("No steward overrides on record.");
+        return;
+      }
+      for (const a of overrides) {
+        console.log(
+          `${a.from} → ${a.to} level=${a.level} ` +
+            `cap=${a.scope.capability} until=${new Date(a.validUntil).toISOString()} ` +
+            `rationale=${a.rationale ?? ""}`,
+        );
+      }
+    });
+
+  // deprecated alias
+  fppTrust
+    .command("seed")
+    .description(
+      "[deprecated] Use steward-override — unaudited permanent HIGH seed is removed",
+    )
+    .argument("<agentId>", "Agent identifier")
+    .argument("<publicKeyHex>", "unused")
+    .argument("<trustLevel>", "unused")
+    .action(() => {
+      console.error(
+        "fpp-trust seed is removed. Use: openclaw fpp-trust steward-override " +
+          "<agentId> <publicKeyHex> <LOW|MEDIUM|HIGH> --reason ... --capability ... --expires <ISO>",
+      );
+      process.exitCode = 2;
     });
 
   // --- challenge ---

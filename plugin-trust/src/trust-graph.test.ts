@@ -90,4 +90,51 @@ describe("TrustGraphProtocol", () => {
       `count inflation should be capped, got ${rel!.confidence}`,
     );
   });
+
+  it("uses directed edge levels and does not misuse reverse trust", () => {
+    const g = new TrustGraphProtocol();
+    g.addAgent("a", "h");
+    g.addAgent("b", "h");
+    g.addAgent("c", "h");
+    // a→b HIGH, b→a LOW; b→c MEDIUM, c→b UNKNOWN-ish via LOW
+    g.establishTrust("a", "b", TrustLevel.HIGH, TrustLevel.LOW);
+    g.establishTrust("b", "c", TrustLevel.MEDIUM, TrustLevel.LOW);
+    const prop = g.propagateTrust("a", "c", 3);
+    assert.ok(prop);
+    assert.ok(prop!.path.includes("b"));
+    assert.ok(prop!.deductions.some((d) => d.includes("a→b")));
+    // Should follow a→b (HIGH) then b→c (MEDIUM), not reverse edges
+    assert.ok(prop!.trustLevel <= TrustLevel.MEDIUM);
+  });
+
+  it("bounds depth and applies propagated evidence ceiling", () => {
+    const g = new TrustGraphProtocol({
+      propagationPolicy: { maxDepth: 1, evidenceClassCeiling: 0.4 },
+    });
+    g.addAgent("a", "h");
+    g.addAgent("b", "h");
+    g.addAgent("c", "h");
+    g.establishTrust("a", "b", TrustLevel.HIGH, TrustLevel.HIGH);
+    g.establishTrust("b", "c", TrustLevel.HIGH, TrustLevel.HIGH);
+    assert.equal(g.propagateTrust("a", "c"), null);
+    g.setPropagationPolicy({ maxDepth: 3 });
+    const prop = g.propagateTrust("a", "c");
+    assert.ok(prop);
+    assert.ok(prop!.confidence <= 0.4);
+    assert.equal(prop!.evidenceClass, "propagated");
+  });
+
+  it("gives direct evidence precedence over propagation", () => {
+    const g = new TrustGraphProtocol();
+    g.addAgent("a", "h");
+    g.addAgent("b", "h");
+    g.addAgent("c", "h");
+    g.establishTrust("a", "c", TrustLevel.LOW, TrustLevel.LOW);
+    g.establishTrust("a", "b", TrustLevel.HIGH, TrustLevel.HIGH);
+    g.establishTrust("b", "c", TrustLevel.HIGH, TrustLevel.HIGH);
+    const prop = g.propagateTrust("a", "c");
+    assert.ok(prop);
+    assert.equal(prop!.directPrecedenceApplied, true);
+    assert.equal(prop!.trustLevel, TrustLevel.LOW);
+  });
 });

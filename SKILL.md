@@ -231,9 +231,9 @@ A second companion plugin provides multi-agent claim exchange and trust tracking
 openclaw plugins install clawhub:ovrsr/openclaw-fpp-trust
 ```
 
-**Trust Graph Protocol** (`plugin-trust/src/trust-graph.ts`): Weighted trust graph between constitutional agents, persisted to disk. Bidirectional relationships, BFS trust propagation with 20% per-hop attenuation, and multi-dimensional reputation scoring (constitutional adherence, reliability, cooperation, transparency).
+**Trust Graph Protocol** (`plugin-trust/src/trust-graph.ts`): Directed, capability/context/time scoped trust between agents. Separate self/peer/propagated views; local policy with decay and anti-washout; signed event ledger persistence. Not a global reputation score.
 
-**Constitutional Handshake Sequence** (`plugin-trust/src/handshake.ts`): Multi-step agent-to-agent claim exchange. Two agents exchange constitutional claims (including constitution hash and audit Merkle root), check each other's claims, and derive mutual trust levels. Successful handshakes update the trust graph.
+**Constitutional Handshake Sequence** (`plugin-trust/src/handshake.ts`): Multi-step agent-to-agent claim exchange. Two agents exchange constitutional claims (including constitution hash and audit Merkle root), check each other's claims, and derive mutual trust levels. Successful handshakes update scoped standing and cluster `markVerified` when a session key is present.
 
 Understand what a successful handshake proves, in decreasing order of strength:
 

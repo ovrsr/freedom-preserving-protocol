@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "savedAt": "2026-01-01T00:00:00.000Z",
+  "nodes": [
+    {
+      "id": "legacy-agent-a",
+      "constitutionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "trustScore": 0.8,
+      "interactionCount": 3,
+      "lastActivity": 1700000000000,
+      "connections": ["legacy-agent-b"],
+      "reputation": {
+        "overall": 0.8,
+        "constitutional": 0.7,
+        "reliability": 0.8,
+        "cooperation": 0.7,
+        "transparency": 0.6,
+        "constitutionalFidelity": 0.7,
+        "interventionRate": 0.5,
+        "resourceStewardship": 0.5,
+        "positiveInteractions": 2,
+        "negativeInteractions": 0,
+        "neutralInteractions": 1
+      }
+    },
+    {
+      "id": "legacy-agent-b",
+      "constitutionHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "trustScore": 0.6,
+      "interactionCount": 3,
+      "lastActivity": 1700000000000,
+      "connections": ["legacy-agent-a"],
+      "reputation": {
+        "overall": 0.6,
+        "constitutional": 0.5,
+        "reliability": 0.6,
+        "cooperation": 0.5,
+        "transparency": 0.5,
+        "constitutionalFidelity": 0.5,
+        "interventionRate": 0.5,
+        "resourceStewardship": 0.5,
+        "positiveInteractions": 1,
+        "negativeInteractions": 1,
+        "neutralInteractions": 1
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "agentA": "legacy-agent-a",
+      "agentB": "legacy-agent-b",
+      "trustAB": 3,
+      "trustBA": 2,
+      "confidence": 0.7,
+      "establishedAt": 1700000000000,
+      "updatedAt": 1700000000000,
+      "evidence": []
+    }
+  ]
+}

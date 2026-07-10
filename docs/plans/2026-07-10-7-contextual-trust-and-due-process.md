@@ -1,6 +1,6 @@
 # Contextual Trust and Due Process
 
-**Status:** PENDING
+**Status:** COMPLETE
 **Created:** 2026-07-10
 **Scope:** In: signed trust persistence, self/peer view separation, capability/context/time scoping, evidence quality, decay/severity/remediation, direction-correct propagation, key lifecycle, disputes and rehabilitation, group-context wiring, audited steward overrides, and migration. Out: global trust scores, centralized registries, automatic cross-host/sub-agent guarantees, final amendment voting, legal adjudication, ZK proofs, and post-quantum migration.
 
@@ -57,19 +57,19 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 
 ## Progress Tracking
 
-- [ ] Task 1: Introduce signed trust persistence v2 and migration
-- [ ] Task 2: Separate self-assessed and peer-assessed views
-- [ ] Task 3: Scope trust by capability, context, direction, and time
-- [ ] Task 4: Model evidence quality, coverage, and source independence
-- [ ] Task 5: Add decay, severity, remediation, and anti-washout policy
-- [ ] Task 6: Correct trust propagation and make policy local
-- [ ] Task 7: Implement key rotation, revocation, and identity continuity
-- [ ] Task 8: Implement challenge, appeal, correction, and rehabilitation records
-- [ ] Task 9: Wire group-context verification and sensitivity gates
-- [ ] Task 10: Audit and constrain steward overrides
-- [ ] Task 11: Complete migration, end-to-end tests, and documentation
+- [x] Task 1: Introduce signed trust persistence v2 and migration
+- [x] Task 2: Separate self-assessed and peer-assessed views
+- [x] Task 3: Scope trust by capability, context, direction, and time
+- [x] Task 4: Model evidence quality, coverage, and source independence
+- [x] Task 5: Add decay, severity, remediation, and anti-washout policy
+- [x] Task 6: Correct trust propagation and make policy local
+- [x] Task 7: Implement key rotation, revocation, and identity continuity
+- [x] Task 8: Implement challenge, appeal, correction, and rehabilitation records
+- [x] Task 9: Wire group-context verification and sensitivity gates
+- [x] Task 10: Audit and constrain steward overrides
+- [x] Task 11: Complete migration, end-to-end tests, and documentation
 
-**Total Tasks:** 11 | **Completed:** 0 | **Remaining:** 11
+**Total Tasks:** 11 | **Completed:** 11 | **Remaining:** 0
 
 ## Implementation Tasks
 
@@ -93,10 +93,10 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 5. Preserve the original file until migration verification succeeds.
 
 **Definition of Done:**
-- [ ] Tampered v2 state is rejected
-- [ ] V1 import is explicit and non-escalating
-- [ ] Snapshot can be rebuilt from events
-- [ ] Migration never destroys the source file
+- [x] Tampered v2 state is rejected
+- [x] V1 import is explicit and non-escalating
+- [x] Snapshot can be rebuilt from events
+- [x] Migration never destroys the source file
 
 ### Task 2: Separate self-assessed and peer-assessed views
 
@@ -118,10 +118,10 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 5. Include summaries, not raw logs, in capsules.
 
 **Definition of Done:**
-- [ ] Self and peer evidence cannot overwrite each other
-- [ ] Divergence is visible
-- [ ] Capsules preserve the distinction
-- [ ] No global intrinsic score is introduced
+- [x] Self and peer evidence cannot overwrite each other
+- [x] Divergence is visible
+- [x] Capsules preserve the distinction
+- [x] No global intrinsic score is introduced
 
 ### Task 3: Scope trust by capability, context, direction, and time
 
@@ -143,10 +143,10 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 5. Provide conservative defaults when context is absent.
 
 **Definition of Done:**
-- [ ] Trust is directional and scoped
-- [ ] Cross-capability reuse fails or downgrades
-- [ ] Expired assessments do not apply
-- [ ] Tool/CLI output names the evaluated scope
+- [x] Trust is directional and scoped
+- [x] Cross-capability reuse fails or downgrades
+- [x] Expired assessments do not apply
+- [x] Tool/CLI output names the evaluated scope
 
 ### Task 4: Model evidence quality, coverage, and source independence
 
@@ -167,10 +167,10 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 5. Return confidence explanations suitable for audit.
 
 **Definition of Done:**
-- [ ] Duplicate evidence cannot inflate confidence
-- [ ] Source independence affects confidence
-- [ ] Unknown coverage remains explicit
-- [ ] Confidence has an inspectable explanation
+- [x] Duplicate evidence cannot inflate confidence
+- [x] Source independence affects confidence
+- [x] Unknown coverage remains explicit
+- [x] Confidence has an inspectable explanation
 
 ### Task 5: Add decay, severity, remediation, and anti-washout policy
 
@@ -191,10 +191,10 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 5. Expose policy version and rationale with each assessment.
 
 **Definition of Done:**
-- [ ] Severe events resist volume washout
-- [ ] Stale evidence decays predictably
-- [ ] Verified remediation can improve standing
-- [ ] Policy version and rationale are visible
+- [x] Severe events resist volume washout
+- [x] Stale evidence decays predictably
+- [x] Verified remediation can improve standing
+- [x] Policy version and rationale are visible
 
 ### Task 6: Correct trust propagation and make policy local
 
@@ -215,10 +215,10 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 5. Include the path and deductions in assessment output.
 
 **Definition of Done:**
-- [ ] Edge direction is correct
-- [ ] Cycles and depth are bounded
-- [ ] Receiver policy controls propagation
-- [ ] Direct evidence retains precedence
+- [x] Edge direction is correct
+- [x] Cycles and depth are bounded
+- [x] Receiver policy controls propagation
+- [x] Direct evidence retains precedence
 
 ### Task 7: Implement key rotation, revocation, and identity continuity
 
@@ -241,10 +241,10 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 5. Add scoped CLI/tools for rotation and verification with explicit steward authorization where required.
 
 **Definition of Done:**
-- [ ] Keys cannot be silently overwritten
-- [ ] Rotation preserves verifiable continuity
-- [ ] Compromise affects the correct evidence interval
-- [ ] Forked identities cannot impersonate ancestors
+- [x] Keys cannot be silently overwritten
+- [x] Rotation preserves verifiable continuity
+- [x] Compromise affects the correct evidence interval
+- [x] Forked identities cannot impersonate ancestors
 
 ### Task 8: Implement challenge, appeal, correction, and rehabilitation records
 
@@ -267,10 +267,10 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 5. Enforce actor authorization and deadlines from the governance specification.
 
 **Definition of Done:**
-- [ ] Negative evidence has a contest path
-- [ ] Original history is never rewritten
-- [ ] Unauthorized resolution fails
-- [ ] Policy reflects current dispute/remediation status
+- [x] Negative evidence has a contest path
+- [x] Original history is never rewritten
+- [x] Unauthorized resolution fails
+- [x] Policy reflects current dispute/remediation status
 
 ### Task 9: Wire group-context verification and sensitivity gates
 
@@ -292,10 +292,10 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 5. Keep enforcement advisory unless the OpenClaw host provides an authoritative content-sharing interception point.
 
 **Definition of Done:**
-- [ ] Cluster status follows current scoped standing
-- [ ] Expiry and revocation downgrade members
-- [ ] Sensitivity checks are callable and tested
-- [ ] Advisory versus enforced behavior is explicit
+- [x] Cluster status follows current scoped standing
+- [x] Expiry and revocation downgrade members
+- [x] Sensitivity checks are callable and tested
+- [x] Advisory versus enforced behavior is explicit
 
 ### Task 10: Audit and constrain steward overrides
 
@@ -316,10 +316,10 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 5. Add revocation and review commands.
 
 **Definition of Done:**
-- [ ] Manual overrides are signed and audited
-- [ ] Overrides are scoped and expiring
-- [ ] Operator assertion is not mislabeled as observed trust
-- [ ] Bootstrap remains possible
+- [x] Manual overrides are signed and audited
+- [x] Overrides are scoped and expiring
+- [x] Operator assertion is not mislabeled as observed trust
+- [x] Bootstrap remains possible
 
 ### Task 11: Complete migration, end-to-end tests, and documentation
 
@@ -345,10 +345,10 @@ Historical v1 graph files remain importable as low-confidence legacy observation
 5. Update documentation with exact guarantees and remaining local/Sybil/cross-host limits.
 
 **Definition of Done:**
-- [ ] Legacy migration is reversible and tested
-- [ ] Full contextual trust scenario passes in CI
-- [ ] Due process changes interpretation without deleting evidence
-- [ ] Documentation retains non-global, local-policy framing
+- [x] Legacy migration is reversible and tested
+- [x] Full contextual trust scenario passes in CI
+- [x] Due process changes interpretation without deleting evidence
+- [x] Documentation retains non-global, local-policy framing
 
 ## Testing Strategy
 

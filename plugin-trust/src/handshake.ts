@@ -417,6 +417,7 @@ export class ConstitutionalHandshake {
         trustLevel,
         trustLevel,
         trustEvidence,
+        { capability: "handshake", audience: "peer", environment: "*" },
       );
 
       this.trustGraph.updateReputation(peerClaim.agentId, "positive", {
@@ -556,6 +557,7 @@ export class ConstitutionalHandshake {
         trustLevel,
         trustLevel,
         trustEvidence,
+        { capability: "handshake", audience: "peer", environment: "*" },
       );
 
       this.trustGraph.updateReputation(session.initiator, "positive", {

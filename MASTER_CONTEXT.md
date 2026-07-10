@@ -193,7 +193,7 @@ them; the fourth (BAC) is the audit chain in the skill's `scripts/` directory.
 |---|---|---|---|
 | **Constitutional Identity (CID)** — Ed25519 / ECDSA agent identity derived from constitutional commitment | `src/core/constitutional-identity.ts` | `plugin-trust/src/identity.ts` | Implemented in both |
 | **Behavioral Attestation Chain (BAC)** — tamper-evident hash-chained log of actions; Merkle root for selective disclosure | `src/core/behavioral-attestation-chain.ts` | `scripts/audit-append.ts` + `audit-verify.ts` + `audit-proof.ts` + `merkle.ts` | Implemented in skill layer (JSONL + `.merkle` file in `.openclaw/workspace/`) |
-| **Trust Graph Protocol (TGP)** — weighted bidirectional trust graph; BFS propagation with 20% per-hop attenuation; multi-dimensional reputation | `src/core/trust-graph-protocol.ts` | `plugin-trust/src/trust-graph.ts` + `persistence.ts` | Implemented in trust plugin |
+| **Trust Graph Protocol (TGP)** — directed scoped trust; policy-constrained propagation; self/peer views; signed event ledger | `src/core/trust-graph-protocol.ts` | `plugin-trust/src/trust-graph.ts` + `trust-scope.ts` + `trust-views.ts` + `trust-events.ts` + `persistence.ts` | Implemented in trust plugin (Plan 7 contextual trust) |
 | **Constitutional Handshake Sequence (CHS)** — multi-step verification; signed claim exchange; Merkle root exchange | `src/core/handshake-sequence.ts` | `plugin-trust/src/handshake.ts` + `claims.ts` + `merkle-bridge.ts` | Implemented in trust plugin |
 
 This is the *conceptual* architecture. When reading `plugin-trust/` code, mapping

@@ -131,8 +131,15 @@ freedom-preserving-protocol/
 │   ├── openclaw.plugin.json       Plugin manifest
 │   └── src/
 │       ├── index.ts               Plugin entry + createTrustStack()
-│       ├── trust-graph.ts         BFS trust propagation + reputation
-│       ├── persistence.ts         On-disk trust graph persistence
+│       ├── trust-graph.ts         Directed scoped trust + policy-constrained propagation
+│       ├── trust-events.ts        Signed append-only trust-event ledger (v2)
+│       ├── trust-views.ts         Self / peer / propagated evidence views
+│       ├── trust-scope.ts         Capability/context/time scoped assessments
+│       ├── trust-policy.ts        Decay, severity floor, anti-washout
+│       ├── disputes.ts            Due-process challenge/appeal/rehab records
+│       ├── key-lifecycle.ts       Key rotation / revocation / recovery
+│       ├── persistence.ts         v1 legacy import + signed v2 snapshot cache
+│       ├── evidence-quality.ts    Coverage / independence / recency confidence
 │       ├── handshake.ts           Constitutional handshake sequence
 │       ├── claims.ts              Claim issuance and verification
 │       ├── merkle-bridge.ts        Merkle-based cross-agent claims bridge
