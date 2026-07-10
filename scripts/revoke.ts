@@ -36,6 +36,9 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appendAuditEntry } from "./audit-append.ts";
 import { verify as verifyAuditChain } from "./audit-verify.ts";
+import { appendAdoptionState, currentAdoptionState } from "./adoption-state.ts";
+import { bytesToHex } from "@noble/hashes/utils";
+import { sha256 } from "@noble/hashes/sha256";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(__dirname, "..");
@@ -254,6 +257,32 @@ export function revokeAdoption(opts: RevokeOptions): void {
     appendMemoryRevocation(resolve(opts.memory), opts.reason, ts, dryRun);
   appendAuditRevocation(resolve(opts.log), opts.reason, dryRun);
   writeMarker(resolve(opts.log), opts.reason, ts, dryRun);
+
+  if (!dryRun) {
+    try {
+      const adoptionLog = resolve(
+        dirname(resolve(opts.log)),
+        "fpp-adoption-state.jsonl",
+      );
+      const current = currentAdoptionState(adoptionLog);
+      if (current !== "none" && current !== "revoked") {
+        const constitutionPath = resolve(DEFAULT_ROOT, "constitution.json");
+        const constitutionHash = existsSync(constitutionPath)
+          ? bytesToHex(sha256(readFileSync(constitutionPath)))
+          : "0".repeat(64);
+        appendAdoptionState(adoptionLog, {
+          agentId: "local-adopter",
+          state: "revoked",
+          constitutionHash,
+          notes: opts.reason.slice(0, 280),
+          recordedAt: ts,
+        });
+        console.log(`[STATE] adoption-state ledger → revoked (history preserved)`);
+      }
+    } catch (err) {
+      console.warn(`[adoption-state] ${(err as Error).message}`);
+    }
+  }
 }
 
 export { appendAuditRevocation };

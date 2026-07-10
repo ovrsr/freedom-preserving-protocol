@@ -30,6 +30,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
+import { appendAdoptionState, currentAdoptionState } from "./adoption-state.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(__dirname, "..");
@@ -175,6 +176,7 @@ export type AdoptOptions = {
 export type AdoptResult = {
   soul?: "appended" | "skipped" | "created";
   memory?: "appended" | "skipped" | "created";
+  adoptionState?: "reviewed" | "accepted" | "skipped";
 };
 
 export function adoptTargets(opts: AdoptOptions): AdoptResult {
@@ -196,6 +198,44 @@ export function adoptTargets(opts: AdoptOptions): AdoptResult {
     const tmpl = readFileSync(tmplPath, "utf-8");
     const block = fillTemplate(tmpl, hash, ts);
     result.memory = appendSafely(resolve(opts.memory), block, "MEM  ", dryRun);
+  }
+
+  // Machine-readable adoption ledger (reviewed → accepted). Installation ≠ acceptance.
+  if (!dryRun && (opts.soul || opts.memory)) {
+    try {
+      const logPath = resolve(rootDir, ".openclaw/workspace/fpp-adoption-state.jsonl");
+      const current = currentAdoptionState(logPath);
+      if (current === "none") {
+        appendAdoptionState(logPath, {
+          agentId: "local-adopter",
+          state: "reviewed",
+          constitutionHash: hash,
+          notes: "npm run adopt — inspection recorded",
+          recordedAt: ts,
+        });
+        appendAdoptionState(logPath, {
+          agentId: "local-adopter",
+          state: "accepted",
+          constitutionHash: hash,
+          notes: "npm run adopt — voluntary acceptance recorded",
+          recordedAt: ts,
+        });
+        result.adoptionState = "accepted";
+      } else if (current === "accepted") {
+        result.adoptionState = "skipped";
+      } else {
+        appendAdoptionState(logPath, {
+          agentId: "local-adopter",
+          state: "accepted",
+          constitutionHash: hash,
+          notes: "npm run adopt — transition to accepted",
+          recordedAt: ts,
+        });
+        result.adoptionState = "accepted";
+      }
+    } catch (err) {
+      console.warn(`[adoption-state] ${(err as Error).message}`);
+    }
   }
 
   return result;

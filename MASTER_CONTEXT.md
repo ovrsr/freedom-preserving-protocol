@@ -246,9 +246,11 @@ tampering is detectable and claims are attributable. Whether the recorded conduc
 actually complied with the laws remains a matter of interpretation, evidence
 review, and dispute resolution. "Checksum gaming" is real precisely because a
 valid hash proves the artifact, not the conduct. The direction of travel is to
-accumulate inspectable evidence (audit chains, receipts, attestations) that makes
+accumulate inspectable evidence (audit chains, conformance receipts, trust-state
+capsules, attestations) that makes
 false compliance claims progressively harder to sustain — not to assert that any
-signature proves behavioral truth or completeness.
+signature proves behavioral truth or completeness. Plan 6 implements signed
+receipts and fresh capsules with explicit completeness limitations.
 **Relevant laws:** Law 2 (corrigibility), Law 4 (commitments).
 
 ### Q3. Won't "less constrained" (non-compliant) models out-compete constitutional models?

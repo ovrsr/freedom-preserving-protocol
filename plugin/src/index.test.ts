@@ -2,7 +2,7 @@ import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { registerEnforcement, resetStrictModeCache } from "./index.js";
+import { registerEnforcement, resetStrictModeCache, resetReceiptStore, getActiveReceiptStore } from "./index.js";
 import { createHookCapture, createTempWorkspace } from "./test-helpers.js";
 
 describe("enforcement hook integration", () => {
@@ -11,16 +11,42 @@ describe("enforcement hook integration", () => {
 
   after(() => ws.cleanup());
 
-  function setup() {
+  function setup(extraConfig: Record<string, unknown> = {}) {
     resetStrictModeCache();
+    resetReceiptStore();
     const capture = createHookCapture({
       auditLogPath,
       respectTrustStrictMode: false,
+      receiptMaxPending: 4,
+      identityKeyPath: join(ws.path, "agent.key"),
+      receiptLogPath: join(ws.path, "receipts.jsonl"),
+      ...extraConfig,
     });
     registerEnforcement(capture.api);
-    assert.equal(capture.hooks.length, 1);
+    assert.ok(capture.hooks.length >= 1);
     assert.equal(capture.hooks[0]!.event, "before_tool_call");
-    return capture.hooks[0]!.handler;
+    const before = capture.hooks.find((h) => h.event === "before_tool_call");
+    assert.ok(before);
+    return before!.handler;
+  }
+
+  function setupBoth(extraConfig: Record<string, unknown> = {}) {
+    resetStrictModeCache();
+    resetReceiptStore();
+    const capture = createHookCapture({
+      auditLogPath,
+      respectTrustStrictMode: false,
+      receiptMaxPending: 4,
+      identityKeyPath: join(ws.path, "agent.key"),
+      receiptLogPath: join(ws.path, "receipts.jsonl"),
+      ...extraConfig,
+    });
+    registerEnforcement(capture.api);
+    const before = capture.hooks.find((h) => h.event === "before_tool_call");
+    const after = capture.hooks.find((h) => h.event === "after_tool_call");
+    assert.ok(before);
+    assert.ok(after);
+    return { before: before!.handler, after: after!.handler, config: capture.api.pluginConfig };
   }
 
   const ctx = {
@@ -109,6 +135,8 @@ describe("enforcement hook integration", () => {
   });
 
   it("blocks high-risk calls when audit log is corrupted (fail-closed)", async () => {
+    resetStrictModeCache();
+    resetReceiptStore();
     const corruptPath = join(ws.path, "corrupt-high-risk.jsonl");
     writeFileSync(corruptPath, "{broken\n", "utf8");
     const capture = createHookCapture({
@@ -283,5 +311,206 @@ describe("enforcement hook integration", () => {
       result && result.requireApproval,
       "http.public-read override must be reachable for public GET",
     );
+  });
+
+  it("correlates receipts by toolCallId and finalizes blocks immediately", async () => {
+    const handler = setup();
+    const store = getActiveReceiptStore();
+    assert.ok(store);
+
+    await handler(
+      {
+        toolName: "filesystem_delete",
+        params: { path: "/home/user/.ssh/id_ed25519" },
+      },
+      { ...ctx, toolCallId: "call-block-rcpt" },
+    );
+    assert.equal(store.getPending("call-block-rcpt"), undefined);
+    assert.equal(store.getFinalized("call-block-rcpt")?.outcome, "blocked");
+
+    await handler(
+      {
+        toolName: "filesystem_read",
+        params: { path: ".openclaw/workspace/notes.md" },
+      },
+      { ...ctx, toolCallId: "call-allow-rcpt" },
+    );
+    assert.equal(store.getPending("call-allow-rcpt")?.status, "pending_execution");
+    assert.notEqual(
+      store.getFinalized("call-block-rcpt")?.receiptId,
+      store.getPending("call-allow-rcpt")?.receiptId,
+    );
+  });
+
+  it("emits reduced-confidence receipt when toolCallId is missing", async () => {
+    const diagnostics: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      diagnostics.push(args.map(String).join(" "));
+    };
+    try {
+      const handler = setup();
+      await handler(
+        {
+          toolName: "filesystem_read",
+          params: { path: ".openclaw/workspace/notes.md" },
+        },
+        { agentId: "agent-xyz", runId: "run-xyz", sessionKey: "session-xyz" },
+      );
+      const store = getActiveReceiptStore();
+      assert.ok(store);
+      assert.equal(store.pendingCount(), 1);
+      assert.ok(diagnostics.some((d) => /reduced correlation confidence/i.test(d)));
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it("correlates approval success with after_tool_call execution outcome", async () => {
+    const { before, after } = setupBoth({
+      receiptLogPath: join(ws.path, "rcpt-approval-ok.jsonl"),
+    });
+    const result = (await before(
+      {
+        toolName: "filesystem_delete",
+        params: { path: ".openclaw/workspace/tmp/scratch.txt" },
+      },
+      { ...ctx, toolCallId: "call-appr-ok" },
+    )) as { requireApproval?: { onResolution: (d: string) => Promise<void> } };
+    assert.ok(result.requireApproval);
+    await result.requireApproval!.onResolution("allow-once");
+    const store = getActiveReceiptStore()!;
+    assert.equal(store.getPending("call-appr-ok")?.status, "pending_execution");
+    assert.equal(store.getPending("call-appr-ok")?.authorization, "approved");
+
+    await after(
+      {
+        toolName: "filesystem_delete",
+        params: { path: ".openclaw/workspace/tmp/scratch.txt" },
+        toolCallId: "call-appr-ok",
+        result: { ok: true },
+        durationMs: 12,
+      },
+      { ...ctx, toolCallId: "call-appr-ok" },
+    );
+    const finalized = store.getFinalized("call-appr-ok");
+    assert.equal(finalized?.authorization, "approved");
+    assert.match(finalized?.outcome ?? "", /^executed:/);
+    assert.equal(finalized?.status, "finalized");
+  });
+
+  it("keeps authorization separate from execution error", async () => {
+    const { before, after } = setupBoth();
+    await before(
+      {
+        toolName: "filesystem_read",
+        params: { path: ".openclaw/workspace/notes.md" },
+      },
+      { ...ctx, toolCallId: "call-allow-err" },
+    );
+    await after(
+      {
+        toolName: "filesystem_read",
+        toolCallId: "call-allow-err",
+        error: "ENOENT: secret-path-should-not-leak",
+        durationMs: 3,
+      },
+      { ...ctx, toolCallId: "call-allow-err" },
+    );
+    const finalized = getActiveReceiptStore()!.getFinalized("call-allow-err");
+    assert.equal(finalized?.authorization, "policy-match");
+    assert.match(finalized?.outcome ?? "", /^error:/);
+    const receiptLines = readFileSync(join(ws.path, "receipts.jsonl"), "utf8");
+    assert.equal(receiptLines.includes("secret-path-should-not-leak"), false);
+  });
+
+  it("finalizes deny/timeout/cancelled without waiting for after_tool_call", async () => {
+    for (const [decision, toolCallId] of [
+      ["deny", "call-deny"],
+      ["timeout", "call-timeout"],
+      ["cancelled", "call-cancel"],
+    ] as const) {
+      const { before } = setupBoth({
+        receiptLogPath: join(ws.path, `rcpt-${toolCallId}.jsonl`),
+        identityKeyPath: join(ws.path, `key-${toolCallId}.key`),
+      });
+      const result = (await before(
+        {
+          toolName: "filesystem_delete",
+          params: { path: ".openclaw/workspace/tmp/scratch.txt" },
+        },
+        { ...ctx, toolCallId },
+      )) as { requireApproval?: { onResolution: (d: string) => Promise<void> } };
+      await result.requireApproval!.onResolution(decision);
+      const finalized = getActiveReceiptStore()!.getFinalized(toolCallId);
+      assert.equal(finalized?.status, "finalized");
+      assert.equal(finalized?.outcome, decision === "deny" ? "denied" : decision);
+      assert.equal(getActiveReceiptStore()!.getPending(toolCallId), undefined);
+    }
+  });
+
+  it("ignores duplicate after_tool_call and reports missing pending as audit gap", async () => {
+    const diagnostics: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      diagnostics.push(args.map(String).join(" "));
+    };
+    try {
+      const { before, after } = setupBoth();
+      await before(
+        {
+          toolName: "filesystem_read",
+          params: { path: ".openclaw/workspace/notes.md" },
+        },
+        { ...ctx, toolCallId: "call-dup-after" },
+      );
+      await after(
+        { toolName: "filesystem_read", toolCallId: "call-dup-after", result: {} },
+        { ...ctx, toolCallId: "call-dup-after" },
+      );
+      await after(
+        { toolName: "filesystem_read", toolCallId: "call-dup-after", error: "late" },
+        { ...ctx, toolCallId: "call-dup-after" },
+      );
+      assert.match(
+        getActiveReceiptStore()!.getFinalized("call-dup-after")!.outcome!,
+        /^executed:/,
+      );
+
+      await after(
+        { toolName: "filesystem_read", toolCallId: "call-missing-before", result: {} },
+        { ...ctx, toolCallId: "call-missing-before" },
+      );
+      assert.ok(diagnostics.some((d) => /no pending receipt/i.test(d)));
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it("reconcileOrphanedReceipts marks pending calls as visible gaps", async () => {
+    const { before } = setupBoth({
+      receiptLogPath: join(ws.path, "orphan-receipts.jsonl"),
+    });
+    await before(
+      {
+        toolName: "filesystem_read",
+        params: { path: ".openclaw/workspace/notes.md" },
+      },
+      { ...ctx, toolCallId: "call-orphan" },
+    );
+    assert.equal(getActiveReceiptStore()!.pendingCount(), 1);
+    const { reconcileOrphanedReceipts } = await import("./index.js");
+    const { mergeConfig } = await import("./config.js");
+    const orphans = reconcileOrphanedReceipts(
+      mergeConfig({
+        auditLogPath,
+        identityKeyPath: join(ws.path, "agent.key"),
+        receiptLogPath: join(ws.path, "orphan-receipts.jsonl"),
+        respectTrustStrictMode: false,
+      }),
+    );
+    assert.equal(orphans.length, 1);
+    assert.equal(orphans[0]!.outcome, "audit_gap_orphan");
+    assert.equal(getActiveReceiptStore()!.pendingCount(), 0);
   });
 });

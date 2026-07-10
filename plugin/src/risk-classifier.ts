@@ -39,6 +39,29 @@ export type ClassificationId =
   | "message.external"
   | "unknown.unclassified";
 
+/** Stable ordered list of all classification ids (for ruleset hashing). */
+export const CLASSIFICATION_IDS: readonly ClassificationId[] = [
+  "fs.delete.protected",
+  "fs.delete.workspace",
+  "fs.write.protected",
+  "fs.write.workspace",
+  "fs.read.benign",
+  "exec.cred-exfil",
+  "exec.outbound-write",
+  "exec.system-modify",
+  "exec.benign",
+  "pkg.install",
+  "pkg.publish",
+  "http.public-write",
+  "http.public-read",
+  "http.read",
+  "gateway.restart",
+  "gateway.config-change",
+  "credential.exposure",
+  "message.external",
+  "unknown.unclassified",
+] as const;
+
 export type Decision = "block" | "approval" | "allow";
 
 export type ClassificationResult = {

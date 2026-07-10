@@ -31,6 +31,7 @@ import { sha512 } from "@noble/hashes/sha512";
 import { sha256 } from "@noble/hashes/sha256";
 import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
 import { verify as verifyAuditChain } from "./audit-verify.ts";
+import { currentAdoptionState } from "./adoption-state.ts";
 
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 
@@ -418,6 +419,40 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
 
   checks.push(...checkEnforcementConfig(options.enforcementConfig));
   checks.push(...checkTrustConfig(options.trustConfig));
+
+  // Distinguish installation vs constitutional adoption vs enforcement.
+  const adoptionLog = resolve(
+    dirname(resolve(logPath)),
+    "fpp-adoption-state.jsonl",
+  );
+  try {
+    const state = currentAdoptionState(adoptionLog);
+    checks.push({
+      id: "adoption.state",
+      label: "Machine-readable adoption state",
+      status: state === "none" ? "warn" : "pass",
+      detail:
+        state === "none"
+          ? `no adoption-state ledger at ${adoptionLog} (installation ≠ acceptance)`
+          : `current state=${state} (installation, adoption, and enforcement are distinct)`,
+    });
+    if (state === "externally-enforced") {
+      checks.push({
+        id: "adoption.externally-enforced",
+        label: "Externally enforced (not voluntary accepted)",
+        status: "warn",
+        detail:
+          "Peer claims must not advertise externally-enforced as voluntary accepted",
+      });
+    }
+  } catch (err) {
+    checks.push({
+      id: "adoption.state",
+      label: "Machine-readable adoption state",
+      status: "warn",
+      detail: `adoption-state read failed: ${(err as Error).message}`,
+    });
+  }
 
   const requiredIds = new Set<string>([
     "constitution.hash",

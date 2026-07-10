@@ -81,7 +81,7 @@ npm run audit:verify
 
 This means the audit log has been edited, truncated, or extended by something that did not use `audit-append.ts`. **Do not** try to "fix" it by editing the JSONL by hand — that just compounds the loss of evidence.
 
-The enforcement plugin (`@ovrsr/openclaw-fpp-plugin`) treats a malformed audit tail as **corruption**, not as an empty chain. Appends throw `AuditCorruptionError` instead of restarting from `previousHash: 0000...`. With the default `auditFailureBehavior: "fail-closed"`, high-risk and approval-gated tool calls are blocked until the log is recovered. If you see `FPP AUDIT-GAP:` in gateway logs, a post-approval outcome could not be recorded — preserve the existing file and follow recovery below.
+The enforcement plugin (`@ovrsr/openclaw-fpp-plugin`) treats a malformed audit tail as **corruption**, not as an empty chain. Appends throw `AuditCorruptionError` instead of restarting from `previousHash: 0000...`. With the default `auditFailureBehavior: "fail-closed"`, high-risk and approval-gated tool calls are blocked until the log is recovered. If you see `FPP AUDIT-GAP:` in gateway logs, a post-approval outcome could not be recorded, a receipt correlation failed (missing `toolCallId`, overflow, orphan after restart), or the typed receipt ledger could not be written — preserve the existing files and follow recovery below. Verify receipts with `npm run receipt:verify`.
 
 Recommended response:
 

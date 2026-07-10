@@ -1,6 +1,6 @@
 # Conformance Receipts and Handshake Capsules
 
-**Status:** PENDING
+**Status:** COMPLETE
 **Created:** 2026-07-10
 **Scope:** In: signed conformance receipts, before/after tool-call correlation, receipt ledger and Merkle proofs, runtime/policy metadata, receipt verification tools, fresh v2 handshake capsules, coverage metrics, machine-readable adoption states, and signed release manifests. Out: universal behavioral-compliance claims, trusted-execution hardware, global receipt storage, contextual trust-policy redesign, amendment voting, ZK proofs, and post-quantum cryptography.
 
@@ -56,19 +56,19 @@ Existing v1 audit logs remain readable and are never rewritten.
 
 ## Progress Tracking
 
-- [ ] Task 1: Implement receipt lifecycle and correlation
-- [ ] Task 2: Sign receipts with a compatible agent identity
-- [ ] Task 3: Build the receipt ledger, chain verifier, and Merkle proofs
-- [ ] Task 4: Correlate authorization and post-execution outcomes
-- [ ] Task 5: Bind policy, runtime, and package metadata
-- [ ] Task 6: Verify and selectively disclose receipts through the trust plugin
-- [ ] Task 7: Implement fresh signed trust-state capsules
-- [ ] Task 8: Compute coverage, completeness, and audit-gap metrics
-- [ ] Task 9: Implement machine-readable adoption states
-- [ ] Task 10: Generate and verify signed release manifests
-- [ ] Task 11: Add cross-plugin end-to-end verification and documentation
+- [x] Task 1: Implement receipt lifecycle and correlation
+- [x] Task 2: Sign receipts with a compatible agent identity
+- [x] Task 3: Build the receipt ledger, chain verifier, and Merkle proofs
+- [x] Task 4: Correlate authorization and post-execution outcomes
+- [x] Task 5: Bind policy, runtime, and package metadata
+- [x] Task 6: Verify and selectively disclose receipts through the trust plugin
+- [x] Task 7: Implement fresh signed trust-state capsules
+- [x] Task 8: Compute coverage, completeness, and audit-gap metrics
+- [x] Task 9: Implement machine-readable adoption states
+- [x] Task 10: Generate and verify signed release manifests
+- [x] Task 11: Add cross-plugin end-to-end verification and documentation
 
-**Total Tasks:** 11 | **Completed:** 0 | **Remaining:** 11
+**Total Tasks:** 11 | **Completed:** 11 | **Remaining:** 0
 
 ## Implementation Tasks
 

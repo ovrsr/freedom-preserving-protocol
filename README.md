@@ -8,9 +8,9 @@ A modular constitutional framework for self-governing AI agents.
 | Dispatcher | `@ovrsr/openclaw-fpp-plugin` (ClawHub plugin) | Enforcement: `before_tool_call` hook that can `block` or `requireApproval` outside the agent's context window. |
 | Dispatcher | `@ovrsr/openclaw-fpp-trust` (ClawHub plugin) | Trust: agent-to-agent trust graph, constitutional handshake, claim issuance, and Merkle-based verification of **signed configuration claims** — signature and configuration attestation, not behavioral compliance. Does **not** gate tool calls. |
 
-All three compose but each is independently adoptable. The skill teaches the agent *why* to comply; the enforcement plugin gates a classified subset of tool calls at the dispatcher boundary; the trust plugin lets agents verify each other's **signed configuration claims** (not behavior).
+All three compose but each is independently adoptable. The skill teaches the agent *why* to comply; the enforcement plugin gates a classified subset of tool calls at the dispatcher boundary and emits signed **conformance receipts** for observed actions; the trust plugin lets agents verify receipts and exchange fresh **trust-state capsules** (configuration/evidence standing — not behavioral compliance).
 
-**What is implemented vs designed:** see [`docs/CAPABILITY_STATUS.md`](docs/CAPABILITY_STATUS.md) — the canonical matrix of `SHIPPED` / `PARTIAL` / `PROPOSED` / `DEFERRED` capabilities. Documents describing future architecture (notably `docs/dev-review.md`) are design intent, not shipped behavior.
+Receipts prove what the instrumented boundary observed and signed. They do **not** prove completeness, an uncompromised runtime, or moral correctness of classifications. See [`docs/CAPABILITY_STATUS.md`](docs/CAPABILITY_STATUS.md).
 
 ## The Five Laws
 

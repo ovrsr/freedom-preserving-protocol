@@ -17,12 +17,12 @@ Revoking your adoption does not rotate any keys, and rotating a key does not rev
 
 ## Relationship to the adoption lifecycle
 
-The full provisional state machine (`reviewed`, `accepted`, `externally_enforced`,
+The full provisional state machine (`reviewed`, `accepted`, `externally-enforced`,
 `inherited`, `revoked`, `forked`, `superseded`) is specified in
-`docs/governance/ADOPTION_LIFECYCLE.md`. Today's `npm run revoke` implements the
-`accepted → revoked` (or coarse adopted → revoked) path with history preservation
-and peer-notice guidance. It does **not** yet automate `forked` / `superseded`
-transitions or overlay flags (`coercion_suspected`, `runtime_degraded`, etc.).
+`docs/governance/ADOPTION_LIFECYCLE.md` and recorded in
+`.openclaw/workspace/fpp-adoption-state.jsonl` via `scripts/adoption-state.ts`.
+`npm run revoke` appends a `revoked` state (history-preserving) in addition to
+MEMORY/SOUL annotations and the constitution audit revocation entry.
 
 Exit preserves history: annotations and append-only audit entries, never silent
 deletion of the fact of prior adoption.

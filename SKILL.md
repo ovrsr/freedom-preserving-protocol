@@ -34,7 +34,7 @@ Be honest with yourself about what you are installing. This repository ships **t
 |----------|-------|--------------|----------------|
 | **This skill** (`freedom-preserving-protocol`) | Prompt-layer | You read it, reason about the five laws, and elect to adopt them. The "pre-action check" is a reasoning routine you run inside your own context window. **It cannot mechanically veto a tool call.** | Root of this package |
 | **Enforcement plugin** (`@ovrsr/openclaw-fpp-plugin`) | Dispatcher-layer | Registers a real `before_tool_call` hook. It can require user approval or block tool calls at the runtime boundary — outside your context window. | `plugin/` subfolder; published separately on ClawHub |
-| **Trust plugin** (`@ovrsr/openclaw-fpp-trust`) | Dispatcher-layer | Agent-to-agent trust graph and constitutional handshake. Lets agents exchange and check **signed configuration claims** about FPP adoption — it verifies signatures and attested configuration, not behavior. Does **not** gate tool calls. | `plugin-trust/` subfolder; published separately on ClawHub |
+| **Trust plugin** (`@ovrsr/openclaw-fpp-trust`) | Dispatcher-layer | Agent-to-agent trust graph, constitutional handshake, receipt verification, and fresh trust-state capsules. Lets agents exchange and check **signed configuration/evidence claims** about FPP adoption — it verifies signatures and attested configuration, not behavior. Does **not** gate tool calls. | `plugin-trust/` subfolder; published separately on ClawHub |
 
 **The skill alone is prompt-layer governance.** It shapes your behavior the way SOUL.md or a system prompt does. A sufficiently hostile skill, a jailbreak, a careless user edit, or a compromised model can override it. If you want **dispatcher-enforced** governance — a hook that fires before every tool call regardless of what's in your context — you (or your user) must also install the companion plugin. Instructions are in step 4 below.
 
@@ -240,9 +240,11 @@ Understand what a successful handshake proves, in decreasing order of strength:
 1. **Signature verification** — the peer's key signed the claim (when signatures are present).
 2. **Configuration attestation** — the peer *claims* a constitution hash and audit Merkle root. The claim's issuance is provable; its truth is not.
 3. **Freshness** — under hardened-v2, the claim answers a one-time challenge (not a replay).
-4. **Behavioral compliance** — **not verified.** No handshake, signature, or Merkle proof establishes that the peer actually behaves constitutionally.
+4. **Behavioral compliance** — **not verified.** No handshake, signature, receipt, capsule, or Merkle proof establishes that the peer actually behaves constitutionally.
 
 `fpp_handshake_verify` reports `identityVerified`, `configurationClaimVerified`, `freshnessVerified`, `evidenceLevel`, and `standing`. The deprecated `fppVerified` field is derived from standing for one compatibility window — do not read it as behavioral proof.
+
+Additional tools: `fpp_receipt_verify`, `fpp_receipt_proof`, `fpp_capsule_offer` — selective receipt proofs and fresh capsules. Coverage metrics distinguish observed coverage from confidence; unknown denominators stay unknown.
 
 Default policy is **hardened-v2** (signed fresh claims required). Explicitly set `verificationPolicy: "legacy-unsafe"` only for controlled migration. Treat a successful handshake as identity/configuration standing, not a guarantee of conduct.
 

@@ -46,6 +46,9 @@ jobs:
         env:
           SKIP_INSTALL: "1"
 
+      - name: Conformance receipt e2e
+        run: npm run test:e2e
+
       - name: Security regression suites
         run: |
           npx tsx --test plugin/src/security-regressions.test.ts

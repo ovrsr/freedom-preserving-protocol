@@ -1,14 +1,6 @@
 /**
- * Merkle bridge for the FPP trust plugin.
- *
- * Reads the constitution audit JSONL log and provides Merkle root computation
- * and proof generation/verification. Merkle primitives live in
- * `@ovrsr/fpp-protocol-core`; this module retains file selection and leaf
- * extraction only.
- *
- * Fallback: when the primary audit log (constitution-audit.jsonl) has zero
- * entries, the bridge optionally falls back to a secondary path (e.g. the
- * enforcement plugin's fpp-plugin-audit.jsonl).
+ * Typed Merkle bridge — primary and optional secondary logs are labeled by
+ * evidence/log kind so receipt roots cannot be confused with heartbeat roots.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -29,15 +21,17 @@ export {
   type MerkleProofStep,
 };
 
-/**
- * Reads the audit JSONL log and collects per-entry hashes (the `hash` field
- * on each line). Returns empty array if the file does not exist.
- */
+export type AuditLogKind = "heartbeat" | "enforcement" | "conformance-receipt" | "unknown";
+
+export type TypedLogSource = {
+  path: string;
+  logKind: AuditLogKind;
+};
+
 function collectLeafHashes(logPath: string): string[] {
   if (!existsSync(logPath)) return [];
   const content = readFileSync(logPath, "utf-8").trim();
   if (!content) return [];
-
   const hashes: string[] = [];
   for (const line of content.split("\n")) {
     if (!line.trim()) continue;
@@ -45,91 +39,161 @@ function collectLeafHashes(logPath: string): string[] {
       const entry = JSON.parse(line) as Record<string, unknown>;
       if (typeof entry.hash === "string") hashes.push(entry.hash);
     } catch {
-      /* skip malformed lines */
+      /* skip */
     }
   }
   return hashes;
 }
 
-export class MerkleBridge {
-  private auditLogPath: string;
-  private fallbackLogPath: string | null;
+function inferLogKind(logPath: string): AuditLogKind {
+  if (!existsSync(logPath)) return "unknown";
+  const content = readFileSync(logPath, "utf-8").trim();
+  if (!content) return "unknown";
+  const first = content.split("\n").find((l) => l.trim());
+  if (!first) return "unknown";
+  try {
+    const entry = JSON.parse(first) as Record<string, unknown>;
+    if (entry.kind === "conformance-receipt") return "conformance-receipt";
+    if (entry.kind === "enforcement") return "enforcement";
+    if (entry.kind === "heartbeat" || entry.kind === "adoption" || entry.kind === "revocation") {
+      return "heartbeat";
+    }
+  } catch {
+    return "unknown";
+  }
+  return "unknown";
+}
 
-  /**
-   * @param auditLogPath - Primary audit log (e.g. constitution-audit.jsonl)
-   * @param basePath - Working directory for relative paths
-   * @param fallbackLogPath - Optional secondary log (e.g. fpp-plugin-audit.jsonl).
-   *   When the primary log has zero entries, the fallback is used. This bridges
-   *   the enforcement plugin's audit trail into the trust handshake.
-   */
+export class MerkleBridge {
+  private primary: TypedLogSource;
+  private fallback: TypedLogSource | null;
+
   constructor(
     auditLogPath: string,
     basePath: string = process.cwd(),
     fallbackLogPath?: string | null,
   ) {
-    this.auditLogPath = resolve(basePath, auditLogPath);
-    this.fallbackLogPath =
-      fallbackLogPath != null ? resolve(basePath, fallbackLogPath) : null;
+    this.primary = {
+      path: resolve(basePath, auditLogPath),
+      logKind: "heartbeat",
+    };
+    this.fallback =
+      fallbackLogPath != null
+        ? {
+            path: resolve(basePath, fallbackLogPath),
+            logKind: "enforcement",
+          }
+        : null;
   }
 
-  private getActiveLeaves(): string[] {
-    const primary = collectLeafHashes(this.auditLogPath);
-    if (primary.length > 0) return primary;
-    if (this.fallbackLogPath) {
-      const fallback = collectLeafHashes(this.fallbackLogPath);
-      if (fallback.length > 0) return fallback;
+  private getActiveSource(): { leaves: string[]; source: TypedLogSource } {
+    const primaryLeaves = collectLeafHashes(this.primary.path);
+    if (primaryLeaves.length > 0) {
+      return {
+        leaves: primaryLeaves,
+        source: {
+          ...this.primary,
+          logKind: inferLogKind(this.primary.path) || this.primary.logKind,
+        },
+      };
     }
-    return primary;
+    if (this.fallback) {
+      const fallbackLeaves = collectLeafHashes(this.fallback.path);
+      if (fallbackLeaves.length > 0) {
+        return {
+          leaves: fallbackLeaves,
+          source: {
+            ...this.fallback,
+            logKind: inferLogKind(this.fallback.path) || this.fallback.logKind,
+          },
+        };
+      }
+    }
+    return { leaves: primaryLeaves, source: this.primary };
   }
 
-  getCurrentRoot(): { root: string; entryCount: number } {
-    const leaves = this.getActiveLeaves();
-    return { root: computeMerkleRoot(leaves), entryCount: leaves.length };
+  getCurrentRoot(): {
+    root: string;
+    entryCount: number;
+    logKind: AuditLogKind;
+  } {
+    const { leaves, source } = this.getActiveSource();
+    return {
+      root: computeMerkleRoot(leaves),
+      entryCount: leaves.length,
+      logKind: source.logKind,
+    };
+  }
+
+  /** Explicit typed root — never silently substitutes a different log kind. */
+  getRootForKind(kind: AuditLogKind): {
+    root: string;
+    entryCount: number;
+    logKind: AuditLogKind;
+    matched: boolean;
+  } {
+    const { leaves, source } = this.getActiveSource();
+    if (source.logKind !== kind) {
+      return { root: "0".repeat(64), entryCount: 0, logKind: kind, matched: false };
+    }
+    return {
+      root: computeMerkleRoot(leaves),
+      entryCount: leaves.length,
+      logKind: source.logKind,
+      matched: true,
+    };
   }
 
   getRecentLeafHashes(n: number): string[] {
-    const leaves = this.getActiveLeaves();
+    const { leaves } = this.getActiveSource();
     return leaves.slice(-n);
   }
 
-  createProofForIndex(index: number): MerkleProof | null {
-    const leaves = this.getActiveLeaves();
-    return createMerkleProof(leaves, index);
+  createProofForIndex(index: number): (MerkleProof & { logKind: AuditLogKind }) | null {
+    const { leaves, source } = this.getActiveSource();
+    const proof = createMerkleProof(leaves, index);
+    if (!proof) return null;
+    return { ...proof, logKind: source.logKind };
   }
 
-  createProofForLeaf(leafHash: string): MerkleProof | null {
-    const leaves = this.getActiveLeaves();
+  createProofForLeaf(leafHash: string): (MerkleProof & { logKind: AuditLogKind }) | null {
+    const { leaves, source } = this.getActiveSource();
     const index = leaves.indexOf(leafHash);
     if (index === -1) return null;
-    return createMerkleProof(leaves, index);
+    const proof = createMerkleProof(leaves, index);
+    if (!proof) return null;
+    return { ...proof, logKind: source.logKind };
   }
 
   verifyProofAgainstRoot(proof: MerkleProof, expectedRoot: string): boolean {
     return this.evaluateInclusion(proof, expectedRoot).valid;
   }
 
-  /**
-   * Structured inclusion check. A valid result proves inclusion under the
-   * claimed root only — not log completeness or external anchoring.
-   */
   evaluateInclusion(
-    proof: MerkleProof,
+    proof: MerkleProof & { logKind?: string },
     claimedRoot: string,
+    expectedLogKind?: AuditLogKind,
   ): {
     valid: boolean;
     semantics: "inclusion-under-claimed-root";
     rootMatch: boolean;
     proofValid: boolean;
     rootAnchored: false;
+    logKindMatch: boolean;
   } {
     const proofValid = verifyMerkleProof(proof);
     const rootMatch = proof.root === claimedRoot;
+    const logKindMatch =
+      expectedLogKind === undefined ||
+      proof.logKind === undefined ||
+      proof.logKind === expectedLogKind;
     return {
-      valid: proofValid && rootMatch,
+      valid: proofValid && rootMatch && logKindMatch,
       semantics: "inclusion-under-claimed-root",
       rootMatch,
       proofValid,
       rootAnchored: false,
+      logKindMatch,
     };
   }
 }

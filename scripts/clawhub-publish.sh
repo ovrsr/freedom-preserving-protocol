@@ -168,6 +168,13 @@ run_strict_checks_plugin() {
   (cd "$REPO_ROOT" && npm run build -w "$PLUGIN_NAME")
   (cd "$REPO_ROOT" && npm test -w "$PLUGIN_NAME")
   (cd "$REPO_ROOT" && SKIP_ISOLATED_INSTALL=1 bash scripts/verify-pack.sh)
+  if [[ -f "$REPO_ROOT/assurance-artifacts/release-manifest.json" ]]; then
+    bold "Verifying signed release manifest (refuse invalid)..."
+    (cd "$REPO_ROOT" && npm run release:verify -- --manifest assurance-artifacts/release-manifest.json) \
+      || { red "  ✗ Invalid release manifest — refusing publish"; exit 1; }
+  else
+    yellow "  ⚠ No assurance-artifacts/release-manifest.json — skipping release-domain check"
+  fi
   green "  ✓ Enforcement plugin checks passed"
 }
 

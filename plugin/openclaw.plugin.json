@@ -89,6 +89,35 @@
         "type": "boolean",
         "default": false,
         "description": "Required to honor dangerous overrides: approvalTimeoutBehavior=allow, or removing default hard-blocks from blockOn. Without this flag those overrides are ignored at runtime and reported as migration diagnostics — the config file is never rewritten."
+      },
+      "receiptMaxPending": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 256,
+        "description": "Maximum in-flight pending receipts awaiting authorization or after_tool_call. Overflow becomes explicit orphan/audit-gap records."
+      },
+      "receiptPendingTtlMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 86400000,
+        "default": 900000,
+        "description": "TTL for pending receipts before sweep marks them as audit-gap timeouts."
+      },
+      "receiptLogPath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-receipts.jsonl",
+        "description": "Path to the v2 signed conformance receipt ledger (separate from the legacy enforcement audit log)."
+      },
+      "identityKeyPath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-agent-identity.key",
+        "description": "Shared Ed25519 agent identity seed path (compatible with the trust plugin)."
+      },
+      "receiptSigningEnabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "When false, receipts are emitted unsigned and labeled degraded (non-trust-elevating)."
       }
     }
   }

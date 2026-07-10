@@ -4,6 +4,10 @@
  * Generates a keypair on first call and persists the 32-byte seed to disk
  * (mode 0600). The public key is derived on load so only the seed is stored.
  *
+ * On-disk format compatibility: the enforcement plugin's receipt signer
+ * (`plugin/src/receipt-signer.ts`) reads/writes the same 32-byte seed file
+ * so either plugin can create or reuse the shared agent identity key.
+ *
  * `agentId` is the v2 full key fingerprint (`fpp:ed25519:<sha256>`).
  * `legacyAlias` retains the historical truncated form for migration/display.
  */

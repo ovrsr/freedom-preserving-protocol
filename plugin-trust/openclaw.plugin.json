@@ -9,7 +9,10 @@
       "fpp_handshake_verify",
       "fpp_trust_status",
       "fpp_attestation_export",
-      "fpp_cluster_status"
+      "fpp_cluster_status",
+      "fpp_receipt_verify",
+      "fpp_receipt_proof",
+      "fpp_capsule_offer"
     ]
   },
   "activation": {
@@ -68,6 +71,11 @@
         ],
         "default": ".openclaw/workspace/fpp-plugin-audit.jsonl",
         "description": "Fallback audit JSONL when the primary auditLogPath has zero entries (default: enforcement plugin log). Set to null to disable. Handshake Merkle roots bootstrap from enforcement entries until constitution-audit has heartbeat/adoption entries."
+      },
+      "receiptLogPath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-receipts.jsonl",
+        "description": "Path to the typed conformance receipt ledger used for selective proof export and capsule receipt roots."
       },
       "strictModeStatePath": {
         "type": "string",

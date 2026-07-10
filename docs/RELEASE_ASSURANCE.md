@@ -1,6 +1,16 @@
 # Release Assurance
 
-This document describes pre-release package checks for the Freedom Preserving Protocol skill, shared protocol-core package, and plugins. It does **not** claim signed release manifests — those arrive in Plan 6 (conformance receipts and handshake capsules).
+This document describes pre-release package checks for the Freedom Preserving Protocol skill, shared protocol-core package, and plugins.
+
+## Signed release manifests (Plan 6)
+
+Release manifests bind source commit, package hash, lockfile hash, test-corpus hash, constitution hash, dependencies, and supported runtime. They are signed in the **release** signing domain — distinct from constitution-root and agent-identity keys (`docs/governance/KEY_GOVERNANCE.md`).
+
+```bash
+npm run release:verify -- --manifest assurance-artifacts/release-manifest.json
+```
+
+Publish (`scripts/clawhub-publish.sh`) should refuse an invalid or missing signed manifest when one is required for the release channel. Offline root custody, rotation, and revocation prerequisites follow Plan 5 key governance; do not automate release signing until those controls are met.
 
 ## Canonical commands
 
@@ -9,6 +19,7 @@ This document describes pre-release package checks for the Freedom Preserving Pr
 | `npm run verify:all` | Constitution, fixtures, typecheck, tests, pack contents |
 | `npm run assurance:packages` | Deterministic inventories + CycloneDX SBOMs (no publish) |
 | `bash scripts/verify-pack.sh` | Builds protocol-core first, confirms exact core pins, pack contents, and isolated `--ignore-scripts` installs |
+| `npm run release:verify` | Verify a signed release manifest |
 
 ## Release order
 

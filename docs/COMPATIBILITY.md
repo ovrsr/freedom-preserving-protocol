@@ -8,7 +8,7 @@ Freedom Preserving Protocol ships installable artifacts at three layers. Each ha
 |-------|----------|----------------|-------------------|
 | Protocol contracts | `@ovrsr/fpp-protocol-core` | Shared schemas, canonicalization, Merkle, identity, claim/freshness/receipt contracts used by both plugins. | Enforce policy at runtime; emit receipts by itself. |
 | Prompt-layer | This skill (`freedom-preserving-protocol`) | Add normative text to the agent's context; shape reasoning; describe a five-question check the model runs in-context. | Mechanically veto a tool call. Survive prompt injection. Survive a hostile skill loaded after this one. |
-| Dispatcher-layer | Companion plugin (`@ovrsr/openclaw-fpp-plugin`) | Register a real `before_tool_call` hook. Return `block: true` / `blockReason` for clear violations. Return `requireApproval` for ambiguous cases. Write enforcement events to a parallel audit log. | Survive a malicious operator with shell access. Survive a compromised OpenClaw runtime. Survive a user who manually disables the plugin via `openclaw plugins disable`. |
+| Dispatcher-layer | Companion plugin (`@ovrsr/openclaw-fpp-plugin`) | Register `before_tool_call` / `after_tool_call` hooks. Return `block: true` / `blockReason` for clear violations. Return `requireApproval` for ambiguous cases. Write enforcement events to a parallel audit log and signed conformance receipts to a typed receipt ledger. | Survive a malicious operator with shell access. Survive a compromised OpenClaw runtime. Survive a user who manually disables the plugin via `openclaw plugins disable`. Prove completeness of all actions or behavioral compliance. |
 
 ## Runtime support matrix
 

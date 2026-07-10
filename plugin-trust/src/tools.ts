@@ -21,6 +21,17 @@ import { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
 import type { MerkleBridge, MerkleProof } from "./merkle-bridge.js";
 import type { StrictModeManager } from "./strict-mode.js";
 import type { GroupContextManager } from "./group-context.js";
+import {
+  verifyReceiptEvidence,
+  getReceiptRoot,
+  createTypedReceiptProof,
+  RECEIPT_LOG_KIND,
+} from "./receipt-verifier.js";
+import {
+  buildTrustStateCapsule,
+  validateTrustStateCapsule,
+  isLegacyClaimMasquerading,
+} from "./capsule.js";
 
 export interface ToolDependencies {
   identity: AgentIdentity;
@@ -32,6 +43,7 @@ export interface ToolDependencies {
   constitutionHash: string;
   strictModeOnHandshakeFailure: boolean;
   strictModeTtlMs: number;
+  receiptLogPath?: string | undefined;
 }
 
 function textResult(text: string, details: unknown) {
@@ -524,6 +536,141 @@ export function executeClusterStatus(
       known: true,
       ...state,
       lowestTrustLevelName: trustLevelName,
+    },
+  );
+}
+
+export const ReceiptVerifyParams = Type.Object({
+  receiptJson: Type.String({ description: "JSON string of a ConformanceReceiptV1" }),
+  expectedPolicyVersion: Type.Optional(Type.String()),
+  expectedClassifierRulesetHash: Type.Optional(Type.String()),
+});
+
+export const ReceiptProofExportParams = Type.Object({
+  index: Type.Integer({ minimum: 0 }),
+  discloseRawLog: Type.Optional(
+    Type.Boolean({
+      description: "Opt-in: include raw ledger line (default false — privacy-preserving)",
+      default: false,
+    }),
+  ),
+});
+
+export const CapsuleOfferParams = Type.Object({
+  audience: Type.String({ minLength: 1 }),
+  challenge: Type.String({ minLength: 1 }),
+  ttlMs: Type.Optional(Type.Integer({ minimum: 1000, maximum: 600000 })),
+  view: Type.Optional(
+    Type.Union([Type.Literal("self"), Type.Literal("peer-summary")]),
+  ),
+});
+
+export function executeReceiptVerify(
+  params: Static<typeof ReceiptVerifyParams>,
+  _deps: ToolDependencies,
+) {
+  let receipt: unknown;
+  try {
+    receipt = JSON.parse(params.receiptJson);
+  } catch {
+    return failResult("receiptJson is not valid JSON");
+  }
+  const report = verifyReceiptEvidence({
+    receipt,
+    expectedPolicyVersion: params.expectedPolicyVersion,
+    expectedClassifierRulesetHash: params.expectedClassifierRulesetHash,
+  });
+  return textResult(
+    report.valid
+      ? `Receipt verified (${report.evidenceClass}). Ceiling=${report.confidenceCeiling}. Does NOT prove behavioral compliance or completeness.`
+      : `Receipt verification failed: ${report.reasons.join("; ")}`,
+    {
+      ...report,
+      rawLogDisclosed: false,
+    },
+  );
+}
+
+export function executeReceiptProofExport(
+  params: Static<typeof ReceiptProofExportParams>,
+  deps: ToolDependencies,
+) {
+  const logPath = deps.receiptLogPath;
+  if (!logPath) {
+    return failResult("receiptLogPath not configured on trust plugin");
+  }
+  const root = getReceiptRoot(logPath);
+  const proof = createTypedReceiptProof(logPath, params.index);
+  if (!proof) {
+    return failResult(
+      `No receipt at index ${params.index} (log has ${root.entryCount} entries)`,
+    );
+  }
+  return textResult(
+    `Receipt inclusion proof for index ${params.index} (logKind=${RECEIPT_LOG_KIND}). ` +
+      `Proves inclusion under claimed root only — not completeness.`,
+    {
+      logKind: RECEIPT_LOG_KIND,
+      root: root.root,
+      entryCount: root.entryCount,
+      proof,
+      rawLogDisclosed: false,
+      discloseRawLogRequested: params.discloseRawLog === true,
+      note:
+        params.discloseRawLog === true
+          ? "Raw log disclosure requested but withheld by default privacy policy"
+          : "Raw private logs not exposed",
+    },
+  );
+}
+
+export function executeCapsuleOffer(
+  params: Static<typeof CapsuleOfferParams>,
+  deps: ToolDependencies,
+) {
+  if (isLegacyClaimMasquerading(params)) {
+    return failResult("legacy claim shape cannot masquerade as a capsule");
+  }
+  const { identity, merkleBridge } = deps;
+  const { root, logKind } = merkleBridge.getCurrentRoot();
+  const receiptRoot = deps.receiptLogPath
+    ? getReceiptRoot(deps.receiptLogPath).root
+    : undefined;
+  const now = Date.now();
+  const ttl = params.ttlMs ?? 300_000;
+  const capsule = buildTrustStateCapsule({
+    identity,
+    runtimeId: "openclaw-fpp-trust",
+    implementationVersion: "1.2.2",
+    evidenceRoot: root,
+    receiptRoot,
+    coverageMetrics: {
+      metricVersion: 1,
+      finalizedReceipts: deps.receiptLogPath
+        ? getReceiptRoot(deps.receiptLogPath).entryCount
+        : 0,
+      completeness: "unknown",
+    },
+    freshness: {
+      audience: params.audience,
+      challenge: params.challenge,
+      issuedAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + ttl).toISOString(),
+    },
+    view: params.view ?? "peer-summary",
+  });
+  const validation = validateTrustStateCapsule(capsule, {
+    maxLifetimeMs: ttl + 60_000,
+    allowedClockSkewMs: 60_000,
+    nowMs: now,
+  });
+  return textResult(
+    `TrustStateCapsuleV2 offered (view=${capsule.view}, evidenceLogKind=${logKind}). ` +
+      `Freshness+signature valid=${validation.valid}. Not a completeness claim.`,
+    {
+      capsule,
+      validation,
+      evidenceLogKind: logKind,
     },
   );
 }

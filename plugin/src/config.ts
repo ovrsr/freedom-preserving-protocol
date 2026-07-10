@@ -64,6 +64,16 @@ export type FppPluginConfig = {
    * via migration diagnostics — the on-disk user config is not rewritten.
    */
   acknowledgeDangerousOverrides: boolean;
+  /** Max in-flight pending receipts awaiting after_tool_call / authorization. */
+  receiptMaxPending: number;
+  /** Pending receipt TTL before sweep marks them as audit-gap timeouts. */
+  receiptPendingTtlMs: number;
+  /** Path for the v2 signed receipt ledger (separate from legacy audit log). */
+  receiptLogPath: string;
+  /** Shared agent identity seed path (compatible with trust plugin). */
+  identityKeyPath: string;
+  /** When false, receipts are emitted unsigned and labeled degraded. */
+  receiptSigningEnabled: boolean;
 };
 
 export type MergeConfigResult = {
@@ -95,6 +105,11 @@ export const DEFAULT_CONFIG: FppPluginConfig = {
   knownCustomTools: [],
   auditFailureBehavior: "fail-closed",
   acknowledgeDangerousOverrides: false,
+  receiptMaxPending: 256,
+  receiptPendingTtlMs: 15 * 60_000,
+  receiptLogPath: ".openclaw/workspace/fpp-receipts.jsonl",
+  identityKeyPath: ".openclaw/workspace/fpp-agent-identity.key",
+  receiptSigningEnabled: true,
 };
 
 function isBlockDowngrade(blockOn: ClassificationId[]): boolean {
@@ -169,6 +184,13 @@ export function mergeConfigWithDiagnostics(input: unknown): MergeConfigResult {
     auditFailureBehavior:
       partial.auditFailureBehavior ?? DEFAULT_CONFIG.auditFailureBehavior,
     acknowledgeDangerousOverrides: ack,
+    receiptMaxPending: partial.receiptMaxPending ?? DEFAULT_CONFIG.receiptMaxPending,
+    receiptPendingTtlMs:
+      partial.receiptPendingTtlMs ?? DEFAULT_CONFIG.receiptPendingTtlMs,
+    receiptLogPath: partial.receiptLogPath ?? DEFAULT_CONFIG.receiptLogPath,
+    identityKeyPath: partial.identityKeyPath ?? DEFAULT_CONFIG.identityKeyPath,
+    receiptSigningEnabled:
+      partial.receiptSigningEnabled ?? DEFAULT_CONFIG.receiptSigningEnabled,
   };
 
   return { config, diagnostics };
@@ -198,6 +220,11 @@ const MANIFEST_DEFAULT_KEYS: (keyof FppPluginConfig)[] = [
   "respectTrustStrictMode",
   "knownCustomTools",
   "auditFailureBehavior",
+  "receiptMaxPending",
+  "receiptPendingTtlMs",
+  "receiptLogPath",
+  "identityKeyPath",
+  "receiptSigningEnabled",
 ];
 
 export type ManifestValidationResult = {

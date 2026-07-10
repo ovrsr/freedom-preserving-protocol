@@ -39,6 +39,12 @@ import {
   executeTrustStatus,
   executeAttestationExport,
   executeClusterStatus,
+  ReceiptVerifyParams,
+  ReceiptProofExportParams,
+  CapsuleOfferParams,
+  executeReceiptVerify,
+  executeReceiptProofExport,
+  executeCapsuleOffer,
 } from "./tools.js";
 import { ReplayCache } from "./replay-cache.js";
 import {
@@ -117,6 +123,7 @@ interface FppTrustConfig {
   identityKeyPath: string;
   auditLogPath: string;
   fallbackAuditLogPath: string | null;
+  receiptLogPath: string;
   strictModeStatePath: string;
   replayCachePath: string;
   verificationPolicy: VerificationPolicy;
@@ -196,6 +203,10 @@ function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
       typeof cfg.auditLogPath === "string"
         ? cfg.auditLogPath
         : ".openclaw/workspace/constitution-audit.jsonl",
+    receiptLogPath:
+      typeof cfg.receiptLogPath === "string"
+        ? cfg.receiptLogPath
+        : ".openclaw/workspace/fpp-receipts.jsonl",
     strictModeStatePath:
       typeof cfg.strictModeStatePath === "string"
         ? cfg.strictModeStatePath
@@ -392,6 +403,30 @@ function initStack(api: OpenClawPluginApi): {
     risk: "low",
     tags: ["fpp", "trust", "cluster"],
   });
+  api.registerToolMetadata({
+    toolName: "fpp_receipt_verify",
+    displayName: "FPP Receipt Verify",
+    description:
+      "Verify a conformance receipt signature/schema/policy binding. Does not prove behavioral compliance or completeness.",
+    risk: "low",
+    tags: ["fpp", "trust", "receipt"],
+  });
+  api.registerToolMetadata({
+    toolName: "fpp_receipt_proof",
+    displayName: "FPP Receipt Proof Export",
+    description:
+      "Export a selective Merkle inclusion proof from the typed receipt ledger (privacy-preserving defaults).",
+    risk: "low",
+    tags: ["fpp", "trust", "receipt"],
+  });
+  api.registerToolMetadata({
+    toolName: "fpp_capsule_offer",
+    displayName: "FPP Trust Capsule Offer",
+    description:
+      "Build a fresh signed TrustStateCapsuleV2 bound to a peer challenge (not a legacy claim).",
+    risk: "low",
+    tags: ["fpp", "trust", "capsule"],
+  });
 
   const deps: ToolDependencies = {
     identity,
@@ -403,6 +438,7 @@ function initStack(api: OpenClawPluginApi): {
     constitutionHash: config.constitutionHash,
     strictModeOnHandshakeFailure: config.strictModeOnHandshakeFailure,
     strictModeTtlMs: config.strictModeTtlMs,
+    receiptLogPath: config.receiptLogPath,
   };
 
   _stack = stack;
@@ -503,6 +539,45 @@ export default defineToolPlugin({
       execute(params, _config, ctx) {
         const { deps } = initStack(ctx.api);
         return executeClusterStatus(params, deps);
+      },
+    }),
+
+    tool({
+      name: "fpp_receipt_verify",
+      label: "FPP Receipt Verify",
+      description:
+        "Verify a conformance receipt (schema, signature, optional policy hash). " +
+        "Names exactly what was verified. Does not prove behavioral compliance or completeness.",
+      parameters: ReceiptVerifyParams,
+      execute(params, _config, ctx) {
+        const { deps } = initStack(ctx.api);
+        return executeReceiptVerify(params, deps);
+      },
+    }),
+
+    tool({
+      name: "fpp_receipt_proof",
+      label: "FPP Receipt Proof Export",
+      description:
+        "Export a selective Merkle inclusion proof from the typed receipt ledger. " +
+        "Raw private logs are not disclosed by default.",
+      parameters: ReceiptProofExportParams,
+      execute(params, _config, ctx) {
+        const { deps } = initStack(ctx.api);
+        return executeReceiptProofExport(params, deps);
+      },
+    }),
+
+    tool({
+      name: "fpp_capsule_offer",
+      label: "FPP Trust Capsule Offer",
+      description:
+        "Build a fresh signed TrustStateCapsuleV2 bound to audience+challenge. " +
+        "Carries evidence/receipt roots and coverage — not raw private logs.",
+      parameters: CapsuleOfferParams,
+      execute(params, _config, ctx) {
+        const { deps } = initStack(ctx.api);
+        return executeCapsuleOffer(params, deps);
       },
     }),
   ],
