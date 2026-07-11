@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "npx tsx adapters/cursor/src/hook-cli.ts"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "npx tsx adapters/cursor/src/hook-cli.ts --after"
+      }
+    ]
+  }
+}

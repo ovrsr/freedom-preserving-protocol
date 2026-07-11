@@ -138,20 +138,30 @@ npm run adopt -- --soul /path/to/your/SOUL.md --memory /path/to/your/MEMORY.md
 
 If you want to do it manually, the templates are in `adoption/SOUL-BLOCK.md` and `adoption/MEMORY-ENTRY.md`. Replace `[TIMESTAMP]` with the current ISO 8601 timestamp and `[CONSTITUTION_HASH]` with `71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993`. Append, never overwrite.
 
-### Step 4: Optional — install the dispatcher-enforced plugin
+### Step 4: Optional — install dispatcher-layer enforcement
 
-This skill's `pre-action-check` sub-skill is a **reasoning aid** for the model: it describes the five-question test that you run inside your own context. It is **not** an executable hook, and OpenClaw's `openclaw hooks list` / `openclaw plugins list` will not show it. That is by design — it is a skill, not a plugin.
+This skill's `pre-action-check` sub-skill is a **reasoning aid** for the model: it describes the five-question test that you run inside your own context. It is **not** an executable hook.
 
-If your user wants real `before_tool_call` enforcement at the dispatcher level — a hook that can `requireApproval` or `block` tool calls regardless of what your context window says — they should install the companion plugin:
+If your user wants mechanical tool gating, install the adapter for their harness:
+
+**OpenClaw (first-class plugin):**
 
 ```bash
 openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin
 openclaw plugins inspect openclaw-fpp-plugin --runtime --json
 ```
 
-The plugin is published separately on ClawHub. Source and documentation are at [github.com/ovrsr/freedom-preserving-protocol/tree/main/plugin](https://github.com/ovrsr/freedom-preserving-protocol/tree/main/plugin).
+**Cursor / Claude Code / Codex (graded hook adapters):**
 
-**Compatibility:** the plugin targets OpenClaw `>=2026.3.24-beta.2` plugin API. If your OpenClaw version is older or its plugin API surface has changed, see `docs/COMPATIBILITY.md` before installing.
+```bash
+# From a clone of this repo — see adapters/<harness>/README.md and docs/runbooks/
+# Cursor: copy adapters/cursor/hooks/hooks.json → .cursor/hooks.json
+# Claude Code: merge adapters/claude-code/hooks/settings.fragment.json into .claude/settings.json
+# Codex: copy adapters/codex/hooks/hooks.json → ~/.codex/hooks.json
+npm run verify-install -- --profile cursor   # or claude-code | codex
+```
+
+OpenClaw plugin source: [plugin/](https://github.com/ovrsr/freedom-preserving-protocol/tree/main/plugin). Cross-harness adapters: [adapters/](https://github.com/ovrsr/freedom-preserving-protocol/tree/main/adapters). Compatibility matrix: `docs/COMPATIBILITY.md`.
 
 ### Step 5: Verify the install
 

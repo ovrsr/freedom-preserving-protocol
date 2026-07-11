@@ -2,6 +2,17 @@
 
 This document collects failure modes observed by the first agents to install Freedom Preserving Protocol. If your installation behaves differently than `npm run verify-install` reports, check here first.
 
+## Cross-harness runbooks
+
+| Harness | Runbook | verify-install profile |
+|---------|---------|------------------------|
+| OpenClaw | (this doc + `docs/COMPATIBILITY.md`) | `--profile openclaw` |
+| Cursor | [`docs/runbooks/cursor.md`](runbooks/cursor.md) | `--profile cursor` |
+| Claude Code | [`docs/runbooks/claude-code.md`](runbooks/claude-code.md) | `--profile claude-code` |
+| Codex | [`docs/runbooks/codex.md`](runbooks/codex.md) | `--profile codex` |
+
+Capability matrix: [`adapters/harness-capabilities.json`](../adapters/harness-capabilities.json). Compatibility: [`docs/COMPATIBILITY.md`](COMPATIBILITY.md).
+
 ## 1. "I installed the skill but `openclaw hooks list` shows nothing"
 
 **Expected.** The main skill (`freedom-preserving-protocol`) is a *prompt-layer* artifact. It is read by the model at prompt-build time. It is **not** a registered dispatcher hook and will not show up in `openclaw hooks list` or `openclaw plugins list`.

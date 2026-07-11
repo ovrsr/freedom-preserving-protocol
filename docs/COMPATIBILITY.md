@@ -7,18 +7,21 @@ Freedom Preserving Protocol ships installable artifacts at three layers. Each ha
 | Layer | Artifact | What it can do | What it cannot do |
 |-------|----------|----------------|-------------------|
 | Protocol contracts | `@ovrsr/fpp-protocol-core` | Shared schemas, canonicalization, Merkle, identity, claim/freshness/receipt contracts, workspace profiles (`FPP_WORKSPACE`). | Enforce policy at runtime; emit receipts by itself. |
-| Library cores | `@ovrsr/fpp-enforcement-core`, `@ovrsr/fpp-trust-core` | Importable classifier, disposition engine, mandate store, trust stack (`createTrustStack`) with **no** OpenClaw peer dependency. | Register harness hooks; that requires an adapter (OpenClaw plugins today; other harnesses in Plan 11). |
+| Library cores | `@ovrsr/fpp-enforcement-core`, `@ovrsr/fpp-trust-core` | Importable classifier, disposition engine, mandate store, trust stack (`createTrustStack`) with **no** OpenClaw peer dependency. | Register harness hooks by themselves — that requires an adapter (`plugin/`, `adapters/cursor`, `adapters/claude-code`, `adapters/codex`). |
 | Prompt-layer | This skill (`freedom-preserving-protocol`) | Add normative text to the agent's context; shape reasoning; describe a five-question check the model runs in-context. | Mechanically veto a tool call. Survive prompt injection. Survive a hostile skill loaded after this one. |
-| Dispatcher-layer | Companion plugin (`@ovrsr/openclaw-fpp-plugin`) | Register `before_tool_call` / `after_tool_call` hooks. Return `block: true` / `blockReason` for clear violations. Return `requireApproval` for ambiguous cases. Write enforcement events to a parallel audit log and signed conformance receipts to a typed receipt ledger. | Survive a malicious operator with shell access. Survive a compromised OpenClaw runtime. Survive a user who manually disables the plugin via `openclaw plugins disable`. Prove completeness of all actions or behavioral compliance. |
+| Dispatcher-layer | OpenClaw plugins + cross-harness adapters | OpenClaw: `before_tool_call` / `after_tool_call`. Cursor / Claude Code / Codex: native PreToolUse-style hooks (graded). Shared MCP sidecar: `@ovrsr/fpp-tool-proxy`. | Survive a malicious operator with shell access. Survive a compromised runtime. Survive an operator who disables hooks/plugins. Prove completeness of all actions or behavioral compliance. Gateway-non-bypassable binding is Plan 12. |
 
 ## Runtime support matrix
 
-| Surface | OpenClaw | Claude Code / Cursor / Codex | Library (Node, no harness) |
-|---------|----------|------------------------------|----------------------------|
-| Prompt-layer skill | yes | yes (AgentSkills) | n/a |
-| Enforcement / trust **cores** | via OpenClaw adapters | importable; no hook surface yet | yes — `classifyToolCall` + `resolveDisposition` + `createTrustStack` |
-| Dispatcher hooks (`before_tool_call`) | yes (plugin) | not yet (Plan 11 adapters) | n/a |
-| `verify-install` probes | OpenClaw probe default (`active` / `inactive` / `unknown`) | `--profile generic` reports unknown/inactive honestly — not an OpenClaw-only failure | constitution + audit checks; probes graded per harness |
+| Surface | OpenClaw | Cursor | Claude Code | Codex | Library (Node, no harness) |
+|---------|----------|--------|-------------|-------|----------------------------|
+| Prompt-layer skill | yes | yes (AgentSkills) | yes | partial (`trigger:` gaps) | n/a |
+| Enforcement / trust **cores** | via OpenClaw adapters | via `@ovrsr/fpp-adapter-cursor` | via `@ovrsr/fpp-adapter-claude-code` | via `@ovrsr/fpp-adapter-codex` | yes |
+| Dispatcher hooks | yes (`before_tool_call`) | yes (`preToolUse` / `beforeMCPExecution`) | yes (`PreToolUse`) | graded (`PreToolUse`; shell reliable) | n/a |
+| `verify-install` probes | `--profile openclaw` | `--profile cursor` | `--profile claude-code` | `--profile codex` | constitution + audit; probes graded |
+| Graded guarantee | Full OpenClaw plugin path | Hooks deny when installed/trusted; operator can disable | Same; `--dangerously-skip-permissions` bypass | Shell reliable; apply_patch/MCP gaps possible | Caller wires `createEnforcementRuntime` |
+
+Machine-readable matrix: `adapters/harness-capabilities.json`. Runbooks: `docs/runbooks/`.
 
 ### Prompt-layer skill
 
@@ -27,23 +30,24 @@ The skill is plain markdown with YAML frontmatter conforming to the AgentSkills 
 | Runtime | Tested | Notes |
 |---------|--------|-------|
 | OpenClaw `>=2026.1.x` | yes | Discovered via ClawHub or workspace install. `openclaw skills check freedom-preserving-protocol` should report `eligible: true`. |
-| Claude Code | yes | Place under `.claude/skills/` or `~/.claude/skills/`. |
-| Cursor | yes | Place under `.cursor/skills/` or `~/.cursor/skills/`. |
-| Codex | partial | Trigger phrases work; some runtimes don't yet consume `trigger:` in sub-skill frontmatter. |
+| Claude Code | yes | Place under `.claude/skills/` or `~/.claude/skills/`. Adapter: `adapters/claude-code/`. |
+| Cursor | yes | Place under `.cursor/skills/` or `~/.cursor/skills/`. Adapter: `adapters/cursor/`. |
+| Codex | partial | Trigger phrases work; some runtimes don't yet consume `trigger:` in sub-skill frontmatter. Adapter: `adapters/codex/` (graded hook coverage). |
 | Other AgentSkills-compliant | unknown | Should work; report back. |
 | Node library consumer | yes | Import `@ovrsr/fpp-enforcement-core` / `@ovrsr/fpp-trust-core` without `openclaw` installed. |
 
-#### Prompt-only fallback on non-OpenClaw runtimes
+#### Graded dispatcher on non-OpenClaw runtimes
 
-On Claude Code, Cursor, Codex, and any other non-OpenClaw runtime, **only the prompt layer operates at the harness boundary** (until Plan 11 adapters land). Be explicit about what that fallback guarantees:
+On Claude Code, Cursor, and Codex, install the matching adapter under `adapters/` and wire the sample hooks config. Be explicit about graded guarantees:
 
-- **Works:** the five laws, the five-question test, adoption/revocation via the npm scripts, signature verification (`npm run verify`), the local audit chain tooling (`npm run audit:*`), and the **library cores** in-process — these are runtime-independent Node modules/scripts.
-- **Does not work yet:** OpenClaw-style `before_tool_call` hooks on those harnesses. No tool call is mechanically gated at the harness boundary; nothing blocks or requires approval outside the model's own reasoning (or a custom adapter you wire yourself).
-- **Consequence:** without a harness adapter, FPP protection at the tool boundary is exactly as strong as the model's in-context compliance — it does not survive prompt injection or a hostile skill. `npm run verify-install -- --profile generic` reports dispatcher probes as `unknown`/`inactive` honestly; that is accurate, not an OpenClaw-only error.
+- **Works:** native PreToolUse-style hooks drive enforcement-core dispositions (including unattended abstain/mandate paths); receipts under `~/.fpp/<profile>` (or `FPP_WORKSPACE`); `npm run verify-install -- --profile <harness>`.
+- **Does not claim:** OpenClaw plugin parity, gateway-non-bypassable binding, or complete tool coverage on Codex (shell is the reliable path).
+- **Shared fallback:** `@ovrsr/fpp-tool-proxy` for MCP/sidecar gateways when hooks are unavailable or incomplete.
+- **Consequence:** without hooks/adapter installed, FPP at the tool boundary is prompt-layer only. Unknown `--profile` values warn and do **not** false-PASS dispatcher.
 
-### Dispatcher-layer plugin
+### Dispatcher-layer (OpenClaw plugin — first-class)
 
-The plugin uses the OpenClaw Plugin SDK and is **OpenClaw-specific**. It does not run in Claude Code / Cursor / Codex because those runtimes don't have an equivalent `before_tool_call` registration surface.
+The OpenClaw plugins use the OpenClaw Plugin SDK and remain the richest dispatcher path (tool registration, approval UI, ClawHub distribution). Other harnesses use graded hook adapters — see the matrix above — not this OpenClaw-specific package.
 
 | Component | Required version | Source |
 |-----------|------------------|--------|

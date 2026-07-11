@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "updated": "2026-07-10",
+  "notes": "Honest capability reporting. preToolHook=true means a documented native PreToolUse-style surface exists; gradedGuarantee describes what is actually enforceable.",
+  "harnesses": {
+    "openclaw": {
+      "harnessId": "openclaw",
+      "preToolHook": true,
+      "approvalUi": true,
+      "toolRegistration": true,
+      "workspaceProfile": "openclaw",
+      "interceptionStrategy": "openclaw-plugin-before_tool_call",
+      "gradedGuarantee": "Native before_tool_call / after_tool_call via @ovrsr/openclaw-fpp-plugin. Full dispatcher-layer when plugin is active.",
+      "configPath": "openclaw.plugin.json / gateway plugins",
+      "adapterPackage": "@ovrsr/openclaw-fpp-plugin"
+    },
+    "cursor": {
+      "harnessId": "cursor",
+      "preToolHook": true,
+      "approvalUi": true,
+      "toolRegistration": false,
+      "workspaceProfile": "cursor",
+      "interceptionStrategy": "cursor-hooks-preToolUse",
+      "gradedGuarantee": "Cursor hooks (preToolUse / beforeMCPExecution) can deny tool calls when hooks.json is installed and trusted. Not gateway-non-bypassable; operator can disable hooks. Cloud agents may defer some MCP hooks.",
+      "configPath": ".cursor/hooks.json or ~/.cursor/hooks.json",
+      "adapterPackage": "@ovrsr/fpp-adapter-cursor",
+      "hookEvents": ["preToolUse", "postToolUse", "beforeMCPExecution", "afterMCPExecution"]
+    },
+    "claude-code": {
+      "harnessId": "claude-code",
+      "preToolHook": true,
+      "approvalUi": true,
+      "toolRegistration": false,
+      "workspaceProfile": "claude-code",
+      "interceptionStrategy": "claude-code-hooks-PreToolUse",
+      "gradedGuarantee": "Claude Code PreToolUse / PostToolUse hooks can deny via permissionDecision. Operator can disable hooks or use --dangerously-skip-permissions. Prompt-layer skills already work under .claude/skills/.",
+      "configPath": ".claude/settings.json or ~/.claude/settings.json",
+      "adapterPackage": "@ovrsr/fpp-adapter-claude-code",
+      "hookEvents": ["PreToolUse", "PostToolUse"]
+    },
+    "codex": {
+      "harnessId": "codex",
+      "preToolHook": true,
+      "approvalUi": false,
+      "toolRegistration": false,
+      "workspaceProfile": "codex",
+      "interceptionStrategy": "codex-hooks-PreToolUse",
+      "gradedGuarantee": "Codex PreToolUse hooks can deny (exit 2 / permissionDecision). Coverage is graded: shell/Bash is reliable; apply_patch and some MCP paths have historically had gaps. Trigger frontmatter for skills remains partial. Default dispositionMode=unattended (no operator approval UI).",
+      "configPath": "~/.codex/hooks.json",
+      "adapterPackage": "@ovrsr/fpp-adapter-codex",
+      "hookEvents": ["PreToolUse", "PostToolUse"],
+      "knownGaps": ["apply_patch/MCP coverage may be incomplete", "trigger frontmatter partial"]
+    }
+  }
+}

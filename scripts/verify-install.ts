@@ -138,7 +138,8 @@ Options:
   --soul    <path>   Check that SOUL.md contains the adoption block
   --memory  <path>   Check that MEMORY.md contains the adoption entry
   --log     <path>   Audit log path (default: <workspace>/constitution-audit.jsonl)
-  --profile <id>     Workspace profile: openclaw (default) or generic
+  --profile <id>     Workspace/harness profile: openclaw (default), generic,
+                     cursor, claude-code, codex (unknown → warn, not false PASS)
   --json             Emit a machine-readable JSON report on stdout
   -h, --help         This help
 
@@ -285,6 +286,85 @@ export function createOpenClawRuntimeProbe(
       return enforcementPresent ? "active" : "inactive";
     },
   };
+}
+
+const ADAPTER_PACKAGE_BY_PROFILE: Record<string, string> = {
+  cursor: "@ovrsr/fpp-adapter-cursor",
+  "claude-code": "@ovrsr/fpp-adapter-claude-code",
+  codex: "@ovrsr/fpp-adapter-codex",
+};
+
+const ADAPTER_DIR_BY_PROFILE: Record<string, string> = {
+  cursor: "adapters/cursor",
+  "claude-code": "adapters/claude-code",
+  codex: "adapters/codex",
+};
+
+export type AdapterProbeOptions = {
+  /** Repo / install root used to locate adapter packages. */
+  rootDir?: string | undefined;
+  /** Override presence check (tests). */
+  isPresent?: (() => boolean) | undefined;
+};
+
+/**
+ * Probe for Cursor / Claude Code / Codex adapters: active when the adapter
+ * package directory (or injectable presence check) is found; otherwise unknown.
+ * Never reports a false dispatcher PASS for an unknown harness.
+ */
+export function createHookAdapterProbe(
+  harnessId: string,
+  options: AdapterProbeOptions = {},
+): RuntimeProbe {
+  return {
+    harnessId,
+    probe: (): RuntimeProbeStatus => {
+      if (options.isPresent) {
+        return options.isPresent() ? "active" : "inactive";
+      }
+      const root = options.rootDir ?? DEFAULT_ROOT;
+      const rel = ADAPTER_DIR_BY_PROFILE[harnessId];
+      if (!rel) return "unknown";
+      const pkgJson = resolve(root, rel, "package.json");
+      if (!existsSync(pkgJson)) return "inactive";
+      try {
+        const name = JSON.parse(readFileSync(pkgJson, "utf8")).name as string;
+        const expected = ADAPTER_PACKAGE_BY_PROFILE[harnessId];
+        return expected && name === expected ? "active" : "inactive";
+      } catch {
+        return "unknown";
+      }
+    },
+  };
+}
+
+/**
+ * Select default runtime probes for a verify-install profile.
+ * Unknown profiles get a single warn/unknown probe — never a false dispatcher PASS.
+ */
+export function defaultProbesForProfile(
+  profile: string,
+  options: {
+    pluginLister?: PluginLister | undefined;
+    rootDir?: string | undefined;
+  } = {},
+): RuntimeProbe[] {
+  const lister = options.pluginLister ?? defaultPluginLister;
+  const rootDir = options.rootDir ?? DEFAULT_ROOT;
+
+  if (profile === "openclaw" || profile === "generic") {
+    return [createOpenClawRuntimeProbe(lister)];
+  }
+  if (profile === "cursor" || profile === "claude-code" || profile === "codex") {
+    return [createHookAdapterProbe(profile, { rootDir })];
+  }
+  // Unknown harness: honest unknown, not OpenClaw plugin inventory.
+  return [
+    {
+      harnessId: profile,
+      probe: (): RuntimeProbeStatus => "unknown",
+    },
+  ];
 }
 
 function probeStatusToCheck(
@@ -459,7 +539,11 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
   const profile = options.profile ?? "openclaw";
   const logPath = options.log ?? ".openclaw/workspace/constitution-audit.jsonl";
   const probesToRun: RuntimeProbe[] =
-    options.probes ?? [createOpenClawRuntimeProbe(lister)];
+    options.probes ??
+    defaultProbesForProfile(profile, {
+      pluginLister: lister,
+      rootDir,
+    });
 
   const checks: Check[] = [];
   const probeResults: RuntimeProbeResult[] = [];
@@ -593,8 +677,7 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
     checks.find((c) => c.id === "plugin.enforcement.installed")?.status ===
       "pass" ||
     openclawProbeActive ||
-    (options.probes !== undefined &&
-      anyProbeActive &&
+    (anyProbeActive &&
       !probeResults.some((p) => p.harnessId === "openclaw"));
   const trustLayerActive =
     checks.find((c) => c.id === "plugin.trust.installed")?.status === "pass";
@@ -644,11 +727,17 @@ function main() {
     console.log("");
     if (!dispatcherLayerActive) {
       console.log(
-        "Note: without the dispatcher-layer enforcement plugin, the five-question gate can be bypassed by prompt injection or a hostile skill. Install the plugin for `before_tool_call` enforcement:",
+        "Note: without a dispatcher-layer adapter (OpenClaw plugin or harness hooks), the five-question gate can be bypassed by prompt injection or a hostile skill.",
       );
-      console.log(
-        "  openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin",
-      );
+      if (args.profile === "openclaw" || args.profile === "generic") {
+        console.log(
+          "  openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin",
+        );
+      } else {
+        console.log(
+          `  See adapters/${args.profile}/ and docs/runbooks/${args.profile}.md`,
+        );
+      }
     }
     if (!trustLayerActive) {
       console.log(

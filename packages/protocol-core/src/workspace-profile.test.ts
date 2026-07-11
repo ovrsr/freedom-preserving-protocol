@@ -62,4 +62,17 @@ describe("workspace profile resolution", () => {
       "/home/x/.fpp/fpp-receipts.jsonl",
     );
   });
+
+  it("cursor / claude-code / codex profiles resolve under ~/.fpp/<profile>", () => {
+    for (const profile of ["cursor", "claude-code", "codex"] as const) {
+      assert.equal(
+        resolveWorkspaceRoot({
+          profile,
+          env: {},
+          homedir: () => "/home/agent",
+        }),
+        `/home/agent/.fpp/${profile}`,
+      );
+    }
+  });
 });

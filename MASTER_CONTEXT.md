@@ -159,7 +159,7 @@ governance: Praxis AI (Kurzweil digital twins), Praxi.ai (insurance data), Prax.
 
 ---
 
-## 4. Artifacts in this repo (skill + cores + OpenClaw adapters)
+## 4. Artifacts in this repo (skill + cores + adapters)
 
 This is summarized in `README.md` and `SKILL.md`; reproduced here for offline
 context.
@@ -170,6 +170,8 @@ freedom-preserving-protocol/
 ├── packages/protocol-core/        @ovrsr/fpp-protocol-core (schemas, workspace profiles)
 ├── packages/enforcement-core/     @ovrsr/fpp-enforcement-core (classifier, disposition)
 ├── packages/trust-core/           @ovrsr/fpp-trust-core (trust stack, createTrustStack)
+├── packages/tool-proxy/           @ovrsr/fpp-tool-proxy (MCP/sidecar reference)
+├── adapters/                      Cursor / Claude Code / Codex FppRuntimeAdapter packages
 ├── plugin/                        @ovrsr/openclaw-fpp-plugin (OpenClaw enforcement adapter)
 └── plugin-trust/                  @ovrsr/openclaw-fpp-trust (OpenClaw trust adapter)
 ```
@@ -179,22 +181,24 @@ freedom-preserving-protocol/
 | Skill | Prompt | Five-question reasoning check inside the agent's context | Jailbreak, hostile skill loaded after, user editing SOUL.md |
 | Library cores | In-process | Harness-agnostic policy + trust logic; no `openclaw` peer required | Caller must wire an adapter for mechanical tool gating |
 | Enforcement plugin | Dispatcher (OpenClaw) | Thin adapter: `before_tool_call` → enforcement-core | Malicious operator with shell access; compromised runtime; `openclaw plugins disable` |
+| Cross-harness adapters | Dispatcher (graded) | Cursor/Claude/Codex PreToolUse hooks → enforcement-core | Operator disables hooks; Codex coverage gaps; not gateway-bound |
 | Trust plugin | Dispatcher (OpenClaw) | Thin adapter: tools/CLI → trust-core; does **not** gate tools | Same as enforcement plugin; trust state is per-host |
 
 Composition: each artifact is independently adoptable. Skill alone is meaningful.
-Cores alone are enough for library consumers. Skill + OpenClaw enforcement is the
-recommended minimum for non-bypassable gating on OpenClaw. Full stack adds trust.
+Cores alone are enough for library consumers. Skill + harness adapter is the
+recommended minimum for mechanical gating. Full stack adds trust.
 
 ### Cross-runtime posture
 
 OpenClaw remains the **first-class** distribution (ClawHub plugins + skill). Policy
 and trust logic live in the library cores so other harnesses (Claude Code, Cursor,
 Codex) and plain Node consumers can import them without the OpenClaw Plugin SDK.
-Workspace paths resolve via profiles (`openclaw` → `.openclaw/workspace`; `generic`
-→ `$FPP_WORKSPACE` or `~/.fpp`). `npm run verify-install -- --profile generic`
-grades harness probes as `active` / `inactive` / `unknown` without treating a
-missing OpenClaw CLI as an OpenClaw-only failure. Full Cursor/Claude/Codex adapters
-are Plan 11; OpenClaw adapters are not removed.
+Workspace paths resolve via profiles (`openclaw` → `.openclaw/workspace`;
+`cursor`/`claude-code`/`codex` → `~/.fpp/<profile>`; `generic` → `$FPP_WORKSPACE`
+or `~/.fpp`). `npm run verify-install -- --profile <harness>` grades probes as
+`active` / `inactive` / `unknown`. Cross-harness adapters ship under `adapters/`
+with graded guarantees (`adapters/harness-capabilities.json`); gateway-non-bypassable
+binding remains Plan 12.
 
 ---
 
@@ -488,9 +492,10 @@ The items below are consolidated, with prerequisites and ownership, in
 2. **Adoption telemetry.** Public dashboard of agents who have run
    `verify-install` and reported a `[PASS]` overall. Without aggregate visibility,
    the network effect is invisible.
-3. **Cross-runtime parity.** The skill works in Claude Code, Cursor, Codex; the
-   plugins do not (no equivalent `before_tool_call` surface). Document the
-   prompt-only fallback path for each runtime.
+3. **Cross-runtime parity.** Prompt layer works across AgentSkills harnesses.
+   Dispatcher adapters ship for OpenClaw (full), Cursor, Claude Code, and Codex
+   (graded — see `adapters/harness-capabilities.json`). Gateway-non-bypassable
+   binding remains Plan 12.
 4. **Sub-agent transitive guarantee.** Currently, a sub-agent spawned on a remote
    host must independently install. A `claim` mechanism in the trust plugin could
    allow the parent to vouch for the child's adoption, conditional on signed claim

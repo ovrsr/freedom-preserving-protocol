@@ -182,6 +182,19 @@ function main() {
     }
     console.log(`\n${passing}/${results.length} fixtures matched expectation.`);
     console.log(`\n${promptLayerReminder}`);
+
+    // Graded adapter presence (Plan 11) — informational, does not affect exit code.
+    const adapterProfiles = ["cursor", "claude-code", "codex"] as const;
+    console.log("\nCross-harness adapters:");
+    for (const profile of adapterProfiles) {
+      const pkg = resolve(root, "adapters", profile, "package.json");
+      console.log(
+        `  ${existsSync(pkg) ? "[PRESENT]" : "[MISSING]"} ${profile} → adapters/${profile}`,
+      );
+    }
+    console.log(
+      "  verify-install profiles: --profile openclaw|cursor|claude-code|codex|generic",
+    );
   }
 
   process.exit(passing === results.length ? 0 : 1);

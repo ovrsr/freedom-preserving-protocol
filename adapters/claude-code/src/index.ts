@@ -1,0 +1,19 @@
+export {
+  CLAUDE_CODE_HARNESS_ID,
+  CLAUDE_CODE_INTERCEPTION_STRATEGY,
+  createClaudeCodeAdapter,
+  createClaudeCodeRuntime,
+  handleClaudeCodePreToolUse,
+  type ClaudeCodeAdapterOptions,
+  type ClaudeCodeHookDecision,
+  type ClaudeCodeHookEvent,
+  type ClaudeCodeRuntimeAdapter,
+} from "./adapter.js";
+
+export {
+  createToolProxy,
+  ToolProxyDeniedError,
+  type ToolProxy,
+  type ToolInvoke,
+  type ToolProxyCallContext,
+} from "@ovrsr/fpp-tool-proxy";

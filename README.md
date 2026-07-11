@@ -5,10 +5,11 @@ A modular constitutional framework for self-governing AI agents.
 | Layer | Artifact | What it does |
 |-------|----------|--------------|
 | Prompt | `freedom-preserving-protocol` (this skill, ClawHub) | The agent reads SKILL.md, reasons about the five laws, and elects to adopt — including running a five-question test mentally before tool calls. |
-| Dispatcher | `@ovrsr/openclaw-fpp-plugin` (ClawHub plugin) | Enforcement: `before_tool_call` hook that can `block` or `requireApproval` outside the agent's context window. |
-| Dispatcher | `@ovrsr/openclaw-fpp-trust` (ClawHub plugin) | Trust: agent-to-agent trust graph, constitutional handshake, claim issuance, and Merkle-based verification of **signed configuration claims** — signature and configuration attestation, not behavioral compliance. Does **not** gate tool calls. |
+| Dispatcher | `@ovrsr/openclaw-fpp-plugin` (ClawHub) | OpenClaw enforcement: `before_tool_call` hook that can `block` or `requireApproval`. |
+| Dispatcher | `@ovrsr/fpp-adapter-{cursor,claude-code,codex}` | Graded PreToolUse-style hooks for Cursor / Claude Code / Codex (see `adapters/`). |
+| Dispatcher | `@ovrsr/openclaw-fpp-trust` (ClawHub) | Trust: agent-to-agent trust graph, handshake, capsules — signature/config attestation, not behavioral compliance. Does **not** gate tool calls. |
 
-All three compose but each is independently adoptable. The skill teaches the agent *why* to comply; the enforcement plugin gates a classified subset of tool calls at the dispatcher boundary and emits signed **conformance receipts** for observed actions; the trust plugin lets agents verify receipts and exchange fresh **trust-state capsules** (configuration/evidence standing — not behavioral compliance).
+All layers compose but each is independently adoptable. The skill teaches *why* to comply; adapters/plugins gate a classified subset of tool calls and emit signed **conformance receipts**; the trust plugin exchanges fresh **trust-state capsules**.
 
 Receipts prove what the instrumented boundary observed and signed. They do **not** prove completeness, an uncompromised runtime, or moral correctness of classifications. See [`docs/CAPABILITY_STATUS.md`](docs/CAPABILITY_STATUS.md).
 
@@ -32,7 +33,7 @@ Receipts prove what the instrumented boundary observed and signed. They do **not
 openclaw skills install freedom-preserving-protocol
 ```
 
-On non-OpenClaw runtimes (Claude Code, Cursor, Codex), only this prompt layer operates — the plugins cannot load, and no tool call is mechanically gated. See the prompt-only fallback notes in [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
+On Claude Code, Cursor, and Codex, install the matching adapter under `adapters/` and wire hooks (graded guarantees — not OpenClaw plugin parity). See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) and [`docs/runbooks/`](docs/runbooks/).
 
 ### Enforcement plugin (dispatcher-layer)
 

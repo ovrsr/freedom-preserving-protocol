@@ -1,6 +1,6 @@
 # Cross-Harness Adapters
 
-**Status:** PENDING
+**Status:** COMPLETE
 **Created:** 2026-07-10
 **Series:** Plan 11 of 12 (autonomy + harness-agnostic program)
 **Depends on:** Plan 10 (`FppRuntimeAdapter`, enforcement-core, trust-core, workspace profiles)
@@ -35,17 +35,17 @@ Deliver real adapter implementations (not docs-only) for Cursor, Claude Code, an
 
 ## Progress Tracking
 
-- [ ] Task 1: Adapter package layout and harness capability matrix fixture
-- [ ] Task 2: Cursor adapter (hook or MCP/sidecar strategy)
-- [ ] Task 3: Claude Code adapter
-- [ ] Task 4: Codex adapter
-- [ ] Task 5: Shared sidecar/MCP proxy reference (if native hooks missing)
-- [ ] Task 6: verify-install probes + self-test per harness profile
-- [ ] Task 7: Distribution, COMPATIBILITY, CAPABILITY_STATUS, SKILL.md install paths
-- [ ] Task 8: Integration tests with fake harness buses
-- [ ] Task 9: Operator runbooks for each harness (graded guarantees)
+- [x] Task 1: Adapter package layout and harness capability matrix fixture
+- [x] Task 2: Cursor adapter (hook or MCP/sidecar strategy)
+- [x] Task 3: Claude Code adapter
+- [x] Task 4: Codex adapter
+- [x] Task 5: Shared sidecar/MCP proxy reference (if native hooks missing)
+- [x] Task 6: verify-install probes + self-test per harness profile
+- [x] Task 7: Distribution, COMPATIBILITY, CAPABILITY_STATUS, SKILL.md install paths
+- [x] Task 8: Integration tests with fake harness buses
+- [x] Task 9: Operator runbooks for each harness (graded guarantees)
 
-**Total Tasks:** 9 | **Completed:** 0 | **Remaining:** 9
+**Total Tasks:** 9 | **Completed:** 9 | **Remaining:** 0
 
 ## Implementation Tasks
 

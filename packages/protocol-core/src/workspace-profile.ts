@@ -3,6 +3,7 @@
  *
  * - `openclaw` → `.openclaw/workspace` (preserves existing OpenClaw defaults)
  * - `generic` → `$FPP_WORKSPACE` or `~/.fpp`
+ * - `cursor` / `claude-code` / `codex` → `~/.fpp/<profile>`
  *
  * When `FPP_WORKSPACE` is set, it overrides the profile root for any profile.
  */
@@ -10,9 +11,16 @@
 import { homedir as osHomedir } from "node:os";
 import { join } from "node:path";
 
-export type WorkspaceProfileId = "openclaw" | "generic";
+export type WorkspaceProfileId =
+  | "openclaw"
+  | "generic"
+  | "cursor"
+  | "claude-code"
+  | "codex";
 
 export const DEFAULT_WORKSPACE_PROFILE: WorkspaceProfileId = "openclaw";
+
+const HARNESS_PROFILES = new Set<string>(["cursor", "claude-code", "codex"]);
 
 export type ResolveWorkspaceOptions = {
   profile?: WorkspaceProfileId | string | undefined;
@@ -37,9 +45,14 @@ export function resolveWorkspaceRoot(
   }
 
   const profile = (options.profile ?? DEFAULT_WORKSPACE_PROFILE) as string;
+  const home = () => (options.homedir ?? osHomedir)();
+
   if (profile === "generic") {
-    const home = (options.homedir ?? osHomedir)();
-    return normalizeRoot(join(home, ".fpp"));
+    return normalizeRoot(join(home(), ".fpp"));
+  }
+
+  if (HARNESS_PROFILES.has(profile)) {
+    return normalizeRoot(join(home(), ".fpp", profile));
   }
 
   // openclaw (default) and unknown profiles preserve OpenClaw layout

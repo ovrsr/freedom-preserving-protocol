@@ -273,4 +273,59 @@ describe("verify-install runVerifyInstall", () => {
       "unknown",
     );
   });
+
+  it("cursor profile probe reports active when adapter package is present", () => {
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      log: join(workdir, "no-log.jsonl"),
+      profile: "cursor",
+      pluginLister: unavailableLister,
+    });
+    const cursorProbe = report.checks.find(
+      (c) => c.id === "runtime.probe.cursor",
+    );
+    assert.ok(cursorProbe);
+    assert.equal(cursorProbe.status, "pass");
+    assert.equal(
+      report.probes?.find((p) => p.harnessId === "cursor")?.status,
+      "active",
+    );
+    assert.equal(report.summary.dispatcherLayerActive, true);
+    // Must not claim OpenClaw plugin pass just because cursor adapter is active
+    assert.equal(
+      report.checks.find((c) => c.id === "plugin.enforcement.installed"),
+      undefined,
+    );
+  });
+
+  it("unknown profile warns and does not false-PASS dispatcher", () => {
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      log: join(workdir, "no-log.jsonl"),
+      profile: "totally-unknown-harness",
+      pluginLister: unavailableLister,
+    });
+    const unknownProbe = report.checks.find(
+      (c) => c.id === "runtime.probe.totally-unknown-harness",
+    );
+    assert.ok(unknownProbe);
+    assert.equal(unknownProbe.status, "warn");
+    assert.match(unknownProbe.detail, /unknown/i);
+    assert.equal(report.summary.dispatcherLayerActive, false);
+  });
+
+  it("claude-code and codex profiles select their adapter probes", () => {
+    for (const profile of ["claude-code", "codex"] as const) {
+      const report = runVerifyInstall({
+        rootDir: REAL_ROOT,
+        log: join(workdir, "no-log.jsonl"),
+        profile,
+        pluginLister: unavailableLister,
+      });
+      const probe = report.probes?.find((p) => p.harnessId === profile);
+      assert.ok(probe, `expected probe for ${profile}`);
+      assert.equal(probe.status, "active");
+      assert.equal(report.summary.dispatcherLayerActive, true);
+    }
+  });
 });
