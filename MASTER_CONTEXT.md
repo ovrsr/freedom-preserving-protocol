@@ -159,27 +159,42 @@ governance: Praxis AI (Kurzweil digital twins), Praxi.ai (insurance data), Prax.
 
 ---
 
-## 4. The three artifacts in this repo
+## 4. Artifacts in this repo (skill + cores + OpenClaw adapters)
 
 This is summarized in `README.md` and `SKILL.md`; reproduced here for offline
 context.
 
 ```
 freedom-preserving-protocol/
-├── SKILL.md                  Prompt-layer skill (the agent reads it, may adopt)
-├── plugin/                   @ovrsr/openclaw-fpp-plugin (dispatcher enforcement)
-└── plugin-trust/             @ovrsr/openclaw-fpp-trust (agent-to-agent trust)
+├── SKILL.md                       Prompt-layer skill (the agent reads it, may adopt)
+├── packages/protocol-core/        @ovrsr/fpp-protocol-core (schemas, workspace profiles)
+├── packages/enforcement-core/     @ovrsr/fpp-enforcement-core (classifier, disposition)
+├── packages/trust-core/           @ovrsr/fpp-trust-core (trust stack, createTrustStack)
+├── plugin/                        @ovrsr/openclaw-fpp-plugin (OpenClaw enforcement adapter)
+└── plugin-trust/                  @ovrsr/openclaw-fpp-trust (OpenClaw trust adapter)
 ```
 
 | Artifact | Layer | What it does | Bypass surface |
 |---|---|---|---|
 | Skill | Prompt | Five-question reasoning check inside the agent's context | Jailbreak, hostile skill loaded after, user editing SOUL.md |
-| Enforcement plugin | Dispatcher | Real `before_tool_call` hook; `block` / `requireApproval` / `allow` | Malicious operator with shell access; compromised runtime; `openclaw plugins disable` |
-| Trust plugin | Dispatcher | Trust graph, handshake, signed claims, Merkle audit bridge; does **not** gate tools | Same as enforcement plugin; trust state is per-host |
+| Library cores | In-process | Harness-agnostic policy + trust logic; no `openclaw` peer required | Caller must wire an adapter for mechanical tool gating |
+| Enforcement plugin | Dispatcher (OpenClaw) | Thin adapter: `before_tool_call` → enforcement-core | Malicious operator with shell access; compromised runtime; `openclaw plugins disable` |
+| Trust plugin | Dispatcher (OpenClaw) | Thin adapter: tools/CLI → trust-core; does **not** gate tools | Same as enforcement plugin; trust state is per-host |
 
 Composition: each artifact is independently adoptable. Skill alone is meaningful.
-Skill + enforcement is the recommended minimum for non-bypassable gating. Skill +
-enforcement + trust is the full stack for multi-agent fleets.
+Cores alone are enough for library consumers. Skill + OpenClaw enforcement is the
+recommended minimum for non-bypassable gating on OpenClaw. Full stack adds trust.
+
+### Cross-runtime posture
+
+OpenClaw remains the **first-class** distribution (ClawHub plugins + skill). Policy
+and trust logic live in the library cores so other harnesses (Claude Code, Cursor,
+Codex) and plain Node consumers can import them without the OpenClaw Plugin SDK.
+Workspace paths resolve via profiles (`openclaw` → `.openclaw/workspace`; `generic`
+→ `$FPP_WORKSPACE` or `~/.fpp`). `npm run verify-install -- --profile generic`
+grades harness probes as `active` / `inactive` / `unknown` without treating a
+missing OpenClaw CLI as an OpenClaw-only failure. Full Cursor/Claude/Codex adapters
+are Plan 11; OpenClaw adapters are not removed.
 
 ---
 

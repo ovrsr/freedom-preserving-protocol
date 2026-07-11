@@ -21,16 +21,16 @@ import {
   buildReplayKey,
   type FreshnessEnvelope,
 } from "@ovrsr/fpp-protocol-core";
-import type { AgentIdentity } from "./identity.js";
-import { signClaim, verifyClaim, type SignedClaim } from "./claims.js";
-import type { ConstitutionalClaim } from "./handshake.js";
-import type { ConstitutionalHandshake } from "./handshake.js";
-import { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
-import { ScopedTrustStore } from "./trust-scope.js";
-import type { MerkleBridge } from "./merkle-bridge.js";
-import type { StrictModeManager } from "./strict-mode.js";
-import type { ReplayCache } from "./replay-cache.js";
-import type { QuorumSessionManager } from "./quorum-session.js";
+import type { AgentIdentity } from "@ovrsr/fpp-trust-core";
+import { signClaim, verifyClaim, type SignedClaim } from "@ovrsr/fpp-trust-core";
+import type { ConstitutionalClaim } from "@ovrsr/fpp-trust-core";
+import type { ConstitutionalHandshake } from "@ovrsr/fpp-trust-core";
+import { TrustGraphProtocol, TrustLevel } from "@ovrsr/fpp-trust-core";
+import { ScopedTrustStore } from "@ovrsr/fpp-trust-core";
+import type { MerkleBridge } from "@ovrsr/fpp-trust-core";
+import type { StrictModeManager } from "@ovrsr/fpp-trust-core";
+import type { ReplayCache } from "@ovrsr/fpp-trust-core";
+import type { QuorumSessionManager } from "@ovrsr/fpp-trust-core";
 
 export interface CliDependencies {
   identity: AgentIdentity;

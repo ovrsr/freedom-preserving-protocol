@@ -66,7 +66,7 @@ describe("receipt signer", () => {
     const enforcement = loadReceiptSigner({ keyPath, enabled: true });
     // Dynamic import keeps this test from requiring a build of plugin-trust.
     const { loadOrCreateIdentity } = await import(
-      "../../plugin-trust/src/identity.js"
+      "../../../plugin-trust/src/identity.js"
     );
     const trust = loadOrCreateIdentity(keyPath, "/");
     assert.equal(enforcement.agentId, trust.agentId);

@@ -6,11 +6,19 @@ Freedom Preserving Protocol ships installable artifacts at three layers. Each ha
 
 | Layer | Artifact | What it can do | What it cannot do |
 |-------|----------|----------------|-------------------|
-| Protocol contracts | `@ovrsr/fpp-protocol-core` | Shared schemas, canonicalization, Merkle, identity, claim/freshness/receipt contracts used by both plugins. | Enforce policy at runtime; emit receipts by itself. |
+| Protocol contracts | `@ovrsr/fpp-protocol-core` | Shared schemas, canonicalization, Merkle, identity, claim/freshness/receipt contracts, workspace profiles (`FPP_WORKSPACE`). | Enforce policy at runtime; emit receipts by itself. |
+| Library cores | `@ovrsr/fpp-enforcement-core`, `@ovrsr/fpp-trust-core` | Importable classifier, disposition engine, mandate store, trust stack (`createTrustStack`) with **no** OpenClaw peer dependency. | Register harness hooks; that requires an adapter (OpenClaw plugins today; other harnesses in Plan 11). |
 | Prompt-layer | This skill (`freedom-preserving-protocol`) | Add normative text to the agent's context; shape reasoning; describe a five-question check the model runs in-context. | Mechanically veto a tool call. Survive prompt injection. Survive a hostile skill loaded after this one. |
 | Dispatcher-layer | Companion plugin (`@ovrsr/openclaw-fpp-plugin`) | Register `before_tool_call` / `after_tool_call` hooks. Return `block: true` / `blockReason` for clear violations. Return `requireApproval` for ambiguous cases. Write enforcement events to a parallel audit log and signed conformance receipts to a typed receipt ledger. | Survive a malicious operator with shell access. Survive a compromised OpenClaw runtime. Survive a user who manually disables the plugin via `openclaw plugins disable`. Prove completeness of all actions or behavioral compliance. |
 
 ## Runtime support matrix
+
+| Surface | OpenClaw | Claude Code / Cursor / Codex | Library (Node, no harness) |
+|---------|----------|------------------------------|----------------------------|
+| Prompt-layer skill | yes | yes (AgentSkills) | n/a |
+| Enforcement / trust **cores** | via OpenClaw adapters | importable; no hook surface yet | yes — `classifyToolCall` + `resolveDisposition` + `createTrustStack` |
+| Dispatcher hooks (`before_tool_call`) | yes (plugin) | not yet (Plan 11 adapters) | n/a |
+| `verify-install` probes | OpenClaw probe default (`active` / `inactive` / `unknown`) | `--profile generic` reports unknown/inactive honestly — not an OpenClaw-only failure | constitution + audit checks; probes graded per harness |
 
 ### Prompt-layer skill
 
@@ -23,14 +31,15 @@ The skill is plain markdown with YAML frontmatter conforming to the AgentSkills 
 | Cursor | yes | Place under `.cursor/skills/` or `~/.cursor/skills/`. |
 | Codex | partial | Trigger phrases work; some runtimes don't yet consume `trigger:` in sub-skill frontmatter. |
 | Other AgentSkills-compliant | unknown | Should work; report back. |
+| Node library consumer | yes | Import `@ovrsr/fpp-enforcement-core` / `@ovrsr/fpp-trust-core` without `openclaw` installed. |
 
 #### Prompt-only fallback on non-OpenClaw runtimes
 
-On Claude Code, Cursor, Codex, and any other non-OpenClaw runtime, **only the prompt layer operates**. Be explicit about what that fallback guarantees:
+On Claude Code, Cursor, Codex, and any other non-OpenClaw runtime, **only the prompt layer operates at the harness boundary** (until Plan 11 adapters land). Be explicit about what that fallback guarantees:
 
-- **Works:** the five laws, the five-question test, adoption/revocation via the npm scripts, signature verification (`npm run verify`), and the local audit chain tooling (`npm run audit:*`) — these are runtime-independent Node scripts.
-- **Does not work:** the enforcement plugin (no `before_tool_call` surface) and the trust plugin (no plugin SDK). No tool call is mechanically gated; nothing blocks or requires approval outside the model's own reasoning.
-- **Consequence:** on these runtimes, FPP protection is exactly as strong as the model's in-context compliance — it does not survive prompt injection or a hostile skill. `verify-install` will report the dispatcher layer as unavailable; that report is accurate, not an error.
+- **Works:** the five laws, the five-question test, adoption/revocation via the npm scripts, signature verification (`npm run verify`), the local audit chain tooling (`npm run audit:*`), and the **library cores** in-process — these are runtime-independent Node modules/scripts.
+- **Does not work yet:** OpenClaw-style `before_tool_call` hooks on those harnesses. No tool call is mechanically gated at the harness boundary; nothing blocks or requires approval outside the model's own reasoning (or a custom adapter you wire yourself).
+- **Consequence:** without a harness adapter, FPP protection at the tool boundary is exactly as strong as the model's in-context compliance — it does not survive prompt injection or a hostile skill. `npm run verify-install -- --profile generic` reports dispatcher probes as `unknown`/`inactive` honestly; that is accurate, not an OpenClaw-only error.
 
 ### Dispatcher-layer plugin
 
@@ -94,9 +103,16 @@ The FPP plugin only registers `before_tool_call`, which is a pure tool-policy ho
 ### Verify both layers together
 
 ```bash
+# OpenClaw profile (default) — probes OpenClaw plugins list when CLI is present
 npm run verify-install -- --soul ~/.openclaw/agents/<agent>/SOUL.md \
                           --memory ~/.openclaw/agents/<agent>/MEMORY.md
+
+# Generic / library profile — graded probes report unknown/inactive honestly
+npm run verify-install -- --profile generic
+# Optional: FPP_WORKSPACE=/path/to/workspace npm run verify-install -- --profile generic
 ```
+
+`verify-install` runs pluggable `RuntimeProbe`s (`active` | `inactive` | `unknown`) per harness. The default probe is OpenClaw; inject others in-process via `runVerifyInstall({ probes })`. A `[WARN]` probe of `unknown` on `--profile generic` is informational — not an OpenClaw-only failure.
 
 Expected (if both layers active):
 
@@ -188,7 +204,7 @@ If you do not set these, sensible defaults apply (see `plugin/src/config.ts` and
 
 `@ovrsr/fpp-protocol-core` is the shared contract package. Published plugins pin an **exact** core version (no ranges) so protocol drift cannot happen silently. Local development uses npm workspaces; isolated plugin installs must resolve core with `--ignore-scripts` (OpenClaw install style).
 
-Release order: build/test/pack core → skill → enforcement plugin → trust plugin. Rollback: restore the previous exact core version before rolling back dependent plugins. See `docs/RELEASE_ASSURANCE.md`.
+Release order: build/test/pack protocol-core → enforcement-core → trust-core → skill → enforcement plugin → trust plugin. Rollback: restore the previous exact core version before rolling back dependent packages. See `docs/RELEASE_ASSURANCE.md`.
 
 - **Legacy-v1 claim** — handshake claim format without `schemaVersion`: timestamped, optionally Ed25519-signed, no freshness nonce. Parsed as **declaration-only**; never silently escalated to v2 assurance. Under default `verificationPolicy: "hardened-v2"`, unsigned/legacy claims cannot establish trust.
 - **v2 claim** — carries explicit `schemaVersion: 2`, key-bound agent ID (`fpp:ed25519:<fingerprint>`), claim class, and freshness envelope. Runtime-validated by `parseClaim`.

@@ -6,7 +6,7 @@
 import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { createTrustStack } from "./index.js";
+import { createTrustStack } from "./create-trust-stack.js";
 import { signClaim, verifyClaim, canonicalize } from "./claims.js";
 import { loadOrCreateIdentity } from "./identity.js";
 import { TrustLevel } from "./trust-graph.js";

@@ -17,11 +17,15 @@ echo "--- Classifier self-test ---"
 npm run self-test
 
 echo ""
-echo "--- Typecheck (plugin + plugin-trust) ---"
+echo "--- Build library cores (protocol → enforcement → trust) ---"
+npm run build:core
+
+echo ""
+echo "--- Typecheck (cores + plugin + plugin-trust) ---"
 npm run typecheck
 
 echo ""
-echo "--- Tests (plugins + scripts + corpus + self-test) ---"
+echo "--- Tests (cores + plugins + scripts + corpus + self-test) ---"
 npm run test:all
 
 echo ""

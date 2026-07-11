@@ -1,6 +1,6 @@
 # Harness-Agnostic Core Extraction
 
-**Status:** PENDING
+**Status:** COMPLETE
 **Created:** 2026-07-10
 **Series:** Plan 10 of 12 (autonomy + harness-agnostic program)
 **Depends on:** Plans 8–9 (disposition + mandates + quorum stable enough to move)
@@ -44,17 +44,17 @@ plugin-trust/                OpenClaw adapter: defineToolPlugin + CLI
 
 ## Progress Tracking
 
-- [ ] Task 1: Workspace packages and release pin conventions
-- [ ] Task 2: Extract enforcement-core and migrate plugin imports
-- [ ] Task 3: OpenClaw enforcement adapter + FppRuntimeAdapter interface
-- [ ] Task 4: Extract trust-core and migrate plugin-trust imports
-- [ ] Task 5: OpenClaw trust adapter (tools + CLI)
-- [ ] Task 6: Workspace profiles and path defaults
-- [ ] Task 7: verify-install pluggable probes + docs matrix
-- [ ] Task 8: CI, pack, CAPABILITY_STATUS, interop tests
-- [ ] Task 9: Library consumer smoke test (no OpenClaw peer)
+- [x] Task 1: Workspace packages and release pin conventions
+- [x] Task 2: Extract enforcement-core and migrate plugin imports
+- [x] Task 3: OpenClaw enforcement adapter + FppRuntimeAdapter interface
+- [x] Task 4: Extract trust-core and migrate plugin-trust imports
+- [x] Task 5: OpenClaw trust adapter (tools + CLI)
+- [x] Task 6: Workspace profiles and path defaults
+- [x] Task 7: verify-install pluggable probes + docs matrix
+- [x] Task 8: CI, pack, CAPABILITY_STATUS, interop tests
+- [x] Task 9: Library consumer smoke test (no OpenClaw peer)
 
-**Total Tasks:** 9 | **Completed:** 0 | **Remaining:** 9
+**Total Tasks:** 9 | **Completed:** 9 | **Remaining:** 0
 
 ## Implementation Tasks
 

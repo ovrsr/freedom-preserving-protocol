@@ -1,29 +1,19 @@
 /**
- * index.ts
- *
- * Plugin entry for the FPP Trust & Handshake plugin.
+ * index.ts — OpenClaw adapter over @ovrsr/fpp-trust-core.
  *
  * Uses defineToolPlugin so the SDK automatically wires tool discovery,
- * tool-search metadata, and registrationMode gating. Agent-facing tools
- * are declared in the `tools:` factory; hooks and CLI are registered
- * inside each tool factory's access to the api.
- *
- * Constitutional rationale:
- *   - Law 1 (consent): trust relationships require mutual handshake.
- *   - Law 2 (corrigibility): trust graph events are logged and inspectable.
- *   - Law 5 (scoped exploration): trust propagation has bounded depth.
+ * tool-search metadata, and registrationMode gating. Trust logic lives in
+ * @ovrsr/fpp-trust-core; this file translates OpenClaw hooks/tools/CLI.
  */
 
 import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
-import { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
-import { ConstitutionalHandshake } from "./handshake.js";
-import { loadTrustGraph, saveTrustGraph, saveTrustGraphSync } from "./persistence.js";
-import { loadOrCreateIdentity } from "./identity.js";
-import { MerkleBridge } from "./merkle-bridge.js";
-import { StrictModeManager, CONSERVATIVE_STRICT_APPROVAL_ON } from "./strict-mode.js";
-import { GroupContextManager } from "./group-context.js";
+import {
+  createTrustStack,
+  saveTrustGraph,
+  saveTrustGraphSync,
+} from "@ovrsr/fpp-trust-core";
 import { registerFppTrustCli, FPP_TRUST_CLI_DESCRIPTORS } from "./cli.js";
 import type { ToolDependencies } from "./tools.js";
 import {
@@ -54,70 +44,52 @@ import {
   executeMandateSecond,
   executeMandateFinalize,
 } from "./tools.js";
-import { ReplayCache } from "./replay-cache.js";
-import {
-  resolveVerificationPolicy,
-  type VerificationPolicy,
-} from "./verification-policy.js";
-import { KeyLifecycleLedger } from "./key-lifecycle.js";
-import { parseQuorumPolicyConfig } from "./quorum-policy.js";
-import { QuorumSessionManager } from "./quorum-session.js";
 
-export { resolveVerificationPolicy } from "./verification-policy.js";
-export type { VerificationPolicy } from "./verification-policy.js";
-
-// ── Re-exports (library API) ──────────────────────────────────────
-
-export { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
-export type {
-  TrustNode,
-  TrustRelationship,
-  TrustEvidence,
-  TrustPropagation,
-  TrustGraphStats,
-  ReputationMetrics,
-} from "./trust-graph.js";
-
-export { ConstitutionalHandshake, HandshakeState } from "./handshake.js";
-export type {
-  ConstitutionalClaim,
-  HandshakeSession,
-  HandshakeResult,
-  HandshakeEvidence,
-} from "./handshake.js";
-
-export { loadOrCreateIdentity, verifySignature } from "./identity.js";
-export type { AgentIdentity } from "./identity.js";
-
-export { signClaim, verifyClaim, canonicalize } from "./claims.js";
-export type { SignedClaim, ClaimVerification } from "./claims.js";
-
-export { ReplayCache } from "./replay-cache.js";
+// ── Re-exports (library API via trust-core) ────────────────────────
 
 export {
+  resolveVerificationPolicy,
+  type VerificationPolicy,
+  TrustGraphProtocol,
+  TrustLevel,
+  type TrustNode,
+  type TrustRelationship,
+  type TrustEvidence,
+  type TrustPropagation,
+  type TrustGraphStats,
+  type ReputationMetrics,
+  ConstitutionalHandshake,
+  HandshakeState,
+  type ConstitutionalClaim,
+  type HandshakeSession,
+  type HandshakeResult,
+  type HandshakeEvidence,
+  loadOrCreateIdentity,
+  verifySignature,
+  type AgentIdentity,
+  signClaim,
+  verifyClaim,
+  canonicalize,
+  type SignedClaim,
+  type ClaimVerification,
+  ReplayCache,
   MerkleBridge,
   computeMerkleRoot,
   createMerkleProof,
   verifyMerkleProof,
-} from "./merkle-bridge.js";
-export type { MerkleProof, MerkleProofStep } from "./merkle-bridge.js";
-
-export { StrictModeManager, CONSERVATIVE_STRICT_APPROVAL_ON, STRICT_MODE_SCHEMA_VERSION } from "./strict-mode.js";
-export type {
-  StrictSessionEntry,
-  StrictModeState,
-  StrictModeDiagnostic,
-  StrictModeDiagnosticCode,
-} from "./strict-mode.js";
-
-export { GroupContextManager } from "./group-context.js";
-export type {
-  ClusterMember,
-  TrustCluster,
-  ClusterTrustState,
-} from "./group-context.js";
-
-export {
+  type MerkleProof,
+  type MerkleProofStep,
+  StrictModeManager,
+  CONSERVATIVE_STRICT_APPROVAL_ON,
+  STRICT_MODE_SCHEMA_VERSION,
+  type StrictSessionEntry,
+  type StrictModeState,
+  type StrictModeDiagnostic,
+  type StrictModeDiagnosticCode,
+  GroupContextManager,
+  type ClusterMember,
+  type TrustCluster,
+  type ClusterTrustState,
   TrustEventLedger,
   appendTrustEvent,
   verifyTrustEvent,
@@ -125,287 +97,26 @@ export {
   buildSnapshotFromEvents,
   verifySnapshot,
   LEGACY_CONFIDENCE_CEILING,
-} from "./trust-events.js";
-export type {
-  TrustEventKind,
-  SignedTrustEvent,
-  TrustSnapshotV2,
-  LegacyObservation,
-} from "./trust-events.js";
-
-export { migrateV1ToV2 } from "./persistence.js";
-
-export {
+  type TrustEventKind,
+  type SignedTrustEvent,
+  type TrustSnapshotV2,
+  type LegacyObservation,
+  migrateV1ToV2,
   TrustViewStore,
   computeViewDivergence,
   PROPAGATED_WEIGHT_CEILING,
   SELF_WEIGHT_CEILING,
-} from "./trust-views.js";
-export type {
-  EvidenceViewSummary,
-  ViewDivergence,
-  EvidenceChannel,
-} from "./trust-views.js";
-
-// ── Config ─────────────────────────────────────────────────────────
-
-export type TrustConfigDiagnostic = {
-  code: string;
-  severity: "error" | "warn" | "info";
-  detail: string;
-};
-
-interface FppTrustConfig {
-  constitutionHash: string;
-  trustAttenuationFactor: number;
-  handshakeTimeoutMs: number;
-  maxPropagationDepth: number;
-  propagationMinEdgeConfidence: number;
-  propagationEvidenceCeiling: number;
-  trustGraphPath: string;
-  identityKeyPath: string;
-  auditLogPath: string;
-  fallbackAuditLogPath: string | null;
-  receiptLogPath: string;
-  strictModeStatePath: string;
-  replayCachePath: string;
-  verificationPolicy: VerificationPolicy;
-  requireSignedClaims: boolean;
-  requireMerkleProof: boolean;
-  requireFreshness: boolean;
-  allowLegacyDeclarations: boolean;
-  strictModeOnHandshakeFailure: boolean;
-  strictModeTtlMs: number;
-  strictModeAddApprovalOn: string[];
-  acknowledgeDangerousOverrides: boolean;
-  quorumPeerThreshold: number;
-  quorumStewardThreshold: number;
-  quorumPeerEligibleIds: string[];
-  quorumStewardEligibleIds: string[];
-  quorumMinStandingLevel?: number | undefined;
-  quorumProposalTtlMs: number;
-  mandateStorePath: string;
-  quorumStatePath: string;
-  /** Migration diagnostics only — never used to rewrite operator config files. */
-  migrationDiagnostics: TrustConfigDiagnostic[];
-}
-
-function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
-  const cfg = (raw ?? {}) as Partial<FppTrustConfig> & Record<string, unknown>;
-  const ack = cfg.acknowledgeDangerousOverrides === true;
-  const policy = resolveVerificationPolicy({
-    ...cfg,
-    acknowledgeDangerousOverrides: ack,
-  });
-  const migrationDiagnostics: TrustConfigDiagnostic[] = [];
-
-  if (
-    cfg.verificationPolicy === "legacy-unsafe" &&
-    policy.policy !== "legacy-unsafe"
-  ) {
-    migrationDiagnostics.push({
-      code: "DANGEROUS_LEGACY_UNSAFE",
-      severity: "error",
-      detail: policy.diagnostic,
-    });
-  } else if (policy.policy === "legacy-unsafe") {
-    migrationDiagnostics.push({
-      code: "DANGEROUS_LEGACY_UNSAFE",
-      severity: "warn",
-      detail: policy.diagnostic,
-    });
-  }
-
-  if (policy.policy !== "hardened-v2" || policy.diagnostic.includes("unknown") || migrationDiagnostics.length > 0) {
-    console.warn(`[fpp-trust] ${policy.diagnostic}`);
-  }
-  return {
-    constitutionHash:
-      typeof cfg.constitutionHash === "string"
-        ? cfg.constitutionHash
-        : "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
-    trustAttenuationFactor:
-      typeof cfg.trustAttenuationFactor === "number"
-        ? cfg.trustAttenuationFactor
-        : 0.8,
-    handshakeTimeoutMs:
-      typeof cfg.handshakeTimeoutMs === "number"
-        ? cfg.handshakeTimeoutMs
-        : 300_000,
-    maxPropagationDepth:
-      typeof cfg.maxPropagationDepth === "number"
-        ? cfg.maxPropagationDepth
-        : 3,
-    propagationMinEdgeConfidence:
-      typeof cfg.propagationMinEdgeConfidence === "number"
-        ? cfg.propagationMinEdgeConfidence
-        : 0.2,
-    propagationEvidenceCeiling:
-      typeof cfg.propagationEvidenceCeiling === "number"
-        ? cfg.propagationEvidenceCeiling
-        : 0.45,
-    trustGraphPath:
-      typeof cfg.trustGraphPath === "string"
-        ? cfg.trustGraphPath
-        : ".openclaw/workspace/fpp-trust-graph.json",
-    identityKeyPath:
-      typeof cfg.identityKeyPath === "string"
-        ? cfg.identityKeyPath
-        : ".openclaw/workspace/fpp-agent-identity.key",
-    fallbackAuditLogPath:
-      cfg.fallbackAuditLogPath === null
-        ? null
-        : typeof cfg.fallbackAuditLogPath === "string"
-          ? cfg.fallbackAuditLogPath
-          : ".openclaw/workspace/fpp-plugin-audit.jsonl",
-    auditLogPath:
-      typeof cfg.auditLogPath === "string"
-        ? cfg.auditLogPath
-        : ".openclaw/workspace/constitution-audit.jsonl",
-    receiptLogPath:
-      typeof cfg.receiptLogPath === "string"
-        ? cfg.receiptLogPath
-        : ".openclaw/workspace/fpp-receipts.jsonl",
-    strictModeStatePath:
-      typeof cfg.strictModeStatePath === "string"
-        ? cfg.strictModeStatePath
-        : ".openclaw/workspace/fpp-strict-sessions.json",
-    replayCachePath:
-      typeof cfg.replayCachePath === "string"
-        ? cfg.replayCachePath
-        : ".openclaw/workspace/fpp-replay-cache.json",
-    verificationPolicy: policy.policy,
-    requireSignedClaims: policy.requireSignedClaims,
-    requireMerkleProof:
-      typeof cfg.requireMerkleProof === "boolean"
-        ? cfg.requireMerkleProof
-        : false,
-    requireFreshness: policy.requireFreshness,
-    allowLegacyDeclarations: policy.allowLegacyDeclarations,
-    strictModeOnHandshakeFailure:
-      typeof cfg.strictModeOnHandshakeFailure === "boolean"
-        ? cfg.strictModeOnHandshakeFailure
-        : false,
-    strictModeTtlMs:
-      typeof cfg.strictModeTtlMs === "number"
-        ? cfg.strictModeTtlMs
-        : 3_600_000,
-    strictModeAddApprovalOn: Array.isArray(cfg.strictModeAddApprovalOn)
-      ? cfg.strictModeAddApprovalOn
-      : [...CONSERVATIVE_STRICT_APPROVAL_ON],
-    acknowledgeDangerousOverrides: ack,
-    quorumPeerThreshold:
-      typeof cfg.quorumPeerThreshold === "number"
-        ? cfg.quorumPeerThreshold
-        : 2,
-    quorumStewardThreshold:
-      typeof cfg.quorumStewardThreshold === "number"
-        ? cfg.quorumStewardThreshold
-        : 2,
-    quorumPeerEligibleIds: Array.isArray(cfg.quorumPeerEligibleIds)
-      ? (cfg.quorumPeerEligibleIds as string[])
-      : [],
-    quorumStewardEligibleIds: Array.isArray(cfg.quorumStewardEligibleIds)
-      ? (cfg.quorumStewardEligibleIds as string[])
-      : [],
-    ...(typeof cfg.quorumMinStandingLevel === "number"
-      ? { quorumMinStandingLevel: cfg.quorumMinStandingLevel }
-      : {}),
-    quorumProposalTtlMs:
-      typeof cfg.quorumProposalTtlMs === "number"
-        ? cfg.quorumProposalTtlMs
-        : 3_600_000,
-    mandateStorePath:
-      typeof cfg.mandateStorePath === "string"
-        ? cfg.mandateStorePath
-        : ".openclaw/workspace/fpp-mandates.json",
-    quorumStatePath:
-      typeof cfg.quorumStatePath === "string"
-        ? cfg.quorumStatePath
-        : ".openclaw/workspace/fpp-quorum-sessions.json",
-    migrationDiagnostics,
-  };
-}
+  type EvidenceViewSummary,
+  type ViewDivergence,
+  type EvidenceChannel,
+  createTrustStack,
+  mergeTrustConfig,
+  type TrustStack,
+  type FppTrustConfig,
+  type TrustConfigDiagnostic,
+} from "@ovrsr/fpp-trust-core";
 
 const DEBOUNCE_MS = 500;
-
-/**
- * Create a configured trust stack (graph + handshake + identity + etc.)
- * from plugin config. Useful for programmatic access outside the plugin lifecycle.
- */
-export function createTrustStack(rawConfig?: Record<string, unknown>): {
-  trustGraph: TrustGraphProtocol;
-  handshake: ConstitutionalHandshake;
-  identity: ReturnType<typeof loadOrCreateIdentity>;
-  merkleBridge: MerkleBridge;
-  strictMode: StrictModeManager;
-  groupContext: GroupContextManager;
-  replayCache: ReplayCache;
-  keyLifecycle: KeyLifecycleLedger;
-  quorum: QuorumSessionManager;
-  config: FppTrustConfig;
-} {
-  const config = mergeConfig(rawConfig);
-  const identity = loadOrCreateIdentity(config.identityKeyPath);
-  const trustGraph = loadTrustGraph(config.trustGraphPath, undefined, {
-    attenuationFactor: config.trustAttenuationFactor,
-    identity,
-  });
-  trustGraph.setPropagationPolicy({
-    maxDepth: config.maxPropagationDepth,
-    attenuationFactor: config.trustAttenuationFactor,
-    minEdgeConfidence: config.propagationMinEdgeConfidence,
-    evidenceClassCeiling: config.propagationEvidenceCeiling,
-  });
-  const replayCache = new ReplayCache({ path: config.replayCachePath });
-  const handshake = new ConstitutionalHandshake(trustGraph, config.constitutionHash, {
-    timeoutMs: config.handshakeTimeoutMs,
-    maxPropagationDepth: config.maxPropagationDepth,
-    requireSignedClaims: config.requireSignedClaims,
-    requireMerkleProof: config.requireMerkleProof,
-    requireFreshness: config.requireFreshness,
-    replayCache,
-    localAudience: identity.agentId,
-  });
-  const merkleBridge = new MerkleBridge(config.auditLogPath, process.cwd(), config.fallbackAuditLogPath);
-  const strictMode = new StrictModeManager(config.strictModeStatePath, {
-    defaultTtlMs: config.strictModeTtlMs,
-    defaultAddApprovalOn: config.strictModeAddApprovalOn,
-  });
-  const groupContext = new GroupContextManager(trustGraph, identity.agentId);
-  const keyLifecycle = new KeyLifecycleLedger();
-  const quorumPolicy = parseQuorumPolicyConfig({
-    peerThreshold: config.quorumPeerThreshold,
-    stewardThreshold: config.quorumStewardThreshold,
-    peerEligibleIds: config.quorumPeerEligibleIds,
-    stewardEligibleIds: config.quorumStewardEligibleIds,
-    ...(config.quorumMinStandingLevel !== undefined
-      ? {
-          minStandingLevel: config.quorumMinStandingLevel as TrustLevel,
-        }
-      : {}),
-    proposalTtlMs: config.quorumProposalTtlMs,
-  });
-  const quorum = new QuorumSessionManager({
-    policy: quorumPolicy,
-    ledger: keyLifecycle,
-    mandateStorePath: config.mandateStorePath,
-    statePath: config.quorumStatePath,
-  });
-
-  return {
-    trustGraph,
-    handshake,
-    identity,
-    merkleBridge,
-    strictMode,
-    groupContext,
-    replayCache,
-    keyLifecycle,
-    quorum,
-    config,
-  };
-}
 
 // ── Shared state (initialised once per process on first tool factory call) ──
 

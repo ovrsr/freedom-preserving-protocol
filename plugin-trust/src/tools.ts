@@ -14,32 +14,32 @@ import {
   type FreshnessEnvelope,
   type QuorumBallotV1,
 } from "@ovrsr/fpp-protocol-core";
-import type { AgentIdentity } from "./identity.js";
-import { signClaim } from "./claims.js";
-import type { ConstitutionalClaim, HandshakeResult } from "./handshake.js";
-import { ConstitutionalHandshake } from "./handshake.js";
-import { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
-import { ScopedTrustStore } from "./trust-scope.js";
-import type { MerkleBridge, MerkleProof } from "./merkle-bridge.js";
-import type { StrictModeManager } from "./strict-mode.js";
-import type { GroupContextManager } from "./group-context.js";
+import type { AgentIdentity } from "@ovrsr/fpp-trust-core";
+import { signClaim } from "@ovrsr/fpp-trust-core";
+import type { ConstitutionalClaim, HandshakeResult } from "@ovrsr/fpp-trust-core";
+import { ConstitutionalHandshake } from "@ovrsr/fpp-trust-core";
+import { TrustGraphProtocol, TrustLevel } from "@ovrsr/fpp-trust-core";
+import { ScopedTrustStore } from "@ovrsr/fpp-trust-core";
+import type { MerkleBridge, MerkleProof } from "@ovrsr/fpp-trust-core";
+import type { StrictModeManager } from "@ovrsr/fpp-trust-core";
+import type { GroupContextManager } from "@ovrsr/fpp-trust-core";
 import {
   verifyReceiptEvidence,
   getReceiptRoot,
   createTypedReceiptProof,
   RECEIPT_LOG_KIND,
-} from "./receipt-verifier.js";
+} from "@ovrsr/fpp-trust-core";
 import {
   buildTrustStateCapsule,
   validateTrustStateCapsule,
   isLegacyClaimMasquerading,
-} from "./capsule.js";
-import type { QuorumSessionManager } from "./quorum-session.js";
+} from "@ovrsr/fpp-trust-core";
+import type { QuorumSessionManager } from "@ovrsr/fpp-trust-core";
 import {
   computeIntendedMandateDigest,
   signQuorumBallot,
   signQuorumProposal,
-} from "./quorum-session.js";
+} from "@ovrsr/fpp-trust-core";
 
 export interface ToolDependencies {
   identity: AgentIdentity;

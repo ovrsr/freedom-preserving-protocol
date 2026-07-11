@@ -41,6 +41,9 @@ jobs:
         working-directory: plugin-trust
         run: npm ci --ignore-scripts
 
+      - name: Build library cores
+        run: npm run build:core
+
       - name: Full verification gate
         run: npm run verify:all
         env:

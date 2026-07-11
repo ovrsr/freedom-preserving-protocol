@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Verify that npm pack output includes compiled dist/ for protocol-core and
-# both plugin packages. Enforces exact @ovrsr/fpp-protocol-core pins and
-# optionally installs plugin tarballs in isolation with --ignore-scripts.
+# Verify that npm pack output includes compiled dist/ for protocol-core,
+# enforcement-core, trust-core, and both plugin packages. Enforces exact
+# @ovrsr/fpp-protocol-core pins and optionally installs plugin tarballs in
+# isolation with --ignore-scripts.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
@@ -39,28 +40,38 @@ require_exact_core_dependency() {
   echo "PASS: $label pins $CORE_NAME@$CORE_VERSION exactly"
 }
 
-echo "=== Protocol core (build before consumers) ==="
-cd "$ROOT/packages/protocol-core"
-if [ ! -f package.json ]; then
-  echo "FAIL: packages/protocol-core/package.json not found"
-  exit 1
-fi
-npm run build --if-present
-if [ ! -f dist/index.js ]; then
-  echo "FAIL: protocol-core missing dist/index.js after build"
-  errors=$((errors + 1))
-else
-  echo "PASS: protocol-core dist/index.js present"
-fi
-pack_list=$(npm pack --dry-run 2>&1)
-if echo "$pack_list" | grep -q "dist/index.js"; then
-  echo "PASS: protocol-core pack includes dist/index.js"
-else
-  echo "FAIL: protocol-core pack missing dist/index.js"
-  echo "$pack_list"
-  errors=$((errors + 1))
-fi
-echo ""
+verify_core_pack() {
+  local dir="$1" label="$2"
+  echo "=== $label (build before consumers) ==="
+  cd "$dir"
+  if [ ! -f package.json ]; then
+    echo "FAIL: $dir/package.json not found"
+    errors=$((errors + 1))
+    return
+  fi
+  npm run build --if-present
+  if [ ! -f dist/index.js ]; then
+    echo "FAIL: $label missing dist/index.js after build"
+    errors=$((errors + 1))
+  else
+    echo "PASS: $label dist/index.js present"
+  fi
+  pack_list=$(npm pack --dry-run 2>&1)
+  if echo "$pack_list" | grep -q "dist/index.js"; then
+    echo "PASS: $label pack includes dist/index.js"
+  else
+    echo "FAIL: $label pack missing dist/index.js"
+    echo "$pack_list"
+    errors=$((errors + 1))
+  fi
+  echo ""
+}
+
+verify_core_pack "$ROOT/packages/protocol-core" "protocol-core"
+verify_core_pack "$ROOT/packages/enforcement-core" "enforcement-core"
+require_exact_core_dependency "$ROOT/packages/enforcement-core/package.json" "enforcement-core"
+verify_core_pack "$ROOT/packages/trust-core" "trust-core"
+require_exact_core_dependency "$ROOT/packages/trust-core/package.json" "trust-core"
 
 for pkg in plugin plugin-trust; do
   echo "--- Verifying $pkg pack contents ---"
@@ -139,7 +150,7 @@ if [ $errors -gt 0 ]; then
   exit 1
 fi
 
-echo "All packages verified (core before consumers)."
+echo "All packages verified (cores before consumers)."
 
 # Optional reproducibility + SBOM pass (no registry side effects)
 if [[ "${SKIP_REPRO:-}" != "1" ]]; then

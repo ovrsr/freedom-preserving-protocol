@@ -32,6 +32,7 @@ import { sha256 } from "@noble/hashes/sha256";
 import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
 import { verify as verifyAuditChain } from "./audit-verify.ts";
 import { currentAdoptionState } from "./adoption-state.ts";
+import { workspaceFile } from "../packages/protocol-core/src/workspace-profile.ts";
 
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 
@@ -61,6 +62,16 @@ export type Check = {
   detail: string;
 };
 
+export type RuntimeProbeStatus = "active" | "inactive" | "unknown";
+export type RuntimeProbe = {
+  harnessId: string;
+  probe: () => RuntimeProbeStatus | Promise<RuntimeProbeStatus>;
+};
+export type RuntimeProbeResult = {
+  harnessId: string;
+  status: RuntimeProbeStatus;
+};
+
 export type Report = {
   ok: boolean;
   checks: Check[];
@@ -69,6 +80,8 @@ export type Report = {
     dispatcherLayerActive: boolean;
     trustLayerActive: boolean;
   };
+  /** Graded harness probe results (active / inactive / unknown). */
+  probes: RuntimeProbeResult[];
 };
 
 export type PluginListResult = {
@@ -86,6 +99,13 @@ export type VerifyInstallOptions = {
   log?: string;
   expectedConstitutionHash?: string;
   pluginLister?: PluginLister;
+  /** Workspace profile: openclaw (default) or generic. */
+  profile?: string;
+  /**
+   * Optional harness probes. When omitted, the default OpenClaw probe runs.
+   * Inject custom probes for non-OpenClaw harnesses or tests.
+   */
+  probes?: RuntimeProbe[];
   /** Optional enforcement plugin config to diagnose (never rewritten). */
   enforcementConfig?: Record<string, unknown>;
   /** Optional trust plugin config to diagnose (never rewritten). */
@@ -97,16 +117,19 @@ function parseArgs(argv: string[]): {
   memory?: string;
   log: string;
   json: boolean;
+  profile: string;
 } {
   let soul: string | undefined;
   let memory: string | undefined;
-  let log = ".openclaw/workspace/constitution-audit.jsonl";
+  let log: string | undefined;
   let json = false;
+  let profile = "openclaw";
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--soul") soul = argv[++i];
     else if (a === "--memory") memory = argv[++i];
     else if (a === "--log") log = argv[++i];
+    else if (a === "--profile") profile = argv[++i] ?? "openclaw";
     else if (a === "--json") json = true;
     else if (a === "--help" || a === "-h") {
       console.log(`Usage: npm run verify-install -- [options]
@@ -114,13 +137,18 @@ function parseArgs(argv: string[]): {
 Options:
   --soul    <path>   Check that SOUL.md contains the adoption block
   --memory  <path>   Check that MEMORY.md contains the adoption entry
-  --log     <path>   Audit log path (default .openclaw/workspace/constitution-audit.jsonl)
+  --log     <path>   Audit log path (default: <workspace>/constitution-audit.jsonl)
+  --profile <id>     Workspace profile: openclaw (default) or generic
   --json             Emit a machine-readable JSON report on stdout
-  -h, --help         This help`);
+  -h, --help         This help
+
+Environment:
+  FPP_WORKSPACE      Override workspace root for any profile`);
       process.exit(0);
     }
   }
-  return { soul, memory, log, json };
+  // Deferred import keeps script load light when only --help is used.
+  return { soul, memory, log: log ?? "", json, profile };
 }
 
 function checkConstitution(rootDir: string, expectedHash: string): Check {
@@ -237,15 +265,83 @@ function defaultPluginLister(): PluginListResult {
   return { available: true, stdout: list.stdout };
 }
 
+/**
+ * OpenClaw harness probe: active when the enforcement plugin appears in
+ * `openclaw plugins list`; inactive when the CLI is present but the plugin
+ * is missing; unknown when the CLI cannot be queried.
+ */
+export function createOpenClawRuntimeProbe(
+  lister: PluginLister = defaultPluginLister,
+): RuntimeProbe {
+  return {
+    harnessId: "openclaw",
+    probe: (): RuntimeProbeStatus => {
+      const result = lister();
+      if (!result.available) return "unknown";
+      const stdout = result.stdout ?? "";
+      const enforcementPresent = ENFORCEMENT_PLUGIN_ID_CANDIDATES.some((c) =>
+        stdout.includes(c),
+      );
+      return enforcementPresent ? "active" : "inactive";
+    },
+  };
+}
+
+function probeStatusToCheck(
+  harnessId: string,
+  status: RuntimeProbeStatus,
+  profile: string,
+): Check {
+  const id = `runtime.probe.${harnessId}`;
+  const label = `Runtime probe (${harnessId})`;
+  if (status === "active") {
+    return {
+      id,
+      label,
+      status: "pass",
+      detail: `${harnessId} harness probe: active`,
+    };
+  }
+  if (status === "inactive") {
+    return {
+      id,
+      label,
+      status: "warn",
+      detail: `${harnessId} harness probe: inactive (harness present; dispatcher not installed)`,
+    };
+  }
+  // unknown
+  const genericHint =
+    profile === "generic"
+      ? "Dispatcher layer not verified for this profile — not an OpenClaw-only failure."
+      : "Harness status unknown (CLI or probe surface unavailable).";
+  return {
+    id,
+    label,
+    status: "warn",
+    detail: `${harnessId} harness probe: unknown. ${genericHint}`,
+  };
+}
+
 function checkPluginInstalled(
   label: string,
   id: string,
   candidates: string[],
   installHint: string,
   lister: PluginLister,
+  profile: string,
 ): Check {
   const result = lister();
   if (!result.available) {
+    if (profile === "generic") {
+      return {
+        id,
+        label,
+        status: "warn",
+        detail:
+          "OpenClaw CLI not present; plugin install status unknown for generic profile (not an OpenClaw-only failure).",
+      };
+    }
     const detail = result.stderr
       ? `openclaw plugins list failed: ${result.stderr}`
       : "openclaw CLI not on PATH; cannot check plugin installation.";
@@ -360,9 +456,13 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
   const expectedHash =
     options.expectedConstitutionHash ?? DEFAULT_EXPECTED_CONSTITUTION_HASH;
   const lister = options.pluginLister ?? defaultPluginLister;
+  const profile = options.profile ?? "openclaw";
   const logPath = options.log ?? ".openclaw/workspace/constitution-audit.jsonl";
+  const probesToRun: RuntimeProbe[] =
+    options.probes ?? [createOpenClawRuntimeProbe(lister)];
 
   const checks: Check[] = [];
+  const probeResults: RuntimeProbeResult[] = [];
 
   checks.push(checkConstitution(rootDir, expectedHash));
   checks.push(checkSignature(rootDir));
@@ -398,24 +498,41 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
   }
 
   checks.push(checkAuditChain(resolve(logPath)));
-  checks.push(
-    checkPluginInstalled(
-      "Dispatcher-layer enforcement plugin",
-      "plugin.enforcement.installed",
-      ENFORCEMENT_PLUGIN_ID_CANDIDATES,
-      "openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin",
-      lister,
-    ),
+
+  // Graded harness probes (OpenClaw by default; inject others for non-OpenClaw).
+  for (const runtimeProbe of probesToRun) {
+    const status = runtimeProbe.probe() as RuntimeProbeStatus;
+    probeResults.push({ harnessId: runtimeProbe.harnessId, status });
+    checks.push(probeStatusToCheck(runtimeProbe.harnessId, status, profile));
+  }
+
+  // Detailed OpenClaw plugin inventory when the OpenClaw probe is in the set.
+  // Custom probe lists that omit openclaw skip this (no OpenClaw-only failure implied).
+  const includesOpenClawProbe = probesToRun.some(
+    (p) => p.harnessId === "openclaw",
   );
-  checks.push(
-    checkPluginInstalled(
-      "Dispatcher-layer trust plugin",
-      "plugin.trust.installed",
-      TRUST_PLUGIN_ID_CANDIDATES,
-      "openclaw plugins install clawhub:ovrsr/openclaw-fpp-trust",
-      lister,
-    ),
-  );
+  if (includesOpenClawProbe) {
+    checks.push(
+      checkPluginInstalled(
+        "Dispatcher-layer enforcement plugin",
+        "plugin.enforcement.installed",
+        ENFORCEMENT_PLUGIN_ID_CANDIDATES,
+        "openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin",
+        lister,
+        profile,
+      ),
+    );
+    checks.push(
+      checkPluginInstalled(
+        "Dispatcher-layer trust plugin",
+        "plugin.trust.installed",
+        TRUST_PLUGIN_ID_CANDIDATES,
+        "openclaw plugins install clawhub:ovrsr/openclaw-fpp-trust",
+        lister,
+        profile,
+      ),
+    );
+  }
 
   checks.push(...checkEnforcementConfig(options.enforcementConfig));
   checks.push(...checkTrustConfig(options.trustConfig));
@@ -467,9 +584,18 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
   const promptLayerActive =
     checks.find((c) => c.id === "soul.marker")?.status === "pass" ||
     checks.find((c) => c.id === "memory.marker")?.status === "pass";
+
+  const openclawProbeActive = probeResults.some(
+    (p) => p.harnessId === "openclaw" && p.status === "active",
+  );
+  const anyProbeActive = probeResults.some((p) => p.status === "active");
   const dispatcherLayerActive =
     checks.find((c) => c.id === "plugin.enforcement.installed")?.status ===
-    "pass";
+      "pass" ||
+    openclawProbeActive ||
+    (options.probes !== undefined &&
+      anyProbeActive &&
+      !probeResults.some((p) => p.harnessId === "openclaw"));
   const trustLayerActive =
     checks.find((c) => c.id === "plugin.trust.installed")?.status === "pass";
 
@@ -477,15 +603,20 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
     ok: requiredOk,
     checks,
     summary: { promptLayerActive, dispatcherLayerActive, trustLayerActive },
+    probes: probeResults,
   };
 }
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
+  const log =
+    args.log ||
+    workspaceFile("constitution-audit.jsonl", { profile: args.profile });
   const report = runVerifyInstall({
     soul: args.soul,
     memory: args.memory,
-    log: args.log,
+    log,
+    profile: args.profile,
   });
   const promptLayerActive = report.summary.promptLayerActive;
   const dispatcherLayerActive = report.summary.dispatcherLayerActive;

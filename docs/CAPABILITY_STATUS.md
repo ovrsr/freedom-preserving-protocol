@@ -6,9 +6,10 @@ in this repository defers to this file when describing implementation status.
 If a claim elsewhere conflicts with this matrix, this matrix wins and the other
 document has a bug.
 
-Last reconciled against: skill `v1.3.2`, `@ovrsr/openclaw-fpp-plugin` `v1.1.4`,
-`@ovrsr/openclaw-fpp-trust` `v1.2.2` (versions sourced from `package.json`,
-`plugin/package.json`, `plugin-trust/package.json`).
+Last reconciled against: skill `v1.3.2`, `@ovrsr/fpp-protocol-core` `v1.0.0`,
+`@ovrsr/fpp-enforcement-core` `v1.0.0`, `@ovrsr/fpp-trust-core` `v1.0.0`,
+`@ovrsr/openclaw-fpp-plugin` `v1.1.4`, `@ovrsr/openclaw-fpp-trust` `v1.2.2`
+(versions sourced from root / `packages/*/package.json` / plugin package.json files).
 
 ## Status vocabulary
 
@@ -51,12 +52,17 @@ specified in `docs/governance/EVIDENCE_SEMANTICS.md`. That document is
 | Capability | Status | Evidence / gap |
 |------------|--------|----------------|
 | Five laws as signed normative content | `SHIPPED` | `constitution.json`, `signature.ed25519.txt`; verify with `npm run verify` (exit 0, `Signature valid: YES`). |
+| Protocol contract library (`@ovrsr/fpp-protocol-core`) | `SHIPPED` | `packages/protocol-core/` — schemas, canonicalize, Merkle, claims, workspace profiles (`FPP_WORKSPACE`). Exact-pin dependency for plugins and cores. |
+| Enforcement library core (`@ovrsr/fpp-enforcement-core`) | `SHIPPED` | `packages/enforcement-core/` — `classifyToolCall`, `resolveDisposition`, mandate/receipt/audit helpers, `FppRuntimeAdapter`. No `openclaw` dependency. OpenClaw plugin is a thin adapter. |
+| Trust library core (`@ovrsr/fpp-trust-core`) | `SHIPPED` | `packages/trust-core/` — `createTrustStack`, trust graph, handshake, quorum, disputes, capsules. No `openclaw` dependency. OpenClaw trust plugin is a thin adapter. |
+| Harness-agnostic workspace profiles | `SHIPPED` | `packages/protocol-core/src/workspace-profile.ts`; `verify-install --profile openclaw|generic`. |
+| Pluggable verify-install runtime probes | `PARTIAL` | `scripts/verify-install.ts` `RuntimeProbe` (`active`/`inactive`/`unknown`); default OpenClaw probe. Gap: Cursor/Claude/Codex probes land with Plan 11 adapters. |
 | Prompt-layer skill (five-question test, adoption ritual) | `SHIPPED` | `SKILL.md`, `hooks/pre-action-check/SKILL.md`, `hooks/constitution-audit/SKILL.md`. Reasoning aid only; cannot mechanically veto a tool call. |
 | Safe adoption / revocation tooling | `SHIPPED` | `scripts/safe-append.ts`, `scripts/revoke.ts`, `scripts/verify-install.ts`; `npm run adopt`, `npm run revoke`, `npm run verify-install`. |
 | Constitution signature verification | `SHIPPED` | `scripts/verify-constitution.ts`; `npm run verify`. |
 | Local audit chain + Merkle inclusion proofs | `SHIPPED` | `scripts/audit-append.ts`, `scripts/audit-verify.ts`, `scripts/audit-proof.ts`, `scripts/merkle.ts`. Local audit integrity only — no completeness guarantee, and heartbeat entries depend on the agent's continued cooperation. |
 | Dispatcher enforcement (`before_tool_call` block / requireApproval) | `PARTIAL` | `plugin/src/index.ts`, `plugin/src/risk-classifier.ts`, `plugin/src/disposition-engine.ts`. Works for the classified taxonomy. Gap: the classifier is heuristic; unmatched parameter shapes can still evade patterns. **Operator-present mode:** unknown tools require approval (`unknown.unclassified` in `approvalOn`). **Unattended mode:** unknown/ungated tools **abstain** (block with `abstain:` reason) instead of hanging on `requireApproval`. |
-| Unattended disposition + standing mandates | `PARTIAL` | `plugin/src/disposition-engine.ts`, `mandate-store.ts`, `packages/protocol-core` `StandingMandateV1`. Flow: hard-floor → mandate/standing-allow → staged → quorum-mandate → emergency → abstain. Consumes quorum-issued mandates from the shared store. Gap: package extraction / adapters still Plan 10–11; seed constitution hash unchanged (`71bf60ad…`). |
+| Unattended disposition + standing mandates | `PARTIAL` | `packages/enforcement-core` (+ OpenClaw adapter in `plugin/`). Flow: hard-floor → mandate/standing-allow → staged → quorum-mandate → emergency → abstain. Consumes quorum-issued mandates from the shared store. Gap: non-OpenClaw harness adapters still Plan 11; seed constitution hash unchanged (`71bf60ad…`). |
 | Peer / steward quorum mandate issuance | `SHIPPED` | `plugin-trust/src/quorum-session.ts`, `quorum-policy.ts`, tools `fpp_mandate_propose` / `fpp_mandate_second` / `fpp_mandate_finalize`, CLI `quorum-status` / `quorum-revoke-mandate`. Quorum **issues** `StandingMandateV1` (authorization `quorum-mandate`) — it does **not** call allow directly and is **not** constitutional ratification. Forbidden consent scopes rejected at finalize. Sybil floor is local eligible-ID + key-lifecycle policy only (no full ratification tallies). |
 | Enforcement audit log (hash-chained, per-decision) | `PARTIAL` | `plugin/src/audit-log.ts`. Malformed tails throw `AuditCorruptionError` (no silent chain reset). Default `auditFailureBehavior=fail-closed` blocks high-risk calls when the log cannot be written (proven by security regressions). Gap: log integrity still depends on filesystem permissions; post-approval outcome gaps emit `AUDIT-GAP` diagnostics rather than rolling back the approved action. |
 | Dispatcher self-test | `PARTIAL` | `scripts/self-test.ts`; `npm run self-test`. Runs the classifier against fixtures **in-process**. Gap: it does not execute the installed plugin, does not test prompt-layer behavior, and does not write audit entries. |

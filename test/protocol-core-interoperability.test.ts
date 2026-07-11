@@ -1,12 +1,18 @@
 /**
- * Cross-package interoperability vectors for @ovrsr/fpp-protocol-core.
+ * Cross-package interoperability vectors for @ovrsr/fpp-protocol-core
+ * and the harness-agnostic enforcement/trust cores.
  *
  * Produces digests/proofs/claims via core APIs and verifies them the same way
- * plugins and root scripts consume them.
+ * plugins and root scripts consume them. Also proves enforcement-core and
+ * trust-core compose without an OpenClaw peer.
  */
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   canonicalizeV1,
   computeMerkleRoot,
@@ -17,6 +23,18 @@ import {
   verifyMerkleProof,
   DIGEST_DOMAINS,
 } from "@ovrsr/fpp-protocol-core";
+import {
+  PACKAGE_NAME as ENFORCEMENT_PACKAGE_NAME,
+  classifyToolCall,
+  resolveDisposition,
+  DEFAULT_CONFIG,
+} from "@ovrsr/fpp-enforcement-core";
+import {
+  PACKAGE_NAME as TRUST_PACKAGE_NAME,
+  createTrustStack,
+} from "@ovrsr/fpp-trust-core";
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("protocol-core interoperability", () => {
   it("v1 audit entry digests match across hashEntryV1 and digest({version:1})", () => {
@@ -70,5 +88,61 @@ describe("protocol-core interoperability", () => {
     const v2 = digest({ version: 2, domain: DIGEST_DOMAINS.claim, value });
     assert.notEqual(v1, v2);
     assert.equal(canonicalizeV1(value), '{"hello":"world"}');
+  });
+});
+
+describe("enforcement-core + trust-core interoperability", () => {
+  it("cores declare package names and pin protocol-core without openclaw", () => {
+    assert.equal(ENFORCEMENT_PACKAGE_NAME, "@ovrsr/fpp-enforcement-core");
+    assert.equal(TRUST_PACKAGE_NAME, "@ovrsr/fpp-trust-core");
+    for (const rel of [
+      "packages/enforcement-core/package.json",
+      "packages/trust-core/package.json",
+    ]) {
+      const pkg = JSON.parse(
+        readFileSync(join(REPO_ROOT, rel), "utf8"),
+      ) as {
+        dependencies?: Record<string, string>;
+        peerDependencies?: Record<string, string>;
+      };
+      assert.equal(pkg.dependencies?.["@ovrsr/fpp-protocol-core"], "1.0.0");
+      assert.equal(pkg.dependencies?.openclaw, undefined);
+      assert.equal(pkg.peerDependencies?.openclaw, undefined);
+    }
+  });
+
+  it("classify + resolveDisposition compose with DEFAULT_CONFIG", () => {
+    const classification = classifyToolCall("filesystem_delete", {
+      path: "/home/user/.ssh/id_ed25519",
+    });
+    assert.equal(classification.classification, "fs.delete.protected");
+    const disposition = resolveDisposition({
+      classification,
+      config: DEFAULT_CONFIG,
+    });
+    assert.equal(disposition.disposition, "deny");
+    assert.equal(disposition.authorization, "policy-block");
+  });
+
+  it("createTrustStack boots from trust-core using temp workspace paths", () => {
+    const dir = mkdtempSync(join(tmpdir(), "fpp-interop-trust-"));
+    try {
+      const stack = createTrustStack({
+        identityKeyPath: join(dir, "identity.key"),
+        trustGraphPath: join(dir, "trust-graph.json"),
+        auditLogPath: join(dir, "audit.jsonl"),
+        fallbackAuditLogPath: null,
+        receiptLogPath: join(dir, "receipts.jsonl"),
+        strictModeStatePath: join(dir, "strict.json"),
+        replayCachePath: join(dir, "replay.json"),
+        mandateStorePath: join(dir, "mandates.json"),
+        quorumStatePath: join(dir, "quorum.json"),
+      });
+      assert.ok(stack.identity.agentId);
+      assert.ok(stack.trustGraph);
+      assert.ok(stack.handshake);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

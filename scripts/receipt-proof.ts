@@ -19,7 +19,7 @@ import {
   createReceiptProof,
   RECEIPT_LOG_KIND,
   type ReceiptMerkleProof,
-} from "../plugin/src/receipt-log.ts";
+} from "../packages/enforcement-core/src/receipt-log.ts";
 
 export { createReceiptProof, collectReceiptLeaves, RECEIPT_LOG_KIND };
 

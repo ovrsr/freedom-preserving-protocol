@@ -12,7 +12,16 @@ npm install @ovrsr/fpp-protocol-core@1.0.0
 
 Published plugins pin an **exact** core version to prevent silent protocol drift.
 
-## Development
+## Workspace profiles
+
+Path defaults are resolved via `resolveWorkspaceRoot` / `workspaceFile`:
+
+| Profile | Root |
+|---------|------|
+| `openclaw` (default) | `.openclaw/workspace` |
+| `generic` | `$FPP_WORKSPACE` or `~/.fpp` |
+
+`FPP_WORKSPACE` overrides the root for any profile when set.
 
 This package is developed via npm workspaces from the repository root. Local consumers (`plugin/`, `plugin-trust/`) resolve the workspace package while published manifests keep the exact version pin.
 

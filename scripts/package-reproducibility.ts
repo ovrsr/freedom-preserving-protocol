@@ -239,6 +239,8 @@ async function main(): Promise<void> {
   const targets = [
     { dir: root, label: "skill" },
     { dir: join(root, "packages", "protocol-core"), label: "protocol-core" },
+    { dir: join(root, "packages", "enforcement-core"), label: "enforcement-core" },
+    { dir: join(root, "packages", "trust-core"), label: "trust-core" },
     { dir: join(root, "plugin"), label: "plugin" },
     { dir: join(root, "plugin-trust"), label: "plugin-trust" },
   ];

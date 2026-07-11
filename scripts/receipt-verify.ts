@@ -14,7 +14,7 @@ import {
   verifyReceiptLog,
   RECEIPT_LOG_KIND,
   type ReceiptLogVerifyReport,
-} from "../plugin/src/receipt-log.ts";
+} from "../packages/enforcement-core/src/receipt-log.ts";
 
 export { verifyReceiptLog, RECEIPT_LOG_KIND, type ReceiptLogVerifyReport };
 

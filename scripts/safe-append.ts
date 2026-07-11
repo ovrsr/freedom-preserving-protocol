@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
 import { appendAdoptionState, currentAdoptionState } from "./adoption-state.ts";
+import { workspaceFile } from "../packages/protocol-core/src/workspace-profile.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(__dirname, "..");
@@ -42,14 +43,16 @@ type Args = {
   memory?: string;
   dryRun: boolean;
   yes: boolean;
+  profile: string;
 };
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { dryRun: false, yes: false };
+  const args: Args = { dryRun: false, yes: false, profile: "openclaw" };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--soul") args.soul = argv[++i];
     else if (a === "--memory") args.memory = argv[++i];
+    else if (a === "--profile") args.profile = argv[++i] ?? "openclaw";
     else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--yes" || a === "-y") args.yes = true;
     else if (a === "--help" || a === "-h") {
@@ -66,9 +69,13 @@ function printHelp() {
 Options:
   --soul    <path>   Path to your SOUL.md (will append adoption block)
   --memory  <path>   Path to your MEMORY.md (will append adoption entry)
+  --profile <id>     Workspace profile: openclaw (default) or generic
   --dry-run          Show what would change, write nothing
   -y, --yes          Skip confirmation prompt
   -h, --help         This help
+
+Environment:
+  FPP_WORKSPACE      Override workspace root for any profile
 
 Both --soul and --memory are independent; you may pass either, both, or
 neither. If neither is passed, this script exits 0 with no action.
@@ -171,6 +178,7 @@ export type AdoptOptions = {
   memory?: string;
   dryRun?: boolean;
   rootDir?: string;
+  profile?: string;
 };
 
 export type AdoptResult = {
@@ -203,7 +211,12 @@ export function adoptTargets(opts: AdoptOptions): AdoptResult {
   // Machine-readable adoption ledger (reviewed → accepted). Installation ≠ acceptance.
   if (!dryRun && (opts.soul || opts.memory)) {
     try {
-      const logPath = resolve(rootDir, ".openclaw/workspace/fpp-adoption-state.jsonl");
+      const logPath = resolve(
+        rootDir,
+        workspaceFile("fpp-adoption-state.jsonl", {
+          profile: opts.profile ?? "openclaw",
+        }),
+      );
       const current = currentAdoptionState(logPath);
       if (current === "none") {
         appendAdoptionState(logPath, {

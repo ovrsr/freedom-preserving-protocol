@@ -24,14 +24,18 @@ Publish (`scripts/clawhub-publish.sh`) should refuse an invalid or missing signe
 ## Release order
 
 1. **Build / test / pack `@ovrsr/fpp-protocol-core`** — consumers must not pack against a missing `dist/`.
-2. **Confirm exact core pins** in `plugin/package.json` and `plugin-trust/package.json` (no `^` / `~` ranges; version must equal the workspace core version).
-3. **Pack / publish skill**, then **enforcement plugin**, then **trust plugin**.
+2. **Build / test / pack `@ovrsr/fpp-enforcement-core`** — exact pin on protocol-core; no OpenClaw peer.
+3. **Build / test / pack `@ovrsr/fpp-trust-core`** — exact pin on protocol-core; no OpenClaw peer.
+4. **Confirm exact core pins** in `plugin/package.json` and `plugin-trust/package.json` (no `^` / `~` ranges; version must equal the workspace core versions they consume).
+5. **Pack / publish skill**, then **enforcement plugin**, then **trust plugin**.
+
+Order summary: **protocol-core → enforcement-core → trust-core → plugins**.
 
 `scripts/clawhub-publish.sh publish all` prints and enforces this core-before-consumers ordering.
 
 ### Rollback
 
-- Roll back plugins only after the previous **exact** `@ovrsr/fpp-protocol-core` version is available again to installers.
+- Roll back plugins only after the previous **exact** `@ovrsr/fpp-protocol-core` (and, when pinned, enforcement-core / trust-core) versions are available again to installers.
 - Do not publish a plugin that pins a core version that was never released (or was yanked) without first restoring that core artifact.
 - Workspace development uses npm workspaces; published tarballs resolve core from the registry (or a local pack) at install time.
 

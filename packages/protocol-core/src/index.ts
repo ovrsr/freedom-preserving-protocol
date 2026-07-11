@@ -151,3 +151,11 @@ export {
   type QuorumProposalV1,
   type QuorumVote,
 } from "./quorum.js";
+
+export {
+  DEFAULT_WORKSPACE_PROFILE,
+  resolveWorkspaceRoot,
+  workspaceFile,
+  type ResolveWorkspaceOptions,
+  type WorkspaceProfileId,
+} from "./workspace-profile.js";

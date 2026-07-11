@@ -19,7 +19,9 @@ import { tmpdir } from "node:os";
 
 import {
   runVerifyInstall,
+  createOpenClawRuntimeProbe,
   type PluginListResult,
+  type RuntimeProbe,
 } from "./verify-install.ts";
 import { appendAuditEntry } from "./audit-append.ts";
 
@@ -210,5 +212,65 @@ describe("verify-install runVerifyInstall", () => {
     const legacy = report.checks.find((c) => c.id === "config.trust.legacy");
     assert.equal(legacy?.status, "fail");
     assert.match(legacy?.detail ?? "", /acknowledgeDangerousOverrides|legacy-unsafe/);
+  });
+
+  it("accepts injected RuntimeProbe results and surfaces them in the report", () => {
+    const fakeProbe: RuntimeProbe = {
+      harnessId: "fake-harness",
+      probe: () => "active",
+    };
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      log: join(workdir, "no-log.jsonl"),
+      pluginLister: unavailableLister,
+      probes: [fakeProbe],
+    });
+    const probeCheck = report.checks.find(
+      (c) => c.id === "runtime.probe.fake-harness",
+    );
+    assert.equal(probeCheck?.status, "pass");
+    assert.match(probeCheck?.detail ?? "", /active/i);
+    assert.ok(report.probes?.some((p) => p.harnessId === "fake-harness"));
+    assert.equal(
+      report.probes?.find((p) => p.harnessId === "fake-harness")?.status,
+      "active",
+    );
+  });
+
+  it("OpenClaw probe reports active when CLI lists enforcement plugin", () => {
+    const probe = createOpenClawRuntimeProbe(bothInstalledLister);
+    assert.equal(probe.harnessId, "openclaw");
+    assert.equal(probe.probe(), "active");
+  });
+
+  it("OpenClaw probe reports unknown when CLI is unavailable", () => {
+    const probe = createOpenClawRuntimeProbe(unavailableLister);
+    assert.equal(probe.probe(), "unknown");
+  });
+
+  it("generic profile without OpenClaw CLI reports probes honestly (not OpenClaw-only failure)", () => {
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      log: join(workdir, "no-log.jsonl"),
+      profile: "generic",
+      pluginLister: unavailableLister,
+    });
+    const openclawProbe = report.checks.find(
+      (c) => c.id === "runtime.probe.openclaw",
+    );
+    assert.ok(openclawProbe, "expected openclaw runtime probe check");
+    assert.equal(openclawProbe.status, "warn");
+    assert.match(openclawProbe.detail, /unknown|inactive/i);
+    assert.doesNotMatch(
+      openclawProbe.detail,
+      /cannot check plugin installation/i,
+    );
+    assert.equal(report.summary.dispatcherLayerActive, false);
+    assert.equal(report.summary.trustLayerActive, false);
+    assert.ok(report.probes?.some((p) => p.harnessId === "openclaw"));
+    assert.equal(
+      report.probes?.find((p) => p.harnessId === "openclaw")?.status,
+      "unknown",
+    );
   });
 });

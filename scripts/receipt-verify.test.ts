@@ -15,7 +15,7 @@ import {
   loadReceiptSigner,
   signReceiptPayload,
 } from "../plugin/src/receipt-signer.ts";
-import { appendSignedReceipt } from "../plugin/src/receipt-log.ts";
+import { appendSignedReceipt } from "../packages/enforcement-core/src/receipt-log.ts";
 
 describe("receipt-verify CLI helpers", () => {
   const workdir = mkdtempSync(join(tmpdir(), "fpp-rv-"));
