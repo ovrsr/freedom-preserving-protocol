@@ -161,6 +161,19 @@ Restart the gateway for changes to take effect. Be wary of tuning so aggressivel
 
 For **headless / unattended** agents, set `dispositionMode: "unattended"` (new-install default). Uncertainty then **abstains** instead of opening `requireApproval`. Cover routine classes with `standingAllowOn` or signed mandates at `mandateStorePath` — do not put hard-floor (`blockOn`) classes on the standing allowlist without `acknowledgeDangerousOverrides: true`.
 
+### Quorum mandates (peer / steward) — not ratification
+
+When no human is present, peers or stewards can open a quorum proposal via the trust plugin (`fpp_mandate_propose` → `fpp_mandate_second` → `fpp_mandate_finalize`). Finalize writes a signed `StandingMandateV1` into the **same** `mandateStorePath` the enforcement plugin reads. Quorum does **not** call `allow` directly and is **not** constitutional ratification.
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| Finalize fails with threshold error | Too few aye ballots vs `quorumPeerThreshold` / `quorumStewardThreshold` | Add eligible voters or lower local threshold (operator policy) |
+| Ballot rejected (revoked / ineligible) | Voter not in `quorumPeerEligibleIds` / `quorumStewardEligibleIds`, or key revoked | Update eligible IDs; rotate/recover keys via key-lifecycle |
+| Finalize rejects consent scopes | Proposal classifications include `affected-party-consent` / `data-subject-consent` | Quorum cannot mint nonparticipant consent — obtain a real consent artifact or use emergency/staged paths |
+| Unattended still abstains after finalize | Mandate store path mismatch, expired mandate, or budget exhausted | Align trust `mandateStorePath` with enforcement plugin; check `quorum-status` / remaining budget |
+
+Inspect with `openclaw fpp-trust quorum-status`. Revoke with `openclaw fpp-trust quorum-revoke-mandate <id> --reason "..."`. Keep `steward-override` separate — it records scoped trust assessments and does not mint peer-signed mandates.
+
 ## 11. "Plugin approval required (gateway unavailable)" on every gated tool call
 
 **Symptom:** Agent tool calls that require approval (e.g., `npm install`, `curl -d`, `openclaw plugins install`) fail with:

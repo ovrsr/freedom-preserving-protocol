@@ -14,6 +14,20 @@ import { ConstitutionalHandshake } from "./handshake.js";
 import { TrustGraphProtocol } from "./trust-graph.js";
 import { ReplayCache } from "./replay-cache.js";
 import { createFakeClock, createTempWorkspace } from "./test-helpers.js";
+import {
+  KeyLifecycleLedger,
+  applyRevocation,
+} from "./key-lifecycle.js";
+import {
+  evaluateBallotEligibility,
+  parseQuorumPolicyConfig,
+} from "./quorum-policy.js";
+import {
+  QuorumSessionManager,
+  computeIntendedMandateDigest,
+  signQuorumBallot,
+  signQuorumProposal,
+} from "./quorum-session.js";
 
 const HASH = "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993";
 const LOCAL = "fpp:ed25519:" + "b".repeat(64);
@@ -216,5 +230,95 @@ describe("security regressions (trust)", () => {
       {} as never,
     );
     assert.equal(result.success, false);
+  });
+
+  it("REGRESSION: revoked key ballot is rejected by quorum policy", () => {
+    const voter = loadOrCreateIdentity(join(ws.path, "rev-voter.key"), "/");
+    const ledger = new KeyLifecycleLedger();
+    applyRevocation(ledger, {
+      agentId: voter.agentId,
+      publicKeyHex: voter.publicKeyHex,
+      reason: "compromise",
+      compromisedAtMs: 1000,
+      signer: voter,
+    });
+    const policy = parseQuorumPolicyConfig({
+      peerThreshold: 2,
+      stewardThreshold: 2,
+      peerEligibleIds: [voter.agentId],
+      stewardEligibleIds: [],
+    });
+    const result = evaluateBallotEligibility(policy, ledger, {
+      voterId: voter.agentId,
+      publicKeyHex: voter.publicKeyHex,
+      quorumClass: "peer-quorum",
+      nowMs: 2000,
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.ok === false ? result.reason : "", /revoked|not valid/i);
+  });
+
+  it("REGRESSION: replayed quorum ballotId is rejected", () => {
+    const proposer = loadOrCreateIdentity(join(ws.path, "q-prop.key"), "/");
+    const voter = loadOrCreateIdentity(join(ws.path, "q-voter.key"), "/");
+    const clock = createFakeClock(Date.parse("2026-07-10T12:00:00.000Z"));
+    const policy = parseQuorumPolicyConfig({
+      peerThreshold: 2,
+      stewardThreshold: 2,
+      peerEligibleIds: [proposer.agentId, voter.agentId],
+      stewardEligibleIds: [],
+    });
+    const mgr = new QuorumSessionManager({
+      policy,
+      ledger: new KeyLifecycleLedger(),
+      mandateStorePath: join(ws.path, "sec-mandates.json"),
+      statePath: join(ws.path, "sec-quorum.json"),
+      nowMs: () => clock.now(),
+    });
+    const scope = { classifications: ["pkg.install"] };
+    const budgets = { maxActions: 1, remainingActions: 1 };
+    const digest = computeIntendedMandateDigest({
+      scope,
+      budgets,
+      mandateValidFrom: "2026-07-10T12:00:00.000Z",
+      mandateValidTo: "2026-07-11T12:00:00.000Z",
+    });
+    assert.equal(
+      mgr.propose(
+        signQuorumProposal(
+          {
+            schemaVersion: 1,
+            proposalId: "sec-prop",
+            quorumClass: "peer-quorum",
+            proposerId: proposer.agentId,
+            mandateDigest: digest,
+            scope,
+            budgets,
+            mandateValidFrom: "2026-07-10T12:00:00.000Z",
+            mandateValidTo: "2026-07-11T12:00:00.000Z",
+            proposedAt: clock.iso(),
+            expiresAt: new Date(clock.now() + 3_600_000).toISOString(),
+          },
+          proposer,
+        ),
+      ).ok,
+      true,
+    );
+    const ballot = signQuorumBallot(
+      {
+        schemaVersion: 1,
+        ballotId: "sec-ballot-1",
+        proposalId: "sec-prop",
+        voterId: voter.agentId,
+        vote: "aye",
+        mandateDigest: digest,
+        castAt: clock.iso(),
+      },
+      voter,
+    );
+    assert.equal(mgr.second(ballot).ok, true);
+    const replay = mgr.second(ballot);
+    assert.equal(replay.ok, false);
+    assert.match(replay.ok === false ? replay.error : "", /duplicate|replay/i);
   });
 });

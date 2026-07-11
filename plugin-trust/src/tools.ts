@@ -12,6 +12,7 @@ import {
   parseClaim,
   parseFreshnessEnvelope,
   type FreshnessEnvelope,
+  type QuorumBallotV1,
 } from "@ovrsr/fpp-protocol-core";
 import type { AgentIdentity } from "./identity.js";
 import { signClaim } from "./claims.js";
@@ -33,6 +34,12 @@ import {
   validateTrustStateCapsule,
   isLegacyClaimMasquerading,
 } from "./capsule.js";
+import type { QuorumSessionManager } from "./quorum-session.js";
+import {
+  computeIntendedMandateDigest,
+  signQuorumBallot,
+  signQuorumProposal,
+} from "./quorum-session.js";
 
 export interface ToolDependencies {
   identity: AgentIdentity;
@@ -753,6 +760,205 @@ export function executeCapsuleOffer(
       capsule,
       validation,
       evidenceLogKind: logKind,
+    },
+  );
+}
+
+// ── Quorum mandate tools (Plan 9) ──────────────────────────────────
+// Quorum issues StandingMandateV1 — it does not call allow directly,
+// and it is not constitutional ratification.
+
+export type QuorumToolDependencies = {
+  identity: AgentIdentity;
+  quorum: QuorumSessionManager;
+  /** Optional override clock for tests. */
+  nowMs?: (() => number) | undefined;
+  mandateStorePath?: string | undefined;
+};
+
+export const MandateProposeParams = Type.Object({
+  proposalId: Type.String({ minLength: 1 }),
+  quorumClass: Type.Union([
+    Type.Literal("peer-quorum"),
+    Type.Literal("steward-quorum"),
+  ]),
+  classifications: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
+  capabilities: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  maxActions: Type.Integer({ minimum: 1 }),
+  mandateValidFrom: Type.Optional(Type.String({ minLength: 1 })),
+  mandateValidTo: Type.String({ minLength: 1 }),
+  expiresAt: Type.Optional(Type.String({ minLength: 1 })),
+});
+
+export const MandateSecondParams = Type.Object({
+  /** Signed ballot JSON from a peer (preferred cross-agent path). */
+  ballotJson: Type.Optional(Type.String({ minLength: 1 })),
+  /** Local cast path when this agent seconds directly. */
+  proposalId: Type.Optional(Type.String({ minLength: 1 })),
+  vote: Type.Optional(
+    Type.Union([
+      Type.Literal("aye"),
+      Type.Literal("nay"),
+      Type.Literal("abstain"),
+    ]),
+  ),
+  ballotId: Type.Optional(Type.String({ minLength: 1 })),
+});
+
+export const MandateFinalizeParams = Type.Object({
+  proposalId: Type.String({ minLength: 1 }),
+});
+
+export function executeMandatePropose(
+  params: Static<typeof MandateProposeParams>,
+  deps: QuorumToolDependencies,
+) {
+  const now = deps.nowMs?.() ?? Date.now();
+  const scope = {
+    classifications: params.classifications,
+    ...(params.capabilities !== undefined
+      ? { capabilities: params.capabilities }
+      : {}),
+  };
+  const budgets = {
+    maxActions: params.maxActions,
+    remainingActions: params.maxActions,
+  };
+  const mandateValidFrom =
+    params.mandateValidFrom ?? new Date(now).toISOString();
+  const mandateDigest = computeIntendedMandateDigest({
+    scope,
+    budgets,
+    mandateValidFrom,
+    mandateValidTo: params.mandateValidTo,
+  });
+  const expiresAt =
+    params.expiresAt ?? new Date(now + 3_600_000).toISOString();
+  const proposal = signQuorumProposal(
+    {
+      schemaVersion: 1,
+      proposalId: params.proposalId,
+      quorumClass: params.quorumClass,
+      proposerId: deps.identity.agentId,
+      mandateDigest,
+      scope,
+      budgets,
+      mandateValidFrom,
+      mandateValidTo: params.mandateValidTo,
+      proposedAt: new Date(now).toISOString(),
+      expiresAt,
+    },
+    deps.identity,
+  );
+  const result = deps.quorum.propose(proposal);
+  if (!result.ok) {
+    return textResult(`Mandate propose failed: ${result.error}`, {
+      ok: false,
+      error: result.error,
+    });
+  }
+  return textResult(
+    `Quorum proposal ${params.proposalId} opened (${params.quorumClass}). ` +
+      `Peers may call fpp_mandate_second; finalize with fpp_mandate_finalize. ` +
+      `Not constitutional ratification.`,
+    {
+      ok: true,
+      proposalId: params.proposalId,
+      quorumClass: params.quorumClass,
+      mandateDigest,
+      proposalJson: JSON.stringify(proposal),
+    },
+  );
+}
+
+export function executeMandateSecond(
+  params: Static<typeof MandateSecondParams>,
+  deps: QuorumToolDependencies,
+) {
+  let ballot: QuorumBallotV1;
+  if (params.ballotJson) {
+    try {
+      ballot = JSON.parse(params.ballotJson) as QuorumBallotV1;
+    } catch {
+      return textResult("ballotJson is not valid JSON", {
+        ok: false,
+        error: "ballotJson is not valid JSON",
+      });
+    }
+  } else {
+    if (!params.proposalId || !params.vote || !params.ballotId) {
+      return textResult(
+        "second requires ballotJson or proposalId+vote+ballotId",
+        {
+          ok: false,
+          error: "second requires ballotJson or proposalId+vote+ballotId",
+        },
+      );
+    }
+    const session = deps.quorum.getSession(params.proposalId);
+    if (!session) {
+      return textResult(`unknown proposal ${params.proposalId}`, {
+        ok: false,
+        error: `unknown proposal ${params.proposalId}`,
+      });
+    }
+    const now = deps.nowMs?.() ?? Date.now();
+    ballot = signQuorumBallot(
+      {
+        schemaVersion: 1,
+        ballotId: params.ballotId,
+        proposalId: params.proposalId,
+        voterId: deps.identity.agentId,
+        vote: params.vote,
+        mandateDigest: session.proposal.mandateDigest,
+        castAt: new Date(now).toISOString(),
+      },
+      deps.identity,
+    );
+  }
+
+  const result = deps.quorum.second(ballot);
+  if (!result.ok) {
+    return textResult(`Mandate second failed: ${result.error}`, {
+      ok: false,
+      error: result.error,
+      ballotJson: JSON.stringify(ballot),
+    });
+  }
+  return textResult(
+    `Ballot recorded on ${ballot.proposalId} (ayeCount=${result.ayeCount}).`,
+    {
+      ok: true,
+      proposalId: ballot.proposalId,
+      ayeCount: result.ayeCount,
+      ballotJson: JSON.stringify(ballot),
+    },
+  );
+}
+
+export function executeMandateFinalize(
+  params: Static<typeof MandateFinalizeParams>,
+  deps: QuorumToolDependencies,
+) {
+  const result = deps.quorum.finalize(params.proposalId, deps.identity);
+  if (!result.ok) {
+    return textResult(`Mandate finalize failed: ${result.error}`, {
+      ok: false,
+      error: result.error,
+    });
+  }
+  return textResult(
+    `Quorum mandate issued: ${result.mandate.mandateId} ` +
+      `(${result.mandate.issuerClass}` +
+      `${result.idempotent ? ", idempotent" : ""}). ` +
+      `Disposition engine may consume as authorization=quorum-mandate.`,
+    {
+      ok: true,
+      idempotent: result.idempotent,
+      mandateId: result.mandate.mandateId,
+      issuerClass: result.mandate.issuerClass,
+      evidenceDigest: result.evidenceDigest,
+      mandate: result.mandate,
     },
   );
 }

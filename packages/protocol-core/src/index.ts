@@ -129,3 +129,25 @@ export {
   type EvidenceEnvelopeV1,
   type EvidenceParseResult,
 } from "./evidence.js";
+
+export {
+  QUORUM_CLASSES,
+  QUORUM_VOTES,
+  QuorumBallotV1Schema,
+  QuorumEvidencePackageV1Schema,
+  QuorumProposalV1Schema,
+  computeQuorumEvidenceDigest,
+  parseQuorumBallot,
+  parseQuorumEvidencePackage,
+  parseQuorumProposal,
+  validateBallotAgainstProposal,
+  type BallotMatchResult,
+  type QuorumBallotParseResult,
+  type QuorumBallotV1,
+  type QuorumClass,
+  type QuorumEvidencePackageV1,
+  type QuorumEvidenceParseResult,
+  type QuorumProposalParseResult,
+  type QuorumProposalV1,
+  type QuorumVote,
+} from "./quorum.js";

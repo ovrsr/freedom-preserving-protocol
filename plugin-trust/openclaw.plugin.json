@@ -13,7 +13,10 @@
       "fpp_sensitivity_share_check",
       "fpp_receipt_verify",
       "fpp_receipt_proof",
-      "fpp_capsule_offer"
+      "fpp_capsule_offer",
+      "fpp_mandate_propose",
+      "fpp_mandate_second",
+      "fpp_mandate_finalize"
     ]
   },
   "activation": {
@@ -158,6 +161,55 @@
         "type": "boolean",
         "default": false,
         "description": "Required to enable verificationPolicy=legacy-unsafe. Without this flag, legacy-unsafe fails closed to hardened-v2 and emits a migration diagnostic — the config file is never rewritten."
+      },
+      "quorumPeerThreshold": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 64,
+        "default": 2,
+        "description": "Minimum aye ballots required to finalize a peer-quorum mandate. Local policy only — not constitutional ratification."
+      },
+      "quorumStewardThreshold": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 64,
+        "default": 2,
+        "description": "Minimum aye ballots required to finalize a steward-quorum mandate. Steward-role keys only (Law 2)."
+      },
+      "quorumPeerEligibleIds": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "default": [],
+        "description": "Agent IDs eligible to cast peer-quorum ballots."
+      },
+      "quorumStewardEligibleIds": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "default": [],
+        "description": "Agent IDs with steward role eligible for steward-quorum (and peer-quorum) ballots."
+      },
+      "quorumMinStandingLevel": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4,
+        "description": "Optional minimum TrustLevel ordinal (0=UNKNOWN … 4=MAXIMUM) required to cast a ballot. Omit for no standing floor."
+      },
+      "quorumProposalTtlMs": {
+        "type": "integer",
+        "minimum": 60000,
+        "maximum": 86400000,
+        "default": 3600000,
+        "description": "How long an open quorum proposal remains open before expiry (ms)."
+      },
+      "mandateStorePath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-mandates.json",
+        "description": "Shared path for StandingMandateV1 records issued by quorum finalize (consumed by the enforcement plugin)."
+      },
+      "quorumStatePath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-quorum-sessions.json",
+        "description": "Path for open quorum proposal/ballot session state."
       }
     }
   }

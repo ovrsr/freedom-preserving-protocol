@@ -44,3 +44,6 @@ operator_scratchpad.md
 .github/*
 !.github/workflows/
 !.github/workflows/**
+
+# This file is used to probe the corpus for coverage metrics
+scripts/.corpus-probe.*

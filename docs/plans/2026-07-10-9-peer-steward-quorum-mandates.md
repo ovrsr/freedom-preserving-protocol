@@ -1,6 +1,6 @@
 # Peer and Steward Quorum Mandates
 
-**Status:** PENDING
+**Status:** COMPLETE
 **Created:** 2026-07-10
 **Series:** Plan 9 of 12 (autonomy + harness-agnostic program)
 **Depends on:** Plan 8 (mandate schema, disposition consumption seam)
@@ -31,16 +31,16 @@ When no human operator is present, high-impact actions that are not covered by a
 
 ## Progress Tracking
 
-- [ ] Task 1: Quorum proposal and ballot schemas in protocol-core
-- [ ] Task 2: Local quorum policy (threshold, roles, eligibility)
-- [ ] Task 3: Quorum session state machine → mandate issuance
-- [ ] Task 4: Trust-plugin tools for propose / second / finalize
-- [ ] Task 5: Steward-quorum path and CLI
-- [ ] Task 6: Wire issued mandates into mandate-store + disposition e2e
-- [ ] Task 7: Nonparticipant and consent guardrails
-- [ ] Task 8: Docs, CAPABILITY_STATUS, security regressions
+- [x] Task 1: Quorum proposal and ballot schemas in protocol-core
+- [x] Task 2: Local quorum policy (threshold, roles, eligibility)
+- [x] Task 3: Quorum session state machine → mandate issuance
+- [x] Task 4: Trust-plugin tools for propose / second / finalize
+- [x] Task 5: Steward-quorum path and CLI
+- [x] Task 6: Wire issued mandates into mandate-store + disposition e2e
+- [x] Task 7: Nonparticipant and consent guardrails
+- [x] Task 8: Docs, CAPABILITY_STATUS, security regressions
 
-**Total Tasks:** 8 | **Completed:** 0 | **Remaining:** 8
+**Total Tasks:** 8 | **Completed:** 8 | **Remaining:** 0
 
 ## Implementation Tasks
 

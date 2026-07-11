@@ -4,7 +4,7 @@
 **Plan:** `docs/plans/2026-07-10-5-governance-evolution-specification.md` Task 6; implementation pointer: `docs/plans/2026-07-10-8-unattended-disposition-and-mandates.md`
 **Related:** `docs/dev-review.md` §9; `THREAT_MODEL_AND_RIGHTS_FLOOR.md`; `SKILL.md`
 
-**Implementation pointer (honest labels):** Plan 8 folds `StandingMandateV1` and disposition/authorization literals into `@ovrsr/fpp-protocol-core` and wires an unattended disposition engine in the enforcement plugin. That maps **operator authorization**, **delegated/standing mandates**, and **emergency allow-minimal + mandatory review** into tool-boundary decisions. It does **not** implement affected-party/data-subject consent collection, guardian instruments, or peer/steward quorum issuance (Plan 9). Labels below remain `PROVISIONAL` for those gaps.
+**Implementation pointer (honest labels):** Plan 8 folds `StandingMandateV1` and disposition/authorization literals into `@ovrsr/fpp-protocol-core` and wires an unattended disposition engine in the enforcement plugin. That maps **operator authorization**, **delegated/standing mandates**, and **emergency allow-minimal + mandatory review** into tool-boundary decisions. Plan 9 adds peer/steward **quorum issuance** of signed mandates (`plugin-trust` propose/second/finalize), but **rejects** finalize when the proposal scope claims `affected-party-consent` / `data-subject-consent` (or aliases) — agent majority still cannot manufacture nonparticipant consent. Labels below remain `PROVISIONAL` for full consent-collection engines and guardian instruments.
 
 ---
 
@@ -76,3 +76,5 @@ Examples distinguishing morally different approvals: `examples/authorization-con
 ## 6. Nonparticipant rule
 
 Effects on nonparticipants require an applicable class from §2 (usually affected-party or data-subject consent, guardian, or bounded emergency). Internal agent votes are not an authorization class for outsiders.
+
+**Runtime note (Plan 9):** `QuorumSessionManager.finalize` refuses scopes that include forbidden consent tokens (`affected-party-consent`, `data-subject-consent`, and aliases). Quorum may still issue tool-scope mandates among participating agents; disposition continues to abstain/emergency-path true nonparticipant effects that lack a proper consent artifact.

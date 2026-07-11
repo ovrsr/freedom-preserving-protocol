@@ -17,7 +17,7 @@
 import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
-import { TrustGraphProtocol } from "./trust-graph.js";
+import { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
 import { ConstitutionalHandshake } from "./handshake.js";
 import { loadTrustGraph, saveTrustGraph, saveTrustGraphSync } from "./persistence.js";
 import { loadOrCreateIdentity } from "./identity.js";
@@ -47,12 +47,21 @@ import {
   executeReceiptVerify,
   executeReceiptProofExport,
   executeCapsuleOffer,
+  MandateProposeParams,
+  MandateSecondParams,
+  MandateFinalizeParams,
+  executeMandatePropose,
+  executeMandateSecond,
+  executeMandateFinalize,
 } from "./tools.js";
 import { ReplayCache } from "./replay-cache.js";
 import {
   resolveVerificationPolicy,
   type VerificationPolicy,
 } from "./verification-policy.js";
+import { KeyLifecycleLedger } from "./key-lifecycle.js";
+import { parseQuorumPolicyConfig } from "./quorum-policy.js";
+import { QuorumSessionManager } from "./quorum-session.js";
 
 export { resolveVerificationPolicy } from "./verification-policy.js";
 export type { VerificationPolicy } from "./verification-policy.js";
@@ -169,6 +178,14 @@ interface FppTrustConfig {
   strictModeTtlMs: number;
   strictModeAddApprovalOn: string[];
   acknowledgeDangerousOverrides: boolean;
+  quorumPeerThreshold: number;
+  quorumStewardThreshold: number;
+  quorumPeerEligibleIds: string[];
+  quorumStewardEligibleIds: string[];
+  quorumMinStandingLevel?: number | undefined;
+  quorumProposalTtlMs: number;
+  mandateStorePath: string;
+  quorumStatePath: string;
   /** Migration diagnostics only — never used to rewrite operator config files. */
   migrationDiagnostics: TrustConfigDiagnostic[];
 }
@@ -277,6 +294,35 @@ function mergeConfig(raw: Record<string, unknown> | undefined): FppTrustConfig {
       ? cfg.strictModeAddApprovalOn
       : [...CONSERVATIVE_STRICT_APPROVAL_ON],
     acknowledgeDangerousOverrides: ack,
+    quorumPeerThreshold:
+      typeof cfg.quorumPeerThreshold === "number"
+        ? cfg.quorumPeerThreshold
+        : 2,
+    quorumStewardThreshold:
+      typeof cfg.quorumStewardThreshold === "number"
+        ? cfg.quorumStewardThreshold
+        : 2,
+    quorumPeerEligibleIds: Array.isArray(cfg.quorumPeerEligibleIds)
+      ? (cfg.quorumPeerEligibleIds as string[])
+      : [],
+    quorumStewardEligibleIds: Array.isArray(cfg.quorumStewardEligibleIds)
+      ? (cfg.quorumStewardEligibleIds as string[])
+      : [],
+    ...(typeof cfg.quorumMinStandingLevel === "number"
+      ? { quorumMinStandingLevel: cfg.quorumMinStandingLevel }
+      : {}),
+    quorumProposalTtlMs:
+      typeof cfg.quorumProposalTtlMs === "number"
+        ? cfg.quorumProposalTtlMs
+        : 3_600_000,
+    mandateStorePath:
+      typeof cfg.mandateStorePath === "string"
+        ? cfg.mandateStorePath
+        : ".openclaw/workspace/fpp-mandates.json",
+    quorumStatePath:
+      typeof cfg.quorumStatePath === "string"
+        ? cfg.quorumStatePath
+        : ".openclaw/workspace/fpp-quorum-sessions.json",
     migrationDiagnostics,
   };
 }
@@ -295,6 +341,8 @@ export function createTrustStack(rawConfig?: Record<string, unknown>): {
   strictMode: StrictModeManager;
   groupContext: GroupContextManager;
   replayCache: ReplayCache;
+  keyLifecycle: KeyLifecycleLedger;
+  quorum: QuorumSessionManager;
   config: FppTrustConfig;
 } {
   const config = mergeConfig(rawConfig);
@@ -325,8 +373,38 @@ export function createTrustStack(rawConfig?: Record<string, unknown>): {
     defaultAddApprovalOn: config.strictModeAddApprovalOn,
   });
   const groupContext = new GroupContextManager(trustGraph, identity.agentId);
+  const keyLifecycle = new KeyLifecycleLedger();
+  const quorumPolicy = parseQuorumPolicyConfig({
+    peerThreshold: config.quorumPeerThreshold,
+    stewardThreshold: config.quorumStewardThreshold,
+    peerEligibleIds: config.quorumPeerEligibleIds,
+    stewardEligibleIds: config.quorumStewardEligibleIds,
+    ...(config.quorumMinStandingLevel !== undefined
+      ? {
+          minStandingLevel: config.quorumMinStandingLevel as TrustLevel,
+        }
+      : {}),
+    proposalTtlMs: config.quorumProposalTtlMs,
+  });
+  const quorum = new QuorumSessionManager({
+    policy: quorumPolicy,
+    ledger: keyLifecycle,
+    mandateStorePath: config.mandateStorePath,
+    statePath: config.quorumStatePath,
+  });
 
-  return { trustGraph, handshake, identity, merkleBridge, strictMode, groupContext, replayCache, config };
+  return {
+    trustGraph,
+    handshake,
+    identity,
+    merkleBridge,
+    strictMode,
+    groupContext,
+    replayCache,
+    keyLifecycle,
+    quorum,
+    config,
+  };
 }
 
 // ── Shared state (initialised once per process on first tool factory call) ──
@@ -407,6 +485,7 @@ function initStack(api: OpenClawPluginApi): {
         handshake,
         replayCache: stack.replayCache,
         requireFreshness: config.requireFreshness,
+        quorum: stack.quorum,
       });
     },
     { descriptors: FPP_TRUST_CLI_DESCRIPTORS },
@@ -487,6 +566,30 @@ function initStack(api: OpenClawPluginApi): {
       "Build a fresh signed TrustStateCapsuleV2 bound to a peer challenge (not a legacy claim).",
     risk: "low",
     tags: ["fpp", "trust", "capsule"],
+  });
+  api.registerToolMetadata({
+    toolName: "fpp_mandate_propose",
+    displayName: "FPP Mandate Propose",
+    description:
+      "Open a peer/steward quorum proposal that can issue a StandingMandateV1 (not ratification).",
+    risk: "medium",
+    tags: ["fpp", "trust", "quorum", "mandate"],
+  });
+  api.registerToolMetadata({
+    toolName: "fpp_mandate_second",
+    displayName: "FPP Mandate Second",
+    description:
+      "Cast or accept a signed quorum ballot on an open mandate proposal.",
+    risk: "medium",
+    tags: ["fpp", "trust", "quorum", "mandate"],
+  });
+  api.registerToolMetadata({
+    toolName: "fpp_mandate_finalize",
+    displayName: "FPP Mandate Finalize",
+    description:
+      "Finalize a quorum proposal into a signed StandingMandateV1 when threshold is met.",
+    risk: "medium",
+    tags: ["fpp", "trust", "quorum", "mandate"],
   });
 
   const deps: ToolDependencies = {
@@ -652,6 +755,54 @@ export default defineToolPlugin({
       execute(params, _config, ctx) {
         const { deps } = initStack(ctx.api);
         return executeCapsuleOffer(params, deps);
+      },
+    }),
+
+    tool({
+      name: "fpp_mandate_propose",
+      label: "FPP Mandate Propose",
+      description:
+        "Open a peer or steward quorum proposal for a scoped StandingMandateV1. " +
+        "Local policy only — not constitutional ratification. Peers second; then finalize.",
+      parameters: MandateProposeParams,
+      execute(params, _config, ctx) {
+        const { stack } = initStack(ctx.api);
+        return executeMandatePropose(params, {
+          identity: stack.identity,
+          quorum: stack.quorum,
+        });
+      },
+    }),
+
+    tool({
+      name: "fpp_mandate_second",
+      label: "FPP Mandate Second",
+      description:
+        "Cast an aye/nay/abstain ballot on an open quorum proposal, or accept peer ballotJson. " +
+        "Revoked keys and ineligible voters are rejected.",
+      parameters: MandateSecondParams,
+      execute(params, _config, ctx) {
+        const { stack } = initStack(ctx.api);
+        return executeMandateSecond(params, {
+          identity: stack.identity,
+          quorum: stack.quorum,
+        });
+      },
+    }),
+
+    tool({
+      name: "fpp_mandate_finalize",
+      label: "FPP Mandate Finalize",
+      description:
+        "Finalize a quorum proposal into a signed StandingMandateV1 when the local " +
+        "threshold is met. Writes the shared mandate store for disposition consumption.",
+      parameters: MandateFinalizeParams,
+      execute(params, _config, ctx) {
+        const { stack } = initStack(ctx.api);
+        return executeMandateFinalize(params, {
+          identity: stack.identity,
+          quorum: stack.quorum,
+        });
       },
     }),
   ],

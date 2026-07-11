@@ -12,16 +12,16 @@ Components:
 - **Due process** — append-only challenge/appeal/correction/remediation/rehabilitation records; evidence history is never deleted.
 - **Key lifecycle** — signed rotation, revocation, recovery; forked identities cannot impersonate ancestors.
 - **Constitutional Handshake Sequence** — multi-step agent-to-agent verification. Two agents exchange signed constitutional claims (including constitution hash, audit Merkle root, and Ed25519 signature), verify each other, and derive mutual trust levels.
-- **LLM-Facing Tools** — handshake, scoped trust status, cluster status, advisory sensitivity share check, receipt/capsule tools.
-- **CLI Surface** — `openclaw fpp-trust` for graph inspection, `steward-override` (scoped/expiring/audited), override review/revoke, attestation export, claim verification, and strict-mode management. Unaudited `seed` is removed.
-- **Signed Claims** — Ed25519-signed constitutional claims that can't be spoofed by JSON override.
+- **LLM-Facing Tools** — handshake, scoped trust status, cluster status, advisory sensitivity share check, receipt/capsule tools, and quorum mandate propose/second/finalize.
+- **CLI Surface** — `openclaw fpp-trust` for graph inspection, `steward-override` (scoped/expiring/audited), override review/revoke, quorum status/revoke, attestation export, claim verification, and strict-mode management. Unaudited `seed` is removed.
+- **Peer / steward quorum mandates** — local-policy quorum that **issues** signed `StandingMandateV1` records for the enforcement plugin to consume (`authorization=quorum-mandate`). Quorum is **not** constitutional ratification and cannot mint affected-party/data-subject consent.- **Signed Claims** — Ed25519-signed constitutional claims that can't be spoofed by JSON override.
 - **Merkle Audit Bridging** — agents exchange audit Merkle roots during handshakes and can request inclusion proofs to check that a claimed audit entry exists in the peer's log. An inclusion proof establishes that an entry was recorded — not that the log is complete, and not that the recorded conduct was compliant. On fresh installs, the bridge falls back to the enforcement plugin audit log until the constitution heartbeat log has entries.
 - **Group Context Trust** — cluster-based trust for multi-agent chat environments with sensitivity-gated sharing.
 - **Strict-Mode Signaling** — when a handshake fails, the plugin can signal the enforcement plugin to escalate low-risk tool calls to require-approval for that session.
 
 ## Tools
 
-All five tools below are registered in `src/index.ts` and declared in `openclaw.plugin.json` (`contracts.tools`):
+Tools registered in `src/index.ts` and declared in `openclaw.plugin.json` (`contracts.tools`):
 
 | Tool | Description |
 |------|-------------|
@@ -31,6 +31,9 @@ All five tools below are registered in `src/index.ts` and declared in `openclaw.
 | `fpp_sensitivity_share_check` | **Advisory** check whether content at a sensitivity may be shared with a cluster |
 | `fpp_attestation_export` | Export Merkle root, public key, and optional inclusion proofs |
 | `fpp_cluster_status` | Report group-context (cluster) trust state for multi-agent chat environments |
+| `fpp_mandate_propose` | Open a peer/steward quorum proposal for a scoped StandingMandateV1 (local policy — not ratification) |
+| `fpp_mandate_second` | Cast or accept a signed quorum ballot |
+| `fpp_mandate_finalize` | Finalize at threshold into a signed mandate written to the shared mandate store |
 
 ## CLI
 
@@ -41,6 +44,8 @@ openclaw fpp-trust steward-override <agentId> <pubkey> <LOW|MEDIUM|HIGH> \
 openclaw fpp-trust override-review
 openclaw fpp-trust override-revoke <agentId> --capability handshake --reason "..."
 # seed is deprecated and exits non-zero — use steward-override
+openclaw fpp-trust quorum-status                     # list open/finalized quorum sessions
+openclaw fpp-trust quorum-revoke-mandate <mandateId> --reason "..."
 openclaw fpp-trust export                            # print signed attestation
 openclaw fpp-trust verify <claim.json>               # verify a peer claim file
 openclaw fpp-trust strict list                       # list strict-mode sessions

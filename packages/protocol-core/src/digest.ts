@@ -19,6 +19,8 @@ export const DIGEST_DOMAINS = {
   capsule: "fpp:v2:capsule",
   evidence: "fpp:v2:evidence",
   adoption: "fpp:v2:adoption",
+  quorum: "fpp:v2:quorum",
+  mandate: "fpp:v2:mandate",
 } as const;
 
 export type DigestDomain =

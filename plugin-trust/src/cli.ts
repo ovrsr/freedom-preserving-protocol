@@ -30,6 +30,7 @@ import { ScopedTrustStore } from "./trust-scope.js";
 import type { MerkleBridge } from "./merkle-bridge.js";
 import type { StrictModeManager } from "./strict-mode.js";
 import type { ReplayCache } from "./replay-cache.js";
+import type { QuorumSessionManager } from "./quorum-session.js";
 
 export interface CliDependencies {
   identity: AgentIdentity;
@@ -40,6 +41,7 @@ export interface CliDependencies {
   handshake?: ConstitutionalHandshake | undefined;
   replayCache?: ReplayCache | undefined;
   requireFreshness?: boolean | undefined;
+  quorum?: QuorumSessionManager | undefined;
 }
 
 interface CliCommand {
@@ -557,13 +559,68 @@ export function registerFppTrustCli(
         }
       }
     });
+
+  // --- quorum-status / quorum-revoke-mandate (Plan 9) ---
+  // Distinct from steward-override: quorum mints StandingMandateV1;
+  // steward-override only records scoped trust assessments.
+  fppTrust
+    .command("quorum-status")
+    .description(
+      "List open/finalized/expired quorum sessions (local policy — not ratification)",
+    )
+    .action(() => {
+      if (!deps.quorum) {
+        console.log("Quorum session manager not configured.\n");
+        return;
+      }
+      const sessions = deps.quorum.listSessions();
+      if (sessions.length === 0) {
+        console.log("No quorum sessions on record.\n");
+        return;
+      }
+      for (const s of sessions) {
+        const ayes = s.ballots.filter((b) => b.vote === "aye").length;
+        console.log(
+          `${s.proposal.proposalId}\t${s.status}\t${s.proposal.quorumClass}\t` +
+            `ayes=${ayes}\tmandate=${s.mandateId ?? "-"}\t` +
+            `expires=${s.proposal.expiresAt}`,
+        );
+      }
+      console.log("");
+    });
+
+  fppTrust
+    .command("quorum-revoke-mandate")
+    .description(
+      "Revoke a quorum-issued StandingMandateV1 (does not mint peer-signed mandates)",
+    )
+    .argument("<mandateId>", "Mandate id (e.g. quorum:prop-001)")
+    .requiredOption("--reason <text>", "Audit reason for revocation")
+    .action((mandateIdArg: unknown, optsUnknown: unknown) => {
+      const mandateId = String(mandateIdArg);
+      const opts = optsUnknown as { reason: string };
+      if (!deps.quorum) {
+        console.error("Quorum session manager not configured.");
+        return;
+      }
+      const result = deps.quorum.revokeMandate(mandateId, opts.reason);
+      if (!result.ok) {
+        console.error(`Revoke failed: ${result.error}`);
+        return;
+      }
+      console.log(
+        `Revoked quorum mandate ${result.mandateId}: ${result.reason}\n` +
+          `Note: steward-override remains a separate audited trust path and ` +
+          `does not mint peer-signed mandates.`,
+      );
+    });
 }
 
 export const FPP_TRUST_CLI_DESCRIPTORS = [
   {
     name: "fpp-trust",
     description:
-      "FPP Trust & Handshake — inspect graph, manage seeds, export attestations, strict-mode",
+      "FPP Trust & Handshake — inspect graph, manage seeds, export attestations, quorum, strict-mode",
     hasSubcommands: true,
   },
 ];
