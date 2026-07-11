@@ -170,6 +170,9 @@ function main() {
     );
   } else {
     console.log("Freedom Preserving Protocol — dispatcher self-test\n");
+    console.log(
+      "Note: classifier decisions map through dispositionMode (unattended abstains; operator-present may requireApproval). This script still reports classifier decision only.\n",
+    );
     for (const r of results) {
       console.log(
         `${statusGlyph(r.match)} ${r.fixture.id}  expected=${r.fixture.expected}  actual=${r.actual.decision}`,

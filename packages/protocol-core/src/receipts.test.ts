@@ -33,4 +33,31 @@ describe("ConformanceReceiptV1", () => {
       false,
     );
   });
+
+  it("accepts prior disposition literals (allow|deny|require_approval|abstain)", () => {
+    for (const disposition of [
+      "allow",
+      "deny",
+      "require_approval",
+      "abstain",
+    ] as const) {
+      assert.equal(
+        parseConformanceReceipt({ ...valid, disposition }).ok,
+        true,
+        disposition,
+      );
+    }
+  });
+
+  it("accepts additive allow_staged and allow_minimal dispositions", () => {
+    assert.equal(
+      parseConformanceReceipt({ ...valid, disposition: "allow_staged" }).ok,
+      true,
+    );
+    assert.equal(
+      parseConformanceReceipt({ ...valid, disposition: "allow_minimal" }).ok,
+      true,
+    );
+  });
 });
+

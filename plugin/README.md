@@ -46,18 +46,19 @@ On every tool call your agent attempts, OpenClaw invokes this plugin's `before_t
    - `http.public-write` — POST/PUT/PATCH/DELETE to a non-private URL.
    - `message.external` — outbound message to a third party.
    - many others; see the source for the full list.
-2. **Decides** based on your config (`plugin/src/index.ts`, `decide()`):
-   - if the classification is in `blockOn`, return `{ block: true, blockReason }`.
-   - if in `approvalOn` (or escalated by trust-plugin strict mode), return `{ requireApproval: { ... } }`.
-   - if the classifier itself recommends `block` but your config doesn't list the classification, the decision is downgraded to `requireApproval` (not allow).
-   - otherwise, follow the classifier decision. **Unknown tools (`unknown.unclassified`) require approval by default.** Operators may allowlist known custom tool names via `knownCustomTools` (scoped — not a global fail-open). Benign known tools (e.g. workspace reads) still allow.
+2. **Decides** via `resolveDisposition` (`plugin/src/disposition-engine.ts`):
+   - **Hard-floor** (`blockOn` or classifier `decision: "block"`) → `{ block: true }` (never silently downgraded).
+   - **Live mandate / `standingAllowOn`** → allow + budget debit (standing allowlist is unsigned; never claimed as peer-signed).
+   - **`dispositionMode: "operator-present"`** → `requireApproval` for `approvalOn` / strict-mode escalations (legacy UX).
+   - **`dispositionMode: "unattended"`** → staged-allow (reversible), emergency allow-minimal, or **abstain** (`blockReason` prefixed `abstain:`) — never hangs on `requireApproval`.
+   - New installs default to `unattended`. Existing configs missing `dispositionMode` migrate fail-safe to `operator-present` with a `DISPOSITION_MODE_MIGRATION` diagnostic.
 3. **Audits** the decision to `.openclaw/workspace/fpp-plugin-audit.jsonl` as a hash-chained entry (same format as the skill's audit log; cross-verifiable with `npm run audit:verify` in the parent package).
 
-**Audit-write failure behavior (current, pending hardening):** audit entries are written with a synchronous append and no fallback. If the write throws (permissions, disk full), the exception propagates to the OpenClaw runtime — the plugin does **not** guarantee fail-closed behavior ("no audit, no action"). Until that hardening lands, treat the audit log as best-effort evidence, not a completeness guarantee.
+**Audit-write failure behavior:** default `auditFailureBehavior: "fail-closed"` blocks high-risk calls when the audit log cannot be written. See `docs/TROUBLESHOOTING.md`.
 
-**Approval timeout:** approvals wait `approvalTimeoutMs` (default 60000 ms) and then apply `approvalTimeoutBehavior` (default `deny`).
+**Approval timeout:** in operator-present mode, approvals wait `approvalTimeoutMs` (default 60000 ms) and then apply `approvalTimeoutBehavior` (default `deny`).
 
-**Strict mode:** when `respectTrustStrictMode` is `true` (default), the hook reads the trust plugin's strict-mode state file (`strictModeStatePath`) on each call and escalates listed classifications to `requireApproval` for flagged sessions.
+**Strict mode:** when `respectTrustStrictMode` is `true` (default), the hook reads the trust plugin's strict-mode state file (`strictModeStatePath`) on each call and escalates listed classifications to `requireApproval` for flagged sessions (operator-present) or still respects hard-floor / mandate paths (unattended).
 
 ## Configuration
 
@@ -66,6 +67,11 @@ Set these under `plugins.entries.openclaw-fpp-plugin.config` in your OpenClaw co
 ```json
 {
   "auditLogPath": ".openclaw/workspace/fpp-plugin-audit.jsonl",
+  "dispositionMode": "unattended",
+  "standingAllowOn": [],
+  "mandateStorePath": ".openclaw/workspace/fpp-mandates.json",
+  "mandateDefaultMaxActions": 10,
+  "stagedUndoWindowMs": 60000,
   "blockOn": ["fs.delete.protected", "exec.cred-exfil", "gateway.restart"],
   "approvalOn": [
     "fs.delete.workspace",
@@ -76,7 +82,8 @@ Set these under `plugins.entries.openclaw-fpp-plugin.config` in your OpenClaw co
     "exec.outbound-write",
     "exec.system-modify",
     "gateway.config-change",
-    "message.external"
+    "message.external",
+    "unknown.unclassified"
   ],
   "approvalTimeoutMs": 60000,
   "approvalTimeoutBehavior": "deny",

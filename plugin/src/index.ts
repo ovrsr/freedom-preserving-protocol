@@ -20,7 +20,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import type { OpenClawPluginApi, OpenClawPluginDefinition } from "openclaw/plugin-sdk/plugin-entry";
 
@@ -53,10 +53,22 @@ import {
 } from "./receipt-log.js";
 import { DIGEST_DOMAINS, digest } from "@ovrsr/fpp-protocol-core";
 import { buildRuntimeManifest } from "./runtime-manifest.js";
+import {
+  resolveDisposition,
+  type DispositionResult,
+} from "./disposition-engine.js";
+import { MandateStore } from "./mandate-store.js";
+import { isReversibleClassification } from "./reversibility.js";
+import type { DispositionDecision } from "@ovrsr/fpp-protocol-core";
+import { StagedActionLedger } from "./staged-actions.js";
+import { EmergencyReviewLedger } from "./emergency-review.js";
 
 /** Process-local receipt correlation store (resettable in tests). */
 let receiptStore: ReceiptStore | null = null;
 let receiptSigner: ReceiptSigner | null = null;
+let mandateStore: MandateStore | null = null;
+let stagedLedger: StagedActionLedger | null = null;
+let emergencyLedger: EmergencyReviewLedger | null = null;
 
 function getReceiptStore(config: FppPluginConfig): ReceiptStore {
   if (!receiptStore) {
@@ -82,6 +94,41 @@ function getReceiptSigner(config: FppPluginConfig): ReceiptSigner {
 export function resetReceiptStore(): void {
   receiptStore = null;
   receiptSigner = null;
+  mandateStore = null;
+  stagedLedger = null;
+  emergencyLedger = null;
+}
+
+function getMandateStore(config: FppPluginConfig): MandateStore {
+  if (!mandateStore) {
+    mandateStore = new MandateStore(config.mandateStorePath, {
+      standingAllowOn: config.standingAllowOn,
+      mandateDefaultMaxActions: config.mandateDefaultMaxActions,
+    });
+  }
+  return mandateStore;
+}
+
+function workspaceSibling(configPath: string, filename: string): string {
+  return join(dirname(configPath), filename);
+}
+
+function getStagedLedger(config: FppPluginConfig): StagedActionLedger {
+  if (!stagedLedger) {
+    stagedLedger = new StagedActionLedger(
+      workspaceSibling(config.mandateStorePath, "fpp-staged-actions.jsonl"),
+    );
+  }
+  return stagedLedger;
+}
+
+function getEmergencyLedger(config: FppPluginConfig): EmergencyReviewLedger {
+  if (!emergencyLedger) {
+    emergencyLedger = new EmergencyReviewLedger(
+      workspaceSibling(config.mandateStorePath, "fpp-emergency-review.jsonl"),
+    );
+  }
+  return emergencyLedger;
 }
 
 /** Test seam: inspect the active receipt store. */
@@ -348,23 +395,97 @@ function severityFor(classification: ClassificationResult): "info" | "warning" |
   return "info";
 }
 
+/**
+ * Map disposition engine output to the legacy decide() vocabulary used by
+ * audit events and the receipt store until Task 6 extends those surfaces.
+ */
+export function legacyDecisionFromDisposition(
+  disposition: DispositionDecision,
+): "block" | "approval" | "allow" {
+  if (disposition === "deny" || disposition === "abstain") return "block";
+  if (disposition === "require_approval") return "approval";
+  return "allow";
+}
+
+/**
+ * @deprecated Prefer resolveDisposition. Kept as a thin wrapper for callers
+ * that still expect block | approval | allow.
+ */
 function decide(
   config: FppPluginConfig,
   classification: ClassificationResult,
   strictOverrides: string[] = [],
 ): "block" | "approval" | "allow" {
-  if (config.blockOn.includes(classification.classification)) return "block";
-  if (config.approvalOn.includes(classification.classification)) return "approval";
-  if (strictOverrides.includes(classification.classification)) return "approval";
-  // If the classifier itself says block but config doesn't list it, honor the
-  // classifier's recommendation but downgrade to approval rather than allow.
-  // Preserves Law 1 even when an operator's config is loose.
-  if (classification.decision === "block") return "approval";
-  return classification.decision;
+  const result = resolveDisposition({
+    classification,
+    config,
+    strictOverrides,
+    reversible: isReversibleClassification(classification.classification),
+  });
+  return legacyDecisionFromDisposition(result.disposition);
 }
 
 /** Test seam: decision helper used by the before_tool_call hook. */
 export { decide };
+
+function mapDispositionToHookResult(
+  dispositionResult: DispositionResult,
+  classification: ClassificationResult,
+  toolName: string,
+  config: FppPluginConfig,
+  eventForAudit: EnforcementEvent,
+  onApprovalResolution: (decisionResult: string) => Promise<void>,
+):
+  | { block: true; blockReason: string }
+  | {
+      requireApproval: {
+        title: string;
+        description: string;
+        severity: "critical" | "warning" | "info";
+        timeoutMs: number;
+        timeoutBehavior: "allow" | "deny";
+        allowedDecisions: ("allow-once" | "deny")[];
+        pluginId: string;
+        onResolution: (decisionResult: string) => Promise<void>;
+      };
+    }
+  | undefined {
+  const { disposition, authorization, reason } = dispositionResult;
+
+  if (disposition === "deny") {
+    return {
+      block: true,
+      blockReason: `${classification.classification}: ${classification.reason}`,
+    };
+  }
+
+  if (disposition === "abstain") {
+    return {
+      block: true,
+      blockReason: `abstain: ${reason}`,
+    };
+  }
+
+  if (disposition === "require_approval") {
+    return {
+      requireApproval: {
+        title: buildTitle(classification),
+        description: buildDescription(classification, toolName),
+        severity: severityFor(classification),
+        timeoutMs: config.approvalTimeoutMs,
+        timeoutBehavior: config.approvalTimeoutBehavior,
+        allowedDecisions: ["allow-once", "deny"],
+        pluginId: "openclaw-fpp-plugin",
+        onResolution: onApprovalResolution,
+      },
+    };
+  }
+
+  // allow | allow_staged | allow_minimal → proceed (no approval)
+  void authorization;
+  void eventForAudit;
+  return undefined;
+}
 
 function emitAuditGap(message: string): void {
   console.error(`FPP AUDIT-GAP: ${message}`);
@@ -439,7 +560,32 @@ export function registerEnforcement(api: {
       const strictOverrides = config.respectTrustStrictMode
         ? getStrictApprovalOverrides(config.strictModeStatePath, c.sessionKey)
         : [];
-      const decision = decide(config, classification, strictOverrides);
+      const mandates = getMandateStore(config);
+      const liveMandate = mandates.findCoverage(classification.classification, {
+        nowMs: Date.now(),
+      });
+      const dispositionResult = resolveDisposition({
+        classification,
+        config,
+        liveMandate,
+        budgetAvailable: true,
+        reversible: isReversibleClassification(classification.classification),
+        quorumMandatePresent:
+          liveMandate?.authorization === "quorum-mandate",
+        strictOverrides,
+      });
+      const decision = legacyDecisionFromDisposition(
+        dispositionResult.disposition,
+      );
+
+      // Debit mandate budget on allow paths that consumed a stored mandate.
+      if (
+        dispositionResult.disposition === "allow" &&
+        dispositionResult.mandateId &&
+        !dispositionResult.mandateId.startsWith("standing:")
+      ) {
+        mandates.debit(dispositionResult.mandateId);
+      }
 
       const eventForAudit: EnforcementEvent = {
         toolName: e.toolName,
@@ -449,7 +595,7 @@ export function registerEnforcement(api: {
         toolCallId: c.toolCallId,
         classification: classification.classification,
         decision,
-        reason: classification.reason,
+        reason: dispositionResult.reason || classification.reason,
         constitutionHash: config.constitutionHash,
       };
 
@@ -459,6 +605,14 @@ export function registerEnforcement(api: {
         paramsDigest: digestActionParams(e.params ?? {}),
         classification: classification.classification,
         decision,
+        disposition: dispositionResult.disposition,
+        // Leave classifier-allow authorization unset so after_tool_call can
+        // record policy-match; keep explicit classes (mandate, abstain, etc.).
+        authorization:
+          dispositionResult.disposition === "allow" &&
+          dispositionResult.authorization === "approved"
+            ? undefined
+            : dispositionResult.authorization,
         agentId: c.agentId,
         runId: c.runId ?? e.runId,
         sessionKey: c.sessionKey,
@@ -478,18 +632,28 @@ export function registerEnforcement(api: {
       }
 
       if (decision === "block") {
-        const appended = tryAppend(config.auditLogPath, eventForAudit, "blocked");
+        const outcome =
+          dispositionResult.disposition === "abstain" ? "blocked" : "blocked";
+        const appended = tryAppend(config.auditLogPath, eventForAudit, outcome);
         if (!appended.ok) {
           const failure = handleAuditFailure(config, decision, appended.error);
           if (failure) return failure;
         }
         if (proposeResult.finalized && !proposeResult.idempotent) {
+          // Prefer abstain authorization on the receipt when applicable (Task 6).
+          if (dispositionResult.disposition === "abstain") {
+            receipt.authorization = "abstain";
+          }
           persistFinalizedReceipt(config, receipt);
         }
-        return {
-          block: true,
-          blockReason: `${classification.classification}: ${classification.reason}`,
-        };
+        return mapDispositionToHookResult(
+          dispositionResult,
+          classification,
+          e.toolName,
+          config,
+          eventForAudit,
+          async () => undefined,
+        );
       }
 
       if (decision === "approval") {
@@ -502,51 +666,45 @@ export function registerEnforcement(api: {
           const failure = handleAuditFailure(config, decision, appended.error);
           if (failure) return failure;
         }
-        return {
-          requireApproval: {
-            title: buildTitle(classification),
-            description: buildDescription(classification, e.toolName),
-            severity: severityFor(classification),
-            timeoutMs: config.approvalTimeoutMs,
-            timeoutBehavior: config.approvalTimeoutBehavior,
-            allowedDecisions: ["allow-once", "deny"],
-            pluginId: "openclaw-fpp-plugin",
-            onResolution: async (decisionResult: string) => {
-              const outcome: EnforcementOutcome =
-                decisionResult === "allow-once" || decisionResult === "allow-always"
-                  ? "approved"
-                  : decisionResult === "deny"
-                    ? "denied"
-                    : decisionResult === "timeout"
-                      ? "timeout"
-                      : "cancelled";
-              if (c.toolCallId) {
-                const updated = store.recordAuthorization(
-                  c.toolCallId,
-                  outcome,
-                  new Date().toISOString(),
-                );
-                // Terminal auth outcomes (deny/timeout/cancelled) finalize now;
-                // approved waits for after_tool_call execution outcome.
-                if (updated && updated.status === "finalized") {
-                  persistFinalizedReceipt(config, updated);
-                }
-              }
-              const logged = tryAppend(
-                config.auditLogPath,
-                eventForAudit,
+        return mapDispositionToHookResult(
+          dispositionResult,
+          classification,
+          e.toolName,
+          config,
+          eventForAudit,
+          async (decisionResult: string) => {
+            const outcome: EnforcementOutcome =
+              decisionResult === "allow-once" || decisionResult === "allow-always"
+                ? "approved"
+                : decisionResult === "deny"
+                  ? "denied"
+                  : decisionResult === "timeout"
+                    ? "timeout"
+                    : "cancelled";
+            if (c.toolCallId) {
+              const updated = store.recordAuthorization(
+                c.toolCallId,
                 outcome,
+                new Date().toISOString(),
               );
-              if (!logged.ok) {
-                emitAuditGap(
-                  `post-approval outcome logging failed (${outcome}): ${logged.error.message}. ` +
-                    `Preserve the existing audit file; do not overwrite or restart the chain. ` +
-                    `See docs/TROUBLESHOOTING.md.`,
-                );
+              if (updated && updated.status === "finalized") {
+                persistFinalizedReceipt(config, updated);
               }
-            },
+            }
+            const logged = tryAppend(
+              config.auditLogPath,
+              eventForAudit,
+              outcome,
+            );
+            if (!logged.ok) {
+              emitAuditGap(
+                `post-approval outcome logging failed (${outcome}): ${logged.error.message}. ` +
+                  `Preserve the existing audit file; do not overwrite or restart the chain. ` +
+                  `See docs/TROUBLESHOOTING.md.`,
+              );
+            }
           },
-        };
+        );
       }
 
       const allowedAppend = tryAppend(
@@ -561,6 +719,31 @@ export function registerEnforcement(api: {
           allowedAppend.error,
         );
         if (failure) return failure;
+      }
+
+      if (
+        dispositionResult.disposition === "allow_staged" &&
+        c.toolCallId
+      ) {
+        getStagedLedger(config).register({
+          toolCallId: c.toolCallId,
+          classification: classification.classification,
+          actionDigest: receipt.actionDigest,
+          undoWindowMs: config.stagedUndoWindowMs,
+          nowMs: Date.now(),
+        });
+      }
+      if (
+        dispositionResult.disposition === "allow_minimal" &&
+        c.toolCallId
+      ) {
+        getEmergencyLedger(config).requireReview({
+          toolCallId: c.toolCallId,
+          classification: classification.classification,
+          actionDigest: receipt.actionDigest,
+          reason: dispositionResult.reason,
+          nowIso: new Date().toISOString(),
+        });
       }
       return;
     },
@@ -618,7 +801,15 @@ export function registerEnforcement(api: {
         // Ensure authorization is recorded separately from execution success.
         if (!finalized.authorization || finalized.authorization === "unresolved") {
           finalized.authorization =
-            finalized.disposition === "allow" ? "policy-match" : "approved";
+            finalized.disposition === "allow" ||
+            finalized.disposition === "allow_staged" ||
+            finalized.disposition === "allow_minimal"
+              ? finalized.disposition === "allow_minimal"
+                ? "emergency"
+                : finalized.disposition === "allow_staged"
+                  ? "mandate"
+                  : "policy-match"
+              : "approved";
         }
         persistFinalizedReceipt(config, finalized);
       } catch (err) {

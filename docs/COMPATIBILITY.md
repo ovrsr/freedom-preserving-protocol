@@ -162,6 +162,9 @@ The plugin reads its configuration from your OpenClaw config:
       "openclaw-fpp-plugin": {
         "config": {
           "auditLogPath": ".openclaw/workspace/fpp-plugin-audit.jsonl",
+          "dispositionMode": "operator-present",
+          "standingAllowOn": [],
+          "mandateStorePath": ".openclaw/workspace/fpp-mandates.json",
           "blockOn": ["fs.delete.protected", "exec.cred-exfil", "gateway.restart"],
           "approvalOn": ["fs.delete.workspace", "pkg.install", "http.public-write"],
           "approvalTimeoutMs": 60000,

@@ -1,8 +1,10 @@
 # Consent and Authorization Semantics
 
-**Status:** `PROVISIONAL` specification — design principle; not enforced by code.
-**Plan:** `docs/plans/2026-07-10-5-governance-evolution-specification.md` Task 6
+**Status:** `PROVISIONAL` specification — design principle; partial runtime mapping via Plan 8 disposition/mandates (not a complete consent engine).
+**Plan:** `docs/plans/2026-07-10-5-governance-evolution-specification.md` Task 6; implementation pointer: `docs/plans/2026-07-10-8-unattended-disposition-and-mandates.md`
 **Related:** `docs/dev-review.md` §9; `THREAT_MODEL_AND_RIGHTS_FLOOR.md`; `SKILL.md`
+
+**Implementation pointer (honest labels):** Plan 8 folds `StandingMandateV1` and disposition/authorization literals into `@ovrsr/fpp-protocol-core` and wires an unattended disposition engine in the enforcement plugin. That maps **operator authorization**, **delegated/standing mandates**, and **emergency allow-minimal + mandatory review** into tool-boundary decisions. It does **not** implement affected-party/data-subject consent collection, guardian instruments, or peer/steward quorum issuance (Plan 9). Labels below remain `PROVISIONAL` for those gaps.
 
 ---
 

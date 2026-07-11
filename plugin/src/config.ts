@@ -36,6 +36,8 @@ export type ConfigDiagnostic = {
   detail: string;
 };
 
+export type DispositionMode = "operator-present" | "unattended";
+
 export type FppPluginConfig = {
   auditLogPath: string;
   blockOn: ClassificationId[];
@@ -59,7 +61,8 @@ export type FppPluginConfig = {
    */
   auditFailureBehavior: "fail-closed" | "degraded-allow-low-risk";
   /**
-   * Required to honor dangerous overrides (timeout allow, blockOn downgrade).
+   * Required to honor dangerous overrides (timeout allow, blockOn downgrade,
+   * standingAllowOn covering hard-floor classes).
    * Without this flag those overrides are ignored at runtime and reported
    * via migration diagnostics — the on-disk user config is not rewritten.
    */
@@ -74,6 +77,23 @@ export type FppPluginConfig = {
   identityKeyPath: string;
   /** When false, receipts are emitted unsigned and labeled degraded. */
   receiptSigningEnabled: boolean;
+  /**
+   * Disposition engine mode. New installs default to `unattended`.
+   * Existing configs missing this field migrate to `operator-present`
+   * (fail-safe) with a migration diagnostic recommending `unattended`.
+   */
+  dispositionMode: DispositionMode;
+  /**
+   * Human operator standing allowlist of classification ids covered without
+   * a signed mandate. Hard-floor classes require acknowledgeDangerousOverrides.
+   */
+  standingAllowOn: ClassificationId[];
+  /** File-backed mandate store path. */
+  mandateStorePath: string;
+  /** Default maxActions when materializing standing-allowlist coverage. */
+  mandateDefaultMaxActions: number;
+  /** Undo/review window for allow-staged decisions (ms). */
+  stagedUndoWindowMs: number;
 };
 
 export type MergeConfigResult = {
@@ -110,10 +130,25 @@ export const DEFAULT_CONFIG: FppPluginConfig = {
   receiptLogPath: ".openclaw/workspace/fpp-receipts.jsonl",
   identityKeyPath: ".openclaw/workspace/fpp-agent-identity.key",
   receiptSigningEnabled: true,
+  dispositionMode: "unattended",
+  standingAllowOn: [],
+  mandateStorePath: ".openclaw/workspace/fpp-mandates.json",
+  mandateDefaultMaxActions: 10,
+  stagedUndoWindowMs: 60_000,
 };
 
 function isBlockDowngrade(blockOn: ClassificationId[]): boolean {
   return DEFAULT_CONFIG.blockOn.some((id) => !blockOn.includes(id));
+}
+
+function standingAllowCoversHardFloor(
+  standingAllowOn: ClassificationId[],
+): boolean {
+  return DEFAULT_CONFIG.blockOn.some((id) => standingAllowOn.includes(id));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**
@@ -148,12 +183,60 @@ export function diagnoseConfigSafety(
     });
   }
 
+  if (
+    Array.isArray(partial.standingAllowOn) &&
+    standingAllowCoversHardFloor(partial.standingAllowOn as ClassificationId[])
+  ) {
+    diagnostics.push({
+      code: "DANGEROUS_STANDING_ALLOW_HARD_FLOOR",
+      severity: ack ? "warn" : "error",
+      detail: ack
+        ? "standingAllowOn includes hard-floor classification(s) (acknowledged)."
+        : "standingAllowOn includes hard-floor classification(s) from blockOn. " +
+          "Requires acknowledgeDangerousOverrides: true. Without acknowledgement, those ids are stripped at runtime.",
+    });
+  }
+
   return diagnostics;
 }
 
+function resolveDispositionMode(
+  input: unknown,
+  partial: Partial<FppPluginConfig>,
+): { mode: DispositionMode; diagnostic: ConfigDiagnostic | null } {
+  if (
+    partial.dispositionMode === "unattended" ||
+    partial.dispositionMode === "operator-present"
+  ) {
+    return { mode: partial.dispositionMode, diagnostic: null };
+  }
+
+  const empty =
+    input === undefined ||
+    input === null ||
+    (isRecord(input) && Object.keys(input).length === 0);
+
+  if (empty) {
+    return { mode: DEFAULT_CONFIG.dispositionMode, diagnostic: null };
+  }
+
+  return {
+    mode: "operator-present",
+    diagnostic: {
+      code: "DISPOSITION_MODE_MIGRATION",
+      severity: "info",
+      detail:
+        "dispositionMode was absent; using fail-safe operator-present. " +
+        "Set dispositionMode: \"unattended\" explicitly for headless agents that should abstain instead of requireApproval.",
+    },
+  };
+}
+
 export function mergeConfigWithDiagnostics(input: unknown): MergeConfigResult {
-  const partial = (input as Partial<FppPluginConfig>) ?? {};
-  const diagnostics = diagnoseConfigSafety(partial as Partial<FppPluginConfig> & Record<string, unknown>);
+  const partial = (isRecord(input) ? input : {}) as Partial<FppPluginConfig>;
+  const diagnostics = diagnoseConfigSafety(
+    partial as Partial<FppPluginConfig> & Record<string, unknown>,
+  );
   const ack = partial.acknowledgeDangerousOverrides === true;
 
   let approvalTimeoutBehavior =
@@ -167,6 +250,23 @@ export function mergeConfigWithDiagnostics(input: unknown): MergeConfigResult {
     // Restore missing default hard-blocks without rewriting the operator's file.
     const restored = new Set<ClassificationId>([...partial.blockOn, ...DEFAULT_CONFIG.blockOn]);
     blockOn = [...restored];
+  }
+
+  let standingAllowOn = partial.standingAllowOn ?? DEFAULT_CONFIG.standingAllowOn;
+  if (
+    Array.isArray(partial.standingAllowOn) &&
+    standingAllowCoversHardFloor(partial.standingAllowOn) &&
+    !ack
+  ) {
+    standingAllowOn = partial.standingAllowOn.filter(
+      (id) => !DEFAULT_CONFIG.blockOn.includes(id),
+    );
+  }
+
+  const { mode: dispositionMode, diagnostic: dispositionDiag } =
+    resolveDispositionMode(input, partial);
+  if (dispositionDiag) {
+    diagnostics.push(dispositionDiag);
   }
 
   const config: FppPluginConfig = {
@@ -191,6 +291,13 @@ export function mergeConfigWithDiagnostics(input: unknown): MergeConfigResult {
     identityKeyPath: partial.identityKeyPath ?? DEFAULT_CONFIG.identityKeyPath,
     receiptSigningEnabled:
       partial.receiptSigningEnabled ?? DEFAULT_CONFIG.receiptSigningEnabled,
+    dispositionMode,
+    standingAllowOn,
+    mandateStorePath: partial.mandateStorePath ?? DEFAULT_CONFIG.mandateStorePath,
+    mandateDefaultMaxActions:
+      partial.mandateDefaultMaxActions ?? DEFAULT_CONFIG.mandateDefaultMaxActions,
+    stagedUndoWindowMs:
+      partial.stagedUndoWindowMs ?? DEFAULT_CONFIG.stagedUndoWindowMs,
   };
 
   return { config, diagnostics };
@@ -203,6 +310,8 @@ export function mergeConfig(input: unknown): FppPluginConfig {
       console.error(`FPP CONFIG ${d.code}: ${d.detail}`);
     } else if (d.severity === "warn") {
       console.warn(`FPP CONFIG ${d.code}: ${d.detail}`);
+    } else {
+      console.info(`FPP CONFIG ${d.code}: ${d.detail}`);
     }
   }
   return config;
@@ -225,6 +334,11 @@ const MANIFEST_DEFAULT_KEYS: (keyof FppPluginConfig)[] = [
   "receiptLogPath",
   "identityKeyPath",
   "receiptSigningEnabled",
+  "dispositionMode",
+  "standingAllowOn",
+  "mandateStorePath",
+  "mandateDefaultMaxActions",
+  "stagedUndoWindowMs",
 ];
 
 export type ManifestValidationResult = {

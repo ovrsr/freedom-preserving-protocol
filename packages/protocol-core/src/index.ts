@@ -85,6 +85,29 @@ export {
 } from "./receipts.js";
 
 export {
+  MANDATE_ISSUER_CLASSES,
+  StandingMandateV1Schema,
+  parseStandingMandate,
+  validateMandateValidity,
+  type MandateIssuerClass,
+  type MandateParseResult,
+  type MandateValidity,
+  type MandateValidityPolicy,
+  type StandingMandateV1,
+} from "./mandates.js";
+
+export {
+  AUTHORIZATION_CLASSES,
+  DISPOSITION_DECISIONS,
+  isAuthorizationClass,
+  isDispositionDecision,
+  parseDispositionDecision,
+  type AuthorizationClass,
+  type DispositionDecision,
+  type DispositionParseResult,
+} from "./disposition.js";
+
+export {
   TrustStateCapsuleV2Schema,
   parseTrustStateCapsule,
   type CapsuleParseResult,

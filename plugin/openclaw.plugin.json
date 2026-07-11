@@ -118,6 +118,37 @@
         "type": "boolean",
         "default": true,
         "description": "When false, receipts are emitted unsigned and labeled degraded (non-trust-elevating)."
+      },
+      "dispositionMode": {
+        "type": "string",
+        "enum": ["operator-present", "unattended"],
+        "default": "unattended",
+        "description": "Disposition engine mode. New installs default to unattended (abstain instead of hanging on requireApproval). Existing configs missing this field migrate to operator-present (fail-safe) with a migration diagnostic."
+      },
+      "standingAllowOn": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [],
+        "description": "Human operator standing allowlist of classification ids covered without a signed mandate. Including hard-floor (blockOn) classes requires acknowledgeDangerousOverrides: true."
+      },
+      "mandateStorePath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-mandates.json",
+        "description": "Path to the file-backed standing mandate store (signed mandates + budget ledger)."
+      },
+      "mandateDefaultMaxActions": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000000,
+        "default": 10,
+        "description": "Default maxActions budget when materializing standing-allowlist coverage entries."
+      },
+      "stagedUndoWindowMs": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 86400000,
+        "default": 60000,
+        "description": "Undo/review window for allow-staged decisions (milliseconds)."
       }
     }
   }

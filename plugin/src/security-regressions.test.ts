@@ -130,6 +130,24 @@ describe("security regressions (enforcement)", () => {
     assert.equal(DEFAULT_CONFIG.auditFailureBehavior, "fail-closed");
   });
 
+  it("REGRESSION: unattended unknown tools abstain (never requireApproval)", async () => {
+    resetStrictModeCache();
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "unattended-unknown-audit.jsonl"),
+      respectTrustStrictMode: false,
+      dispositionMode: "unattended",
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = (await handler(
+      { toolName: "some_custom_tool_xyz", params: { foo: "bar" } },
+      ctx,
+    )) as { block?: boolean; blockReason?: string; requireApproval?: unknown };
+    assert.equal(result.requireApproval, undefined);
+    assert.equal(result.block, true);
+    assert.match(result.blockReason ?? "", /^abstain:/);
+  });
+
   it("CONTROL: malformed tool params do not throw in classifier", () => {
     const r = classifyToolCall("shell_exec", null as unknown as Record<string, unknown>);
     assert.ok(r.classification);

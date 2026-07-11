@@ -18,6 +18,8 @@ export const ConformanceReceiptV1Schema = Type.Object(
       Type.Literal("deny"),
       Type.Literal("require_approval"),
       Type.Literal("abstain"),
+      Type.Literal("allow_staged"),
+      Type.Literal("allow_minimal"),
     ]),
     authorization: Type.String({ minLength: 1 }),
     outcome: Type.String({ minLength: 1 }),

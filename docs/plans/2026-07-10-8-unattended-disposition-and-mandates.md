@@ -1,6 +1,6 @@
 # Unattended Disposition and Mandates
 
-**Status:** PENDING
+**Status:** COMPLETE
 **Created:** 2026-07-10
 **Series:** Plan 8 of 12 (autonomy + harness-agnostic program)
 **Depends on:** Plans 3–7 (protocol-core, receipts, governance specs, contextual trust)
@@ -57,18 +57,18 @@ Human operators may also configure a standing allowlist that synthesizes or matc
 
 ## Progress Tracking
 
-- [ ] Task 1: Fold mandate and disposition schemas into protocol-core
-- [ ] Task 2: Add dispositionMode, standingAllowOn, and mandate config surfaces
-- [ ] Task 3: Implement resolveDisposition engine (unattended path)
-- [ ] Task 4: Mandate store, validation, budget debit, and expiry
-- [ ] Task 5: Wire operator-present mode and OpenClaw hook mapping
-- [ ] Task 6: Extend receipt lifecycle for new dispositions and authorizations
-- [ ] Task 7: Staged-allow undo window and emergency mandatory-review records
-- [ ] Task 8: Migration diagnostics, CAPABILITY_STATUS, and operator docs
-- [ ] Task 9: End-to-end tests for unattended vs operator-present modes
-- [ ] Task 10: Quorum-mandate consumption seam (stub input for Plan 9)
+- [x] Task 1: Fold mandate and disposition schemas into protocol-core
+- [x] Task 2: Add dispositionMode, standingAllowOn, and mandate config surfaces
+- [x] Task 3: Implement resolveDisposition engine (unattended path)
+- [x] Task 4: Mandate store, validation, budget debit, and expiry
+- [x] Task 5: Wire operator-present mode and OpenClaw hook mapping
+- [x] Task 6: Extend receipt lifecycle for new dispositions and authorizations
+- [x] Task 7: Staged-allow undo window and emergency mandatory-review records
+- [x] Task 8: Migration diagnostics, CAPABILITY_STATUS, and operator docs
+- [x] Task 9: End-to-end tests for unattended vs operator-present modes
+- [x] Task 10: Quorum-mandate consumption seam (stub input for Plan 9)
 
-**Total Tasks:** 10 | **Completed:** 0 | **Remaining:** 10
+**Total Tasks:** 10 | **Completed:** 10 | **Remaining:** 0
 
 ## Implementation Tasks
 

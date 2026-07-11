@@ -76,7 +76,7 @@ describe("enforcement hook integration", () => {
   });
 
   it("requests approval and logs onResolution approved", async () => {
-    const handler = setup();
+    const handler = setup({ dispositionMode: "operator-present" });
     const result = (await handler(
       {
         toolName: "filesystem_delete",
@@ -96,6 +96,27 @@ describe("enforcement hook integration", () => {
       .map((l) => JSON.parse(l))
       .find((e) => e.outcome === "approval_requested");
     assert.equal(requested.toolCallId, "call-xyz");
+  });
+
+  it("unattended unknown tool abstains instead of requireApproval", async () => {
+    const handler = setup({ dispositionMode: "unattended" });
+    const result = (await handler(
+      { toolName: "some_custom_tool_xyz", params: { foo: 1 } },
+      ctx,
+    )) as { block?: boolean; blockReason?: string; requireApproval?: unknown };
+    assert.equal(result.requireApproval, undefined);
+    assert.equal(result.block, true);
+    assert.match(result.blockReason ?? "", /^abstain:/);
+  });
+
+  it("operator-present still requireApproval for approvalOn", async () => {
+    const handler = setup({ dispositionMode: "operator-present" });
+    const result = (await handler(
+      { toolName: "some_custom_tool_xyz", params: { foo: 1 } },
+      ctx,
+    )) as { requireApproval?: unknown; block?: boolean };
+    assert.ok(result.requireApproval);
+    assert.notEqual(result.block, true);
   });
 
   it("fakes deny resolution and logs denied outcome", async () => {

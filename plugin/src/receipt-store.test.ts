@@ -154,6 +154,50 @@ describe("ReceiptStore lifecycle", () => {
     assert.equal(orphans[0]!.outcome, "audit_gap_overflow");
   });
 
+  it("records allow_staged and allow_minimal dispositions", () => {
+    const store = new ReceiptStore({ maxPending: 8 });
+    const staged = store.propose(
+      basePropose({
+        toolCallId: "call-staged",
+        decision: "allow",
+        disposition: "allow_staged",
+        authorization: "mandate",
+      }),
+    );
+    assert.equal(staged.record.disposition, "allow_staged");
+    assert.equal(staged.record.authorization, "mandate");
+    assert.equal(staged.finalized, false);
+
+    const minimal = store.propose(
+      basePropose({
+        toolCallId: "call-minimal",
+        decision: "allow",
+        disposition: "allow_minimal",
+        authorization: "emergency",
+      }),
+    );
+    assert.equal(minimal.record.disposition, "allow_minimal");
+    assert.equal(minimal.record.authorization, "emergency");
+  });
+
+  it("finalizes abstain without pending_authorization hang", () => {
+    const store = new ReceiptStore({ maxPending: 8 });
+    const result = store.propose(
+      basePropose({
+        toolCallId: "call-abstain",
+        decision: "block",
+        disposition: "abstain",
+        authorization: "abstain",
+        classification: "unknown.unclassified",
+      }),
+    );
+    assert.equal(result.finalized, true);
+    assert.equal(result.record.status, "finalized");
+    assert.equal(result.record.disposition, "abstain");
+    assert.equal(result.record.authorization, "abstain");
+    assert.equal(store.pendingCount(), 0);
+  });
+
   it("does not store raw tool parameters on the receipt record", () => {
     const secret = "super-secret-token-value";
     const store = new ReceiptStore({ maxPending: 4 });

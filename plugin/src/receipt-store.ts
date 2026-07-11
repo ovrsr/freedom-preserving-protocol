@@ -22,7 +22,9 @@ export type ReceiptDisposition =
   | "allow"
   | "deny"
   | "require_approval"
-  | "abstain";
+  | "abstain"
+  | "allow_staged"
+  | "allow_minimal";
 
 export type PendingReceiptRecord = {
   receiptId: string;
@@ -49,6 +51,10 @@ export type ProposeInput = {
   paramsDigest: string;
   classification: string;
   decision: "block" | "approval" | "allow";
+  /** Override disposition when richer than legacy decision mapping. */
+  disposition?: ReceiptDisposition | undefined;
+  /** Authorization class from the disposition engine. */
+  authorization?: string | undefined;
   agentId?: string | undefined;
   runId?: string | undefined;
   sessionKey?: string | undefined;
@@ -100,7 +106,9 @@ export function computeActionDigest(input: {
 
 function dispositionFor(
   decision: "block" | "approval" | "allow",
+  override?: ReceiptDisposition | undefined,
 ): ReceiptDisposition {
+  if (override) return override;
   if (decision === "block") return "deny";
   if (decision === "approval") return "require_approval";
   return "allow";
@@ -173,13 +181,14 @@ export class ReceiptStore {
 
     const correlationConfidence: CorrelationConfidence =
       input.toolCallId && input.toolCallId.length > 0 ? "full" : "reduced";
+    const disposition = dispositionFor(input.decision, input.disposition);
     const record: PendingReceiptRecord = {
       receiptId: `rcpt-${++this.seq}`,
       toolCallId: input.toolCallId && input.toolCallId.length > 0 ? input.toolCallId : null,
       correlationConfidence,
       actionDigest: computeActionDigest(input),
       classification: input.classification,
-      disposition: dispositionFor(input.decision),
+      disposition,
       decision: input.decision,
       agentId: input.agentId,
       runId: input.runId,
@@ -197,11 +206,17 @@ export class ReceiptStore {
     }
 
     if (input.decision === "block") {
-      record.authorization = "policy-block";
-      record.outcome = "blocked";
+      record.authorization =
+        input.authorization ??
+        (disposition === "abstain" ? "abstain" : "policy-block");
+      record.outcome = disposition === "abstain" ? "abstained" : "blocked";
       record.finalizedAt = input.nowIso;
       this.finalizedByKey.set(key, record);
       return { record, finalized: true };
+    }
+
+    if (input.authorization) {
+      record.authorization = input.authorization;
     }
 
     this.evictOldestIfNeeded();

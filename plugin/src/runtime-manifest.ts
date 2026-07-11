@@ -87,8 +87,12 @@ export function computeEffectiveConfigHash(config: FppPluginConfig): string {
       receiptMaxPending: config.receiptMaxPending,
       receiptPendingTtlMs: config.receiptPendingTtlMs,
       receiptSigningEnabled: config.receiptSigningEnabled,
+      dispositionMode: config.dispositionMode,
+      standingAllowOn: [...config.standingAllowOn].sort(),
+      mandateDefaultMaxActions: config.mandateDefaultMaxActions,
+      stagedUndoWindowMs: config.stagedUndoWindowMs,
       // intentionally omit: auditLogPath, receiptLogPath, identityKeyPath,
-      // strictModeStatePath, constitutionHash (bound separately)
+      // mandateStorePath, strictModeStatePath, constitutionHash (bound separately)
     },
   });
 }

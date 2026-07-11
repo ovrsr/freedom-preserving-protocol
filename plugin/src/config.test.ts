@@ -107,7 +107,75 @@ describe("mergeConfig", () => {
     });
     assert.equal(config.auditLogPath, "/custom/audit.jsonl");
     assert.equal(config.approvalTimeoutMs, 30_000);
-    assert.equal(diagnostics.length, 0);
+    // Existing configs without dispositionMode get fail-safe operator-present + migration info.
+    assert.equal(config.dispositionMode, "operator-present");
+    assert.ok(
+      diagnostics.some((d) => d.code === "DISPOSITION_MODE_MIGRATION"),
+      `expected DISPOSITION_MODE_MIGRATION, got ${JSON.stringify(diagnostics)}`,
+    );
+  });
+
+  it("defaults empty/undefined installs to unattended dispositionMode", () => {
+    assert.equal(mergeConfig(undefined).dispositionMode, "unattended");
+    assert.equal(mergeConfig({}).dispositionMode, "unattended");
+    assert.equal(DEFAULT_CONFIG.dispositionMode, "unattended");
+  });
+
+  it("honors explicit dispositionMode", () => {
+    assert.equal(
+      mergeConfig({ dispositionMode: "operator-present" }).dispositionMode,
+      "operator-present",
+    );
+    assert.equal(
+      mergeConfig({ dispositionMode: "unattended" }).dispositionMode,
+      "unattended",
+    );
+  });
+
+  it("defaults standingAllowOn empty and mandate store path", () => {
+    const cfg = mergeConfig({});
+    assert.deepEqual(cfg.standingAllowOn, []);
+    assert.equal(
+      cfg.mandateStorePath,
+      ".openclaw/workspace/fpp-mandates.json",
+    );
+    assert.equal(cfg.mandateDefaultMaxActions, 10);
+    assert.equal(cfg.stagedUndoWindowMs, 60_000);
+  });
+
+  it("rejects standingAllowOn that covers hard-floor classes without acknowledgement", () => {
+    const { config, diagnostics } = mergeConfigWithDiagnostics({
+      dispositionMode: "unattended",
+      standingAllowOn: ["fs.delete.protected", "pkg.install"],
+    });
+    assert.ok(
+      !config.standingAllowOn.includes("fs.delete.protected"),
+      "hard-floor class must not remain on standingAllowOn without ack",
+    );
+    assert.ok(config.standingAllowOn.includes("pkg.install"));
+    assert.ok(
+      diagnostics.some(
+        (d) =>
+          d.code === "DANGEROUS_STANDING_ALLOW_HARD_FLOOR" &&
+          d.severity === "error",
+      ),
+    );
+  });
+
+  it("allows standingAllowOn hard-floor coverage with acknowledgement", () => {
+    const { config, diagnostics } = mergeConfigWithDiagnostics({
+      dispositionMode: "unattended",
+      standingAllowOn: ["fs.delete.protected"],
+      acknowledgeDangerousOverrides: true,
+    });
+    assert.deepEqual(config.standingAllowOn, ["fs.delete.protected"]);
+    assert.ok(
+      diagnostics.some(
+        (d) =>
+          d.code === "DANGEROUS_STANDING_ALLOW_HARD_FLOOR" &&
+          d.severity === "warn",
+      ),
+    );
   });
 });
 

@@ -159,6 +159,8 @@ The dispatcher plugin's risk classifier ships with conservative defaults. If you
 
 Restart the gateway for changes to take effect. Be wary of tuning so aggressively that the framework no longer protects you — every removal from `approvalOn` is a deliberate Law 1 trade-off.
 
+For **headless / unattended** agents, set `dispositionMode: "unattended"` (new-install default). Uncertainty then **abstains** instead of opening `requireApproval`. Cover routine classes with `standingAllowOn` or signed mandates at `mandateStorePath` — do not put hard-floor (`blockOn`) classes on the standing allowlist without `acknowledgeDangerousOverrides: true`.
+
 ## 11. "Plugin approval required (gateway unavailable)" on every gated tool call
 
 **Symptom:** Agent tool calls that require approval (e.g., `npm install`, `curl -d`, `openclaw plugins install`) fail with:
