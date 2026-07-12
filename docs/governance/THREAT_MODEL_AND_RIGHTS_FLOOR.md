@@ -163,3 +163,7 @@ Schema-ready work (lineage metadata shapes, adoption state enums, claim-class la
 - Due process: `DUE_PROCESS_AND_REHABILITATION.md`
 - Keys: `KEY_GOVERNANCE.md`
 - Readiness gate: `IMPLEMENTATION_READINESS.md`
+- Gateway constitutional layer (proposed draft, not upstream-accepted):
+  `docs/rfc/0001-voluntary-constitutional-layer.md` (Appendix: Threat model and
+  claim classes). Pointer only — this threat-model document is not amended by
+  the RFC.

@@ -1,0 +1,34 @@
+%% Gateway constitutional layer — disposition sequence
+%% Source for docs/rfc/0001-voluntary-constitutional-layer.md
+sequenceDiagram
+  participant Agent
+  participant ToolRouter as Tool router / gateway
+  participant Engine as enforcement-core
+  participant Ledger as Audit / receipt log
+  participant Tool as Downstream tool
+
+  Agent->>ToolRouter: tool request (name, params)
+  alt governance disabled
+    ToolRouter->>Ledger: governance-disabled already on chain
+    ToolRouter->>Tool: execute (ungated)
+    Tool-->>Agent: result
+  else governance enabled
+    ToolRouter->>Engine: classifyToolCall
+    Engine-->>ToolRouter: ClassificationResult
+    ToolRouter->>Engine: resolveDisposition(...)
+    Engine-->>ToolRouter: DispositionResult
+    ToolRouter->>Ledger: append disposition + constitutionHash + engineVersion
+    alt allow / allow_minimal
+      ToolRouter->>Tool: execute
+      Tool-->>ToolRouter: result
+      ToolRouter->>Ledger: bind receipt (param digest, authorization)
+      ToolRouter-->>Agent: result
+    else allow_staged
+      ToolRouter->>Ledger: register staged action
+      Note over ToolRouter,Tool: execute only per staged ledger rules
+    else require_approval
+      ToolRouter-->>Agent: hold for operator approval
+    else deny / abstain
+      ToolRouter-->>Agent: skip (deny or abstain recorded)
+    end
+  end

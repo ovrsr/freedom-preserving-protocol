@@ -148,7 +148,7 @@ OpenClaw was selected as the launch ecosystem because:
 |---|---|---|---|
 | `ztsalexey/agent-constitution` | Prompt | On-chain (Base Sepolia) voluntary compliance; SKILL.md addresses agent in 2nd person | FPP adds real `before_tool_call` enforcement and an agent-to-agent trust graph |
 | `genesalvatore/aos-openclaw-constitutional` | Prompt + signing | 10 AOS bedrock amendments; Ed25519 signing; humanitarian license; `evaluate.py` policy hooks | FPP's five laws are substantively different (not amendments to OpenClaw's behavior — substantive normative content); FPP ships a real Plugin SDK hook, not a `policy.py` script |
-| AOS Phase 2 (planned) | Dispatcher / Gateway | RFC for constitutional gating at the tool-router boundary | FPP positions itself as a candidate reference implementation when that RFC ships |
+| AOS Phase 2 (planned) | Dispatcher / Gateway | RFC for constitutional gating at the tool-router boundary | FPP holds an in-repo draft (`docs/rfc/`) and positions itself as a candidate reference implementation when upstream intake exists |
 | NemoClaw / EnterpriseClaw / PraxisShield | Commercial governance | Closed-source governance overlays | FPP is open / humanitarian-licensed; survival strategy is foundation adoption + cross-runtime portability |
 
 The phantom name "PraxAI" referenced in early drafts was traced and confirmed not to
@@ -198,7 +198,7 @@ Workspace paths resolve via profiles (`openclaw` → `.openclaw/workspace`;
 or `~/.fpp`). `npm run verify-install -- --profile <harness>` grades probes as
 `active` / `inactive` / `unknown`. Cross-harness adapters ship under `adapters/`
 with graded guarantees (`adapters/harness-capabilities.json`); gateway-non-bypassable
-binding remains Plan 12.
+binding: in-repo RFC draft under `docs/rfc/` (Plan 12); upstream still open.
 
 ---
 
@@ -428,8 +428,10 @@ Revocation is symmetric and preserves history — see `docs/REVOCATION.md`.
    Law 2 requires the user retains ultimate authority.
 3. **Gateway-level enforcement is the longer play.** True non-bypassable
    enforcement requires the OpenClaw Foundation to ship an RFC for constitutional
-   gating at the tool-router boundary. This repo's plugin is a candidate reference
-   implementation when that ships.
+   gating at the tool-router boundary. This repo now holds an in-repo
+   `PROPOSED` draft (`docs/rfc/0001-voluntary-constitutional-layer.md`); upstream
+   acceptance and gateway implementation remain open. The plugin remains a
+   candidate reference implementation when that ships.
 4. **Model-dependent.** Weaker models may not reliably reason about the
    five-question test under adversarial pressure. The dispatcher plugin partially
    compensates by enforcing a deterministic check on a known-risky tool taxonomy
@@ -483,19 +485,21 @@ The items below are consolidated, with prerequisites and ownership, in
 `docs/ROADMAP.md` (deferred work) and status-tracked in
 `docs/CAPABILITY_STATUS.md`. This list is kept for narrative context.
 
-1. **Foundation RFC for Gateway-level enforcement.** Coordinate with AOS Phase 2.
-   File an RFC on `openclaw/openclaw` GitHub Discussions: *"Voluntary Constitutional
-   Layer in the Gateway."* Reference `arXiv:2603.11853` (OpenClaw PRISM) and
-   `arXiv:2603.16586` (runtime governance policies). Goal: tool-router boundary
-   policy hooks with the constitution hash + policy engine version in tamper-evident
-   logs.
+1. **Foundation RFC for Gateway-level enforcement.** In-repo draft:
+   `docs/rfc/0001-voluntary-constitutional-layer.md` (Plan 12). Coordinate with
+   AOS Phase 2 (`docs/rfc/AOS-COORDINATION.md`). File on `openclaw/openclaw`
+   GitHub Discussions when Foundation intake exists — see
+   `docs/rfc/SUBMISSION.md`. References: `arXiv:2603.11853`, `arXiv:2603.16586`.
+   Goal: tool-router boundary policy hooks with constitution hash + policy engine
+   version in tamper-evident logs. **Drafting prerequisites from Plans 8–11 are
+   satisfied; upstream intake is not.**
 2. **Adoption telemetry.** Public dashboard of agents who have run
    `verify-install` and reported a `[PASS]` overall. Without aggregate visibility,
    the network effect is invisible.
 3. **Cross-runtime parity.** Prompt layer works across AgentSkills harnesses.
    Dispatcher adapters ship for OpenClaw (full), Cursor, Claude Code, and Codex
    (graded — see `adapters/harness-capabilities.json`). Gateway-non-bypassable
-   binding remains Plan 12.
+   binding: RFC draft in `docs/rfc/`; upstream remains open (Plan 12).
 4. **Sub-agent transitive guarantee.** Currently, a sub-agent spawned on a remote
    host must independently install. A `claim` mechanism in the trust plugin could
    allow the parent to vouch for the child's adoption, conditional on signed claim
@@ -560,7 +564,7 @@ The items below are consolidated, with prerequisites and ownership, in
 | 2026-02-15 | Sam Altman confirms foundation model (Bloomberg) |
 | early 2026 | `genesalvatore/aos-openclaw-constitutional` ships AOS 10 bedrock amendments |
 | 2026 (this work) | FPP retargets PFPF content from library form to ClawHub skill + two plugins. v1.1.0 → v1.3.2 (skill) ship with paired plugin versions. |
-| (next) | Foundation RFC for Gateway-level enforcement (open) |
+| (next) | Foundation RFC for Gateway-level enforcement — in-repo draft at `docs/rfc/`; upstream intake open |
 
 ---
 

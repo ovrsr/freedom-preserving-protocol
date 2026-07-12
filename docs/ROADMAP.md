@@ -21,16 +21,25 @@ see `docs/governance/README.md`. Ratification/Sybil mechanism selection remains
 enforcement cannot be bypassed by disabling a plugin. Working title:
 *"Voluntary Constitutional Layer in the Gateway."*
 
-**Why deferred:** Requires the OpenClaw Foundation's RFC process, which was
-still forming when this project shipped. Coordinate with AOS Phase 2 rather
-than competing with it.
+**In-repo draft:** `docs/rfc/0001-voluntary-constitutional-layer.md`
+(submission package: `docs/rfc/SUBMISSION.md`). Status of the **draft** is
+`PROPOSED` in `docs/CAPABILITY_STATUS.md`. **Upstream implementation remains
+`DEFERRED`** until Foundation intake and a serious Discussion thread exist —
+do not treat the draft as shipped gateway enforcement.
+
+**Why deferred (implementation):** Requires the OpenClaw Foundation's RFC
+process, which was still forming when this project shipped. Coordinate with
+AOS Phase 2 rather than competing with it (`docs/rfc/AOS-COORDINATION.md`).
 
 **Prerequisites before an implementation plan:**
-- OpenClaw Foundation publishes an RFC intake process.
+- OpenClaw Foundation publishes an RFC intake process. *(still open)*
 - A draft RFC exists referencing `arXiv:2603.11853` (OpenClaw PRISM) and
-  `arXiv:2603.16586` (runtime governance policies).
+  `arXiv:2603.16586` (runtime governance policies). *(satisfied in-repo by
+  Plan 12 draft)*
 - Agreement on what the gateway logs: constitution hash + policy engine version
-  in tamper-evident records.
+  in tamper-evident records. *(proposed in draft; upstream agreement pending)*
+- Plans 8–11 disposition model, enforcement-core, and harness adapters
+  available to inform the RFC. *(satisfied for drafting)*
 
 **Evidence needed:** an accepted or seriously-discussed RFC thread on
 `openclaw/openclaw` GitHub Discussions.

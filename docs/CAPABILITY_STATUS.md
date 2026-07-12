@@ -83,7 +83,7 @@ specified in `docs/governance/EVIDENCE_SEMANTICS.md`. That document is
 | Steward overrides | `SHIPPED` | CLI `steward-override` (scoped, expiring, audited); unaudited `seed` deprecated. |
 | Constitutional amendments, lineage, ratification | `PROPOSED` | `docs/dev-review.md` §10. The seed constitution keeps its immutable hash `71bf60a…`; descendants would require new hashes and explicit lineage metadata. No amendment mechanism is implemented. |
 | Signed release manifests / build provenance | `PARTIAL` | `scripts/release-manifest.ts`, `scripts/release-manifest-verify.ts`, `npm run release:verify`. Release signing domain separated from constitution/agent keys. Gap: publish automation still optional until offline custody prerequisites in `KEY_GOVERNANCE.md` are met. |
-| Gateway-level (tool-router) enforcement RFC | `DEFERRED` | `docs/ROADMAP.md`. Requires OpenClaw Foundation RFC process. |
+| Gateway-level (tool-router) enforcement RFC | `PROPOSED` (draft) / `DEFERRED` (upstream) | In-repo draft: `docs/rfc/0001-voluntary-constitutional-layer.md` + `docs/rfc/SUBMISSION.md`. Draft informed by Plans 8–11. Upstream merge / Foundation intake still `DEFERRED` per `docs/ROADMAP.md` §1 — not `SHIPPED`. |
 | Adoption telemetry dashboard | `DEFERRED` | `docs/ROADMAP.md`. |
 | Remote sub-agent transitive guarantees | `DEFERRED` | `docs/ROADMAP.md`. Today each host installs independently; no transitive guarantee. |
 | Zero-knowledge compliance proofs | `DEFERRED` | `docs/ROADMAP.md`. Current selective disclosure is Merkle-proof based. |

@@ -1,6 +1,6 @@
 # Gateway Constitutional Layer RFC
 
-**Status:** PENDING
+**Status:** COMPLETE
 **Created:** 2026-07-10
 **Series:** Plan 12 of 12 (autonomy + harness-agnostic program)
 **Depends on:** Plans 8–11 (disposition model + cores + adapters inform the RFC)
@@ -30,16 +30,16 @@ Graduate roadmap item “Gateway-level enforcement RFC” from `DEFERRED` docume
 
 ## Progress Tracking
 
-- [ ] Task 1: RFC outline and normative requirements (disposition + Law 2)
-- [ ] Task 2: Reference architecture (enforcement-core at tool-router)
-- [ ] Task 3: Logging, disablement audit, and receipt binding requirements
-- [ ] Task 4: Foundation submission package and AOS coordination note
-- [ ] Task 5: ROADMAP / CAPABILITY_STATUS / MASTER_CONTEXT updates
-- [ ] Task 6: Optional local reference stub (feature-flagged, non-default)
-- [ ] Task 7: Public review checklist and verification of citations
-- [ ] Task 8: Explicit non-goals and threat model appendix
+- [x] Task 1: RFC outline and normative requirements (disposition + Law 2)
+- [x] Task 2: Reference architecture (enforcement-core at tool-router)
+- [x] Task 3: Logging, disablement audit, and receipt binding requirements
+- [x] Task 4: Foundation submission package and AOS coordination note
+- [x] Task 5: ROADMAP / CAPABILITY_STATUS / MASTER_CONTEXT updates
+- [x] Task 6: Optional local reference stub (feature-flagged, non-default)
+- [x] Task 7: Public review checklist and verification of citations
+- [x] Task 8: Explicit non-goals and threat model appendix
 
-**Total Tasks:** 8 | **Completed:** 0 | **Remaining:** 8
+**Total Tasks:** 8 | **Completed:** 8 | **Remaining:** 0
 
 ## Implementation Tasks
 
