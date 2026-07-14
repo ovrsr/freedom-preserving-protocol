@@ -40,6 +40,9 @@ PRAXISCODE_LEARNINGS.md
 operator_scratchpad.md
 .operator_scratchpad/
 
+# Local maintainer build/deploy runbook (may contain machine-specific notes)
+docs/runbooks/dev-build-and-deploy.md
+
 # Praxiscode-managed GitHub content (workflows are tracked)
 .github/*
 !.github/workflows/

@@ -46,14 +46,15 @@ export function validateCapsuleWithAdoptionDisclosure(
     "adoptionDisclosure" in input &&
     (input as { adoptionDisclosure?: unknown }).adoptionDisclosure
   ) {
-    const summary = (input as { adoptionDisclosure: CapsuleAdoptionDisclosureSummary })
-      .adoptionDisclosure;
+    const record = input as {
+      agentId?: unknown;
+      adoptionDisclosure: CapsuleAdoptionDisclosureSummary;
+    };
+    const summary = record.adoptionDisclosure;
+    const agentId = typeof record.agentId === "string" ? record.agentId : "unknown";
     const parsed = parseAdoptionDisclosure({
       schemaVersion: 1,
-      agentId:
-        typeof (input as { agentId?: string }).agentId === "string"
-          ? (input as { agentId: string }).agentId
-          : "unknown",
+      agentId,
       constitutionHash: summary.constitutionHash,
       harnessId: summary.harnessId,
       localState: summary.localState,

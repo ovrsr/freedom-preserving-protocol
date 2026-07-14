@@ -24,6 +24,45 @@ bold()   { printf '\033[1m%s\033[0m\n' "$*"; }
 
 die() { red "ERROR: $*" >&2; exit 1; }
 
+# On Windows, clawhub's internal `npm pack` spawn often fails with
+# "spawnSync npm ENOENT". Pre-pack with npm ourselves and publish the tarball.
+needs_tarball_publish() {
+  [[ "${OS:-}" == "Windows_NT" ]] || [[ "$(uname -s 2>/dev/null || true)" == MINGW* ]] \
+    || [[ "$(uname -s 2>/dev/null || true)" == MSYS* ]] \
+    || [[ "$(uname -s 2>/dev/null || true)" == CYGWIN* ]]
+}
+
+# Publish a code-plugin: dir on Unix, npm-pack tarball on Windows.
+clawhub_package_publish() {
+  local pkg_dir="$1" name="$2" ver="$3" sha="$4" changelog="$5"
+  local abs_dir="$REPO_ROOT/$pkg_dir"
+
+  if needs_tarball_publish; then
+    yellow "  [windows] packing $pkg_dir via npm pack (clawhub spawnSync npm workaround)"
+    local tgz
+    tgz="$(cd "$abs_dir" && npm pack --silent | tr -d '\r')"
+    [[ -n "$tgz" && -f "$abs_dir/$tgz" ]] || die "npm pack produced no tarball in $pkg_dir"
+    (cd "$abs_dir" && clawhub package publish "$tgz" \
+      --family code-plugin \
+      --name "$name" \
+      --version "$ver" \
+      --source-repo "$SOURCE_REPO" \
+      --source-commit "$sha" \
+      --changelog "$changelog" \
+      --owner "$OWNER")
+    rm -f "$abs_dir/$tgz"
+  else
+    (cd "$REPO_ROOT" && clawhub package publish "$pkg_dir/" \
+      --family code-plugin \
+      --name "$name" \
+      --version "$ver" \
+      --source-repo "$SOURCE_REPO" \
+      --source-commit "$sha" \
+      --changelog "$changelog" \
+      --owner "$OWNER")
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 ClawHub publish script for Freedom Preserving Protocol
@@ -292,14 +331,7 @@ publish_plugin() {
     return
   fi
 
-  (cd "$REPO_ROOT" && clawhub package publish "$PLUGIN_DIR/" \
-    --family code-plugin \
-    --name "$PLUGIN_NAME" \
-    --version "$ver" \
-    --source-repo "$SOURCE_REPO" \
-    --source-commit "$sha" \
-    --changelog "$changelog" \
-    --owner "$OWNER")
+  clawhub_package_publish "$PLUGIN_DIR" "$PLUGIN_NAME" "$ver" "$sha" "$changelog"
   green "  ✓ Plugin $PLUGIN_NAME@$ver published"
 }
 
@@ -324,14 +356,7 @@ publish_trust() {
     return
   fi
 
-  (cd "$REPO_ROOT" && clawhub package publish "$TRUST_DIR/" \
-    --family code-plugin \
-    --name "$TRUST_NAME" \
-    --version "$ver" \
-    --source-repo "$SOURCE_REPO" \
-    --source-commit "$sha" \
-    --changelog "$changelog" \
-    --owner "$OWNER")
+  clawhub_package_publish "$TRUST_DIR" "$TRUST_NAME" "$ver" "$sha" "$changelog"
   green "  ✓ Plugin $TRUST_NAME@$ver published"
 }
 
