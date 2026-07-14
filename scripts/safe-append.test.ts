@@ -6,7 +6,15 @@
  */
 import { describe, it, after, before } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  mkdirSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -17,6 +25,8 @@ import {
   backupName,
   ADOPTION_MARKER,
   computeConstitutionHash,
+  adoptTargets,
+  resolveEnforcementGradeForProfile,
 } from "./safe-append.ts";
 
 describe("safe-append", () => {
@@ -126,6 +136,91 @@ describe("safe-append", () => {
       assert.match(hash, /^[0-9a-f]{64}$/);
     } finally {
       rmSync(fakeRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("adopt with --profile cursor writes reviewed then accepted with native-hook grade", () => {
+    const root = mkdtempSync(join(tmpdir(), "fpp-adopt-grade-"));
+    try {
+      writeFileSync(join(root, "constitution.json"), '{"laws":[]}');
+      mkdirSync(join(root, "adoption"), { recursive: true });
+      writeFileSync(
+        join(root, "adoption", "SOUL-BLOCK.md"),
+        `## ${ADOPTION_MARKER}\nhash=[CONSTITUTION_HASH]\n`,
+      );
+      const soul = join(root, "SOUL.md");
+      const prev = process.env.FPP_WORKSPACE;
+      process.env.FPP_WORKSPACE = join(root, "ws");
+      try {
+        assert.equal(resolveEnforcementGradeForProfile("cursor"), "native-hook");
+        const result = adoptTargets({
+          soul,
+          rootDir: root,
+          profile: "cursor",
+        });
+        assert.equal(result.adoptionState, "accepted");
+        assert.equal(result.enforcementGrade, "native-hook");
+        assert.equal(result.peerAdvertisableHint, false);
+        const logPath = join(root, "ws", "fpp-adoption-state.jsonl");
+        assert.ok(existsSync(logPath));
+        const lines = readFileSync(logPath, "utf-8")
+          .trim()
+          .split("\n")
+          .map((l) => JSON.parse(l));
+        assert.equal(lines.length, 2);
+        assert.equal(lines[0].record.state, "reviewed");
+        assert.equal(lines[1].record.state, "accepted");
+        assert.equal(lines[1].record.schemaVersion, 2);
+        assert.equal(lines[1].record.harnessId, "cursor");
+        assert.equal(lines[1].record.enforcementGrade, "native-hook");
+      } finally {
+        if (prev === undefined) delete process.env.FPP_WORKSPACE;
+        else process.env.FPP_WORKSPACE = prev;
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("prompt-only profile sets runtime_degraded and never hints peer-advertisable", () => {
+    const root = mkdtempSync(join(tmpdir(), "fpp-adopt-prompt-"));
+    try {
+      writeFileSync(join(root, "constitution.json"), '{"laws":[]}');
+      mkdirSync(join(root, "adoption"), { recursive: true });
+      writeFileSync(
+        join(root, "adoption", "MEMORY-ENTRY.md"),
+        `## ${ADOPTION_MARKER}\nhash=[CONSTITUTION_HASH]\n`,
+      );
+      const memory = join(root, "MEMORY.md");
+      const prev = process.env.FPP_WORKSPACE;
+      process.env.FPP_WORKSPACE = join(root, "ws");
+      try {
+        assert.equal(
+          resolveEnforcementGradeForProfile("generic"),
+          "prompt-only",
+        );
+        const result = adoptTargets({
+          memory,
+          rootDir: root,
+          profile: "generic",
+        });
+        assert.equal(result.enforcementGrade, "prompt-only");
+        assert.equal(result.peerAdvertisableHint, false);
+        const logPath = join(root, "ws", "fpp-adoption-state.jsonl");
+        const last = JSON.parse(
+          readFileSync(logPath, "utf-8").trim().split("\n").at(-1)!,
+        );
+        assert.equal(last.record.enforcementGrade, "prompt-only");
+        assert.ok(last.record.overlays.includes("runtime_degraded"));
+        // Must not claim active peer advertisability (negation in notes is OK).
+        assert.equal(result.peerAdvertisableHint, false);
+        assert.match(String(last.record.notes ?? ""), /not peer-advertisable/i);
+      } finally {
+        if (prev === undefined) delete process.env.FPP_WORKSPACE;
+        else process.env.FPP_WORKSPACE = prev;
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

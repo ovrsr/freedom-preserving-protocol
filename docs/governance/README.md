@@ -30,6 +30,7 @@ Label reminder: statements inside are marked `NORMATIVE (seed)`, `PROVISIONAL`, 
 | [examples/lineage-derived.json](./examples/lineage-derived.json) | Valid derived lineage |
 | [examples/lineage-invalid.json](./examples/lineage-invalid.json) | Invalid seed impersonation |
 | [examples/adoption-transitions.json](./examples/adoption-transitions.json) | Adoption transition table |
+| [examples/graded-adoption-claims.json](./examples/graded-adoption-claims.json) | Dual-path graded acceptance ceilings |
 | [examples/amendment-proposal.json](./examples/amendment-proposal.json) | Amendment proposal shape |
 | [examples/amendment-decision.json](./examples/amendment-decision.json) | Decision with unresolved ratification |
 | [examples/authorization-contexts.json](./examples/authorization-contexts.json) | Distinct authorization classes |
@@ -41,3 +42,4 @@ Label reminder: statements inside are marked `NORMATIVE (seed)`, `PROVISIONAL`, 
 
 - **Plan 6** (`docs/plans/2026-07-10-6-conformance-receipts-and-handshake-capsules.md`) — may implement schema-ready adoption states, evidence/claim labels, and receipt semantics; must not implement ratification tallies.
 - **Plan 7** (`docs/plans/2026-07-10-7-contextual-trust-and-due-process.md`) — may implement due-process records, contextual evidence quality, and key-lifecycle events; must respect anti-washing and blocked ratification.
+- **Plan 13** (`docs/plans/2026-07-10-13-graded-harness-adoption-claims.md`) — graded harness adoption overlays / peer advertisability ceilings; depends on Plans 8 + 11.

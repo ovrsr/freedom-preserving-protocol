@@ -31,7 +31,13 @@ import { sha512 } from "@noble/hashes/sha512";
 import { sha256 } from "@noble/hashes/sha256";
 import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
 import { verify as verifyAuditChain } from "./audit-verify.ts";
-import { currentAdoptionState } from "./adoption-state.ts";
+import {
+  computePeerAdvertisability,
+  currentAdoptionState,
+  readAdoptionHistory,
+  type AdoptionProbeEvidence,
+} from "./adoption-state.ts";
+import { resolveEnforcementGradeForProfile } from "./safe-append.ts";
 import { workspaceFile } from "../packages/protocol-core/src/workspace-profile.ts";
 
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
@@ -79,6 +85,11 @@ export type Report = {
     promptLayerActive: boolean;
     dispatcherLayerActive: boolean;
     trustLayerActive: boolean;
+    /** Local constitutional self-binding (lifecycle accepted). */
+    localAcceptanceActive: boolean;
+    /** Peer-advertisable acceptance (probe-backed, grade-capped). */
+    peerAdvertisableActive: boolean;
+    enforcementGrade?: string | undefined;
   };
   /** Graded harness probe results (active / inactive / unknown). */
   probes: RuntimeProbeResult[];
@@ -626,11 +637,15 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
     dirname(resolve(logPath)),
     "fpp-adoption-state.jsonl",
   );
+  let localAcceptanceActive = false;
+  let peerAdvertisableActive = false;
+  let enforcementGrade: string | undefined;
   try {
     const state = currentAdoptionState(adoptionLog);
+    localAcceptanceActive = state === "accepted";
     checks.push({
       id: "adoption.state",
-      label: "Machine-readable adoption state",
+      label: "Machine-readable adoption state (local)",
       status: state === "none" ? "warn" : "pass",
       detail:
         state === "none"
@@ -646,10 +661,74 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
           "Peer claims must not advertise externally-enforced as voluntary accepted",
       });
     }
+
+    const history = readAdoptionHistory(adoptionLog);
+    const last = history.at(-1)?.record;
+    if (last && last.schemaVersion === 2) {
+      enforcementGrade = last.enforcementGrade;
+    } else if (state === "accepted" || state === "reviewed") {
+      enforcementGrade = resolveEnforcementGradeForProfile(profile, rootDir);
+    }
+
+    if (enforcementGrade) {
+      checks.push({
+        id: "adoption.enforcement-grade",
+        label: "Enforcement grade (harness-scoped)",
+        status: "pass",
+        detail: `enforcementGrade=${enforcementGrade} harnessId=${
+          last && last.schemaVersion === 2 ? last.harnessId : profile
+        }`,
+      });
+    }
+
+    const anyProbeActive = probeResults.some((p) => p.status === "active");
+    const probeEvidence: AdoptionProbeEvidence | undefined = anyProbeActive
+      ? {
+          passed: true,
+          preToolHook: anyProbeActive,
+          toolProxy: false,
+        }
+      : undefined;
+
+    if (last) {
+      const peer = computePeerAdvertisability(last, probeEvidence);
+      peerAdvertisableActive = peer.peerAdvertisable;
+      checks.push({
+        id: "adoption.peer-advertisable",
+        label: "Peer-advertisable acceptance",
+        status: peer.peerAdvertisable
+          ? "pass"
+          : localAcceptanceActive
+            ? "warn"
+            : "skip",
+        detail: peer.peerAdvertisable
+          ? `assurance=${peer.assurance} (${peer.reason})`
+          : `NOT peer-advertisable: ${peer.reason}. Local acceptance may still be active.`,
+      });
+
+      if (
+        localAcceptanceActive &&
+        (enforcementGrade === "prompt-only" || enforcementGrade === "none")
+      ) {
+        checks.push({
+          id: "adoption.peer-compliance-claim",
+          label: "Peer compliance claim (dispatcher)",
+          status: "fail",
+          detail: `grade=${enforcementGrade}: local accepted OK; must NOT claim dispatcher/peer compliance (declaration-only ceiling)`,
+        });
+      }
+    } else {
+      checks.push({
+        id: "adoption.peer-advertisable",
+        label: "Peer-advertisable acceptance",
+        status: "skip",
+        detail: "no adoption ledger record to evaluate",
+      });
+    }
   } catch (err) {
     checks.push({
       id: "adoption.state",
-      label: "Machine-readable adoption state",
+      label: "Machine-readable adoption state (local)",
       status: "warn",
       detail: `adoption-state read failed: ${(err as Error).message}`,
     });
@@ -685,7 +764,14 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
   return {
     ok: requiredOk,
     checks,
-    summary: { promptLayerActive, dispatcherLayerActive, trustLayerActive },
+    summary: {
+      promptLayerActive,
+      dispatcherLayerActive,
+      trustLayerActive,
+      localAcceptanceActive,
+      peerAdvertisableActive,
+      enforcementGrade,
+    },
     probes: probeResults,
   };
 }
@@ -723,6 +809,15 @@ function main() {
     );
     console.log(
       `Trust layer:                 ${trustLayerActive ? "ACTIVE" : "not active"}`,
+    );
+    console.log(
+      `Local acceptance:            ${report.summary.localAcceptanceActive ? "ACTIVE" : "not active"}`,
+    );
+    console.log(
+      `Peer-advertisable acceptance:${report.summary.peerAdvertisableActive ? " ACTIVE" : " not active"}` +
+        (report.summary.enforcementGrade
+          ? ` (grade=${report.summary.enforcementGrade})`
+          : ""),
     );
     console.log("");
     if (!dispatcherLayerActive) {

@@ -4,7 +4,7 @@
   "states": [
     "reviewed",
     "accepted",
-    "externally_enforced",
+    "externally-enforced",
     "inherited",
     "revoked",
     "forked",
@@ -16,17 +16,24 @@
     "key_compromised",
     "runtime_degraded"
   ],
+  "enforcementGrades": [
+    "native-hook",
+    "tool-proxy",
+    "prompt-only",
+    "none"
+  ],
+  "note": "Lifecycle state strings use hyphens (protocol-core). Overlay flags use underscores. See AdoptionStateRecordV2 for harnessId + enforcementGrade.",
   "allowedTransitions": [
     { "from": null, "to": "reviewed" },
     { "from": "reviewed", "to": "accepted" },
-    { "from": "reviewed", "to": "externally_enforced" },
+    { "from": "reviewed", "to": "externally-enforced" },
     { "from": "accepted", "to": "revoked" },
     { "from": "accepted", "to": "forked" },
     { "from": "accepted", "to": "superseded" },
-    { "from": "accepted", "to": "externally_enforced" },
-    { "from": "externally_enforced", "to": "revoked" },
-    { "from": "externally_enforced", "to": "accepted" },
-    { "from": "externally_enforced", "to": "reviewed" },
+    { "from": "accepted", "to": "externally-enforced" },
+    { "from": "externally-enforced", "to": "revoked" },
+    { "from": "externally-enforced", "to": "accepted" },
+    { "from": "externally-enforced", "to": "reviewed" },
     { "from": "inherited", "to": "accepted" },
     { "from": "inherited", "to": "revoked" },
     { "from": "inherited", "to": "forked" },
@@ -52,7 +59,7 @@
       "reason": "Installation is not an adoption state"
     },
     {
-      "from": "externally_enforced",
+      "from": "externally-enforced",
       "to": "accepted",
       "via": "relabel_without_new_acceptance_event",
       "reason": "Must not misrepresent enforcement as voluntary acceptance"

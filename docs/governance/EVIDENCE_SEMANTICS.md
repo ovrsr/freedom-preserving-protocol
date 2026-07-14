@@ -74,3 +74,27 @@ Recommended labels for verifiers:
 ## 6. Examples
 
 `examples/evidence-claims.json` — per-class max conclusions; must not be read as a global trust score.
+
+---
+
+## 7. Graded adoption advertisements (Plan 13)
+
+Adoption disclosures carry an **assurance class** distinct from lifecycle state `accepted`:
+
+| Assurance | Max justified conclusion | Must not conclude |
+|-----------|--------------------------|-------------------|
+| `declaration-only` | Agent attested local self-binding (and grade/overlays if present) | Boundary coverage; completeness; peer-visible dispatcher compliance |
+| `peer-advertisable` | Probe-backed grade within its ceiling (see below) | Behavioral compliance; gateway non-bypassability (Plan 12) |
+
+**Ceiling by `enforcementGrade`:**
+
+| Grade | Peer assurance ceiling | Completeness claim class |
+|-------|------------------------|--------------------------|
+| `native-hook` | `peer-advertisable` when probe passes | Still requires interception-boundary evidence for HIGH completeness |
+| `tool-proxy` | `peer-advertisable` only with `partial` / `runtime_degraded` disclosure | Cap at partial / degraded; never full completeness from proxy alone |
+| `prompt-only` | **`declaration-only` only** | MUST NOT elevate; uncertainty stays `self_attested` / `insufficient` for completeness |
+| `none` | Do not advertise active `accepted` compliance | N/A — stay reviewed/declined for peers |
+
+Prompt-only + local `accepted` requires overlay `runtime_degraded`. Verifiers that upgrade `declaration-only` or `prompt-only` to `boundary_attested` / HIGH completeness **fail closed**.
+
+See `ADOPTION_LIFECYCLE.md` §6 and `examples/graded-adoption-claims.json`. Cross-link Plan 11: `adapters/harness-capabilities.json`.

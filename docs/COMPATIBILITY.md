@@ -40,7 +40,8 @@ The skill is plain markdown with YAML frontmatter conforming to the AgentSkills 
 
 On Claude Code, Cursor, and Codex, install the matching adapter under `adapters/` and wire the sample hooks config. Be explicit about graded guarantees:
 
-- **Works:** native PreToolUse-style hooks drive enforcement-core dispositions (including unattended abstain/mandate paths); receipts under `~/.fpp/<profile>` (or `FPP_WORKSPACE`); `npm run verify-install -- --profile <harness>`.
+- **Works:** native PreToolUse-style hooks drive enforcement-core dispositions (including unattended abstain/mandate paths); receipts under `~/.fpp/<profile>` (or `FPP_WORKSPACE`); `npm run verify-install -- --profile <harness>` reports **local acceptance** and **peer-advertisable** columns separately with `enforcementGrade`.
+- **Graded adoption ceilings:** `native-hook` may be peer-advertisable when probe passes; `tool-proxy` only with partial/`runtime_degraded` disclosure; `prompt-only` allows local `accepted` but peer ads stay `declaration-only`; `none` must not claim peer-visible accepted compliance.
 - **Does not claim:** OpenClaw plugin parity, gateway-non-bypassable binding, or complete tool coverage on Codex (shell is the reliable path).
 - **Shared fallback:** `@ovrsr/fpp-tool-proxy` for MCP/sidecar gateways when hooks are unavailable or incomplete.
 - **Consequence:** without hooks/adapter installed, FPP at the tool boundary is prompt-layer only. Unknown `--profile` values warn and do **not** false-PASS dispatcher.

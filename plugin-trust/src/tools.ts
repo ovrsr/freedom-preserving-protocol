@@ -652,6 +652,32 @@ export const CapsuleOfferParams = Type.Object({
   view: Type.Optional(
     Type.Union([Type.Literal("self"), Type.Literal("peer-summary")]),
   ),
+  advertisingAdoption: Type.Optional(Type.Boolean()),
+  adoptionDisclosure: Type.Optional(
+    Type.Object({
+      constitutionHash: Type.String({ minLength: 1 }),
+      harnessId: Type.String({ minLength: 1 }),
+      localState: Type.String({ minLength: 1 }),
+      enforcementGrade: Type.Union([
+        Type.Literal("native-hook"),
+        Type.Literal("tool-proxy"),
+        Type.Literal("prompt-only"),
+        Type.Literal("none"),
+      ]),
+      overlays: Type.Array(
+        Type.Union([
+          Type.Literal("coercion_suspected"),
+          Type.Literal("verification_failed"),
+          Type.Literal("key_compromised"),
+          Type.Literal("runtime_degraded"),
+        ]),
+      ),
+      assurance: Type.Union([
+        Type.Literal("peer-advertisable"),
+        Type.Literal("declaration-only"),
+      ]),
+    }),
+  ),
 });
 
 export function executeReceiptVerify(
@@ -727,35 +753,48 @@ export function executeCapsuleOffer(
     : undefined;
   const now = Date.now();
   const ttl = params.ttlMs ?? 300_000;
-  const capsule = buildTrustStateCapsule({
-    identity,
-    runtimeId: "openclaw-fpp-trust",
-    implementationVersion: "1.2.2",
-    evidenceRoot: root,
-    receiptRoot,
-    coverageMetrics: {
-      metricVersion: 1,
-      finalizedReceipts: deps.receiptLogPath
-        ? getReceiptRoot(deps.receiptLogPath).entryCount
-        : 0,
-      completeness: "unknown",
-    },
-    freshness: {
-      audience: params.audience,
-      challenge: params.challenge,
-      issuedAt: new Date(now).toISOString(),
-      expiresAt: new Date(now + ttl).toISOString(),
-    },
-    view: params.view ?? "peer-summary",
-  });
+  let capsule;
+  try {
+    capsule = buildTrustStateCapsule({
+      identity,
+      runtimeId: "openclaw-fpp-trust",
+      implementationVersion: "1.2.2",
+      evidenceRoot: root,
+      receiptRoot,
+      coverageMetrics: {
+        metricVersion: 1,
+        finalizedReceipts: deps.receiptLogPath
+          ? getReceiptRoot(deps.receiptLogPath).entryCount
+          : 0,
+        completeness: "unknown",
+      },
+      freshness: {
+        audience: params.audience,
+        challenge: params.challenge,
+        issuedAt: new Date(now).toISOString(),
+        expiresAt: new Date(now + ttl).toISOString(),
+      },
+      view: params.view ?? "peer-summary",
+      advertisingAdoption: params.advertisingAdoption === true,
+      adoptionDisclosure: params.adoptionDisclosure,
+    });
+  } catch (err) {
+    return failResult(
+      `capsule offer rejected: ${(err as Error).message}`,
+    );
+  }
   const validation = validateTrustStateCapsule(capsule, {
     maxLifetimeMs: ttl + 60_000,
     allowedClockSkewMs: 60_000,
     nowMs: now,
   });
+  const gradeNote = capsule.adoptionDisclosure
+    ? ` adoptionGrade=${capsule.adoptionDisclosure.enforcementGrade} assurance=${capsule.adoptionDisclosure.assurance}.`
+    : "";
   return textResult(
-    `TrustStateCapsuleV2 offered (view=${capsule.view}, evidenceLogKind=${logKind}). ` +
-      `Freshness+signature valid=${validation.valid}. Not a completeness claim.`,
+    `TrustStateCapsuleV2 offered (view=${capsule.view}, evidenceLogKind=${logKind}).` +
+      gradeNote +
+      ` Freshness+signature valid=${validation.valid}. Not a completeness claim.`,
     {
       capsule,
       validation,

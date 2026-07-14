@@ -22,8 +22,10 @@ import {
   appendMemoryRevocation,
   insertAfterMarker,
   writeMarker,
+  revokeAdoption,
   ADOPTION_MARKER,
 } from "./revoke.ts";
+import { appendAdoptionState } from "./adoption-state.ts";
 
 const FIXED_TS = "2026-07-10T12:00:00.000Z";
 const REASON = "user-requested test revocation";
@@ -182,5 +184,46 @@ describe("revoke", () => {
     const mem = readFileSync(memPath, "utf-8");
     assert.ok(soul.includes(FIXED_TS) && soul.includes(REASON));
     assert.ok(mem.includes(FIXED_TS) && mem.includes(REASON));
+  });
+
+  it("revokeAdoption annotates graded ledger and clears active peer acceptance", () => {
+    const nested = mkdtempSync(join(workdir, "revoke-grade-"));
+    const logPath = join(nested, "constitution-audit.jsonl");
+    const adoptionLog = join(nested, "fpp-adoption-state.jsonl");
+    appendAdoptionState(adoptionLog, {
+      agentId: "local-adopter",
+      state: "reviewed",
+      constitutionHash: "a".repeat(64),
+      harnessId: "cursor",
+      enforcementGrade: "native-hook",
+      overlays: [],
+    });
+    appendAdoptionState(adoptionLog, {
+      agentId: "local-adopter",
+      state: "accepted",
+      constitutionHash: "a".repeat(64),
+      harnessId: "cursor",
+      enforcementGrade: "native-hook",
+      overlays: [],
+    });
+
+    revokeAdoption({
+      log: logPath,
+      reason: REASON,
+      dryRun: false,
+    });
+
+    const history = readFileSync(adoptionLog, "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    assert.ok(history.length >= 3);
+    const last = history.at(-1)!;
+    assert.equal(last.record.state, "revoked");
+    assert.ok(
+      String(last.record.notes ?? "").includes("peer") ||
+        String(last.record.notes ?? "").includes(REASON),
+    );
+    assert.ok(history.some((e) => e.record.state === "accepted"));
   });
 });

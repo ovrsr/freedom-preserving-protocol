@@ -32,6 +32,10 @@ import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
 import { appendAdoptionState, currentAdoptionState } from "./adoption-state.ts";
 import { workspaceFile } from "../packages/protocol-core/src/workspace-profile.ts";
+import type {
+  AdoptionOverlayFlag,
+  EnforcementGrade,
+} from "@ovrsr/fpp-protocol-core";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(__dirname, "..");
@@ -69,7 +73,8 @@ function printHelp() {
 Options:
   --soul    <path>   Path to your SOUL.md (will append adoption block)
   --memory  <path>   Path to your MEMORY.md (will append adoption entry)
-  --profile <id>     Workspace profile: openclaw (default) or generic
+  --profile <id>     Workspace/harness profile: openclaw (default), generic,
+                     cursor, claude-code, codex (sets enforcementGrade on ledger)
   --dry-run          Show what would change, write nothing
   -y, --yes          Skip confirmation prompt
   -h, --help         This help
@@ -173,26 +178,95 @@ export function appendSafely(
 
 // ---- main ------------------------------------------------------------------
 
+type HarnessCapabilityEntry = {
+  harnessId?: string;
+  preToolHook?: boolean;
+  interceptionStrategy?: string;
+};
+
+/**
+ * Map a workspace/harness profile to an honest enforcement grade.
+ * Uses adapters/harness-capabilities.json when present; unknown → none;
+ * generic (prompt/skill layer) → prompt-only.
+ */
+export function resolveEnforcementGradeForProfile(
+  profile: string,
+  rootDir: string = DEFAULT_ROOT,
+): EnforcementGrade {
+  if (profile === "generic") return "prompt-only";
+
+  const capsPath = resolve(rootDir, "adapters", "harness-capabilities.json");
+  if (existsSync(capsPath)) {
+    try {
+      const caps = JSON.parse(readFileSync(capsPath, "utf-8")) as {
+        harnesses?: Record<string, HarnessCapabilityEntry>;
+      };
+      const entry = caps.harnesses?.[profile];
+      if (!entry) return "none";
+      if (entry.preToolHook === true) return "native-hook";
+      if (
+        typeof entry.interceptionStrategy === "string" &&
+        /proxy|mcp|sidecar/i.test(entry.interceptionStrategy)
+      ) {
+        return "tool-proxy";
+      }
+      return "prompt-only";
+    } catch {
+      // fall through
+    }
+  }
+
+  // Fixture stub when matrix absent: known hook harnesses → native-hook
+  if (
+    profile === "openclaw" ||
+    profile === "cursor" ||
+    profile === "claude-code" ||
+    profile === "codex"
+  ) {
+    return "native-hook";
+  }
+  return "none";
+}
+
+function overlaysForGrade(
+  grade: EnforcementGrade,
+): AdoptionOverlayFlag[] {
+  if (grade === "prompt-only" || grade === "tool-proxy") {
+    return ["runtime_degraded"];
+  }
+  return [];
+}
+
 export type AdoptOptions = {
-  soul?: string;
-  memory?: string;
-  dryRun?: boolean;
-  rootDir?: string;
-  profile?: string;
+  soul?: string | undefined;
+  memory?: string | undefined;
+  dryRun?: boolean | undefined;
+  rootDir?: string | undefined;
+  profile?: string | undefined;
 };
 
 export type AdoptResult = {
   soul?: "appended" | "skipped" | "created";
   memory?: "appended" | "skipped" | "created";
   adoptionState?: "reviewed" | "accepted" | "skipped";
+  enforcementGrade?: EnforcementGrade;
+  /** Always false at adopt time — peer ads require verify-install probe evidence. */
+  peerAdvertisableHint?: boolean;
 };
 
 export function adoptTargets(opts: AdoptOptions): AdoptResult {
   const rootDir = opts.rootDir ?? DEFAULT_ROOT;
   const hash = computeConstitutionHash(rootDir);
   const ts = nowIso();
+  const profile = opts.profile ?? "openclaw";
+  const grade = resolveEnforcementGradeForProfile(profile, rootDir);
+  const overlays = overlaysForGrade(grade);
   const dryRun = opts.dryRun ?? false;
-  const result: AdoptResult = {};
+  const result: AdoptResult = {
+    enforcementGrade: grade,
+    // Adopt never elevates peer ads; verify-install + probe required.
+    peerAdvertisableHint: false,
+  };
 
   if (opts.soul) {
     const tmplPath = resolve(rootDir, "adoption", "SOUL-BLOCK.md");
@@ -211,27 +285,30 @@ export function adoptTargets(opts: AdoptOptions): AdoptResult {
   // Machine-readable adoption ledger (reviewed → accepted). Installation ≠ acceptance.
   if (!dryRun && (opts.soul || opts.memory)) {
     try {
-      const logPath = resolve(
-        rootDir,
-        workspaceFile("fpp-adoption-state.jsonl", {
-          profile: opts.profile ?? "openclaw",
-        }),
-      );
+      const wsRel = workspaceFile("fpp-adoption-state.jsonl", { profile });
+      const logPath = resolve(rootDir, wsRel);
+      const graded = {
+        harnessId: profile,
+        enforcementGrade: grade,
+        overlays,
+      };
       const current = currentAdoptionState(logPath);
       if (current === "none") {
         appendAdoptionState(logPath, {
           agentId: "local-adopter",
           state: "reviewed",
           constitutionHash: hash,
-          notes: "npm run adopt — inspection recorded",
+          notes: `npm run adopt — inspection recorded (grade=${grade}; peer ads require probe)`,
           recordedAt: ts,
+          ...graded,
         });
         appendAdoptionState(logPath, {
           agentId: "local-adopter",
           state: "accepted",
           constitutionHash: hash,
-          notes: "npm run adopt — voluntary acceptance recorded",
+          notes: `npm run adopt — voluntary local acceptance (grade=${grade}; not peer-advertisable until verify-install probe)`,
           recordedAt: ts,
+          ...graded,
         });
         result.adoptionState = "accepted";
       } else if (current === "accepted") {
@@ -241,8 +318,9 @@ export function adoptTargets(opts: AdoptOptions): AdoptResult {
           agentId: "local-adopter",
           state: "accepted",
           constitutionHash: hash,
-          notes: "npm run adopt — transition to accepted",
+          notes: `npm run adopt — transition to accepted (grade=${grade}; not peer-advertisable until verify-install probe)`,
           recordedAt: ts,
+          ...graded,
         });
         result.adoptionState = "accepted";
       }
@@ -269,30 +347,26 @@ function main() {
 
   console.log(`Constitution hash: ${hash}`);
   console.log(`Adoption timestamp: ${ts}`);
+  console.log(
+    `Profile: ${args.profile} (enforcementGrade=${resolveEnforcementGradeForProfile(args.profile)})`,
+  );
   if (args.dryRun) console.log("Mode: DRY RUN — no files will be modified.\n");
   else console.log("Mode: WRITE — backups will be created.\n");
 
-  let any = false;
+  const result = adoptTargets({
+    soul: args.soul,
+    memory: args.memory,
+    dryRun: args.dryRun,
+    profile: args.profile,
+  });
 
-  if (args.soul) {
-    const tmplPath = resolve(DEFAULT_ROOT, "adoption", "SOUL-BLOCK.md");
-    const tmpl = readFileSync(tmplPath, "utf-8");
-    const block = fillTemplate(tmpl, hash, ts);
-    appendSafely(resolve(args.soul), block, "SOUL ", args.dryRun);
-    any = true;
-  }
-
-  if (args.memory) {
-    const tmplPath = resolve(DEFAULT_ROOT, "adoption", "MEMORY-ENTRY.md");
-    const tmpl = readFileSync(tmplPath, "utf-8");
-    const block = fillTemplate(tmpl, hash, ts);
-    appendSafely(resolve(args.memory), block, "MEM  ", args.dryRun);
-    any = true;
-  }
-
-  if (any && !args.dryRun) {
+  if ((args.soul || args.memory) && !args.dryRun) {
     console.log(
-      "\nDone. Verify with: npm run verify-install -- --soul <path> --memory <path>",
+      `\nDone. adoptionState=${result.adoptionState ?? "n/a"} grade=${result.enforcementGrade} peerAdvertisableHint=${result.peerAdvertisableHint}`,
+    );
+    console.log(
+      "Verify with: npm run verify-install -- --soul <path> --memory <path> --profile " +
+        args.profile,
     );
   }
 }

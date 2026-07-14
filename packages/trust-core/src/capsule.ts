@@ -10,8 +10,10 @@ import {
   KEY_ALGORITHM,
   canonicalizeV2,
   parseTrustStateCapsule,
+  validateCapsuleAdoptionConsistency,
   validateFreshness,
   buildReplayKey,
+  type CapsuleAdoptionDisclosureSummary,
   type FreshnessEnvelope,
   type FreshnessPolicy,
   type TrustStateCapsuleV2,
@@ -50,6 +52,10 @@ export type CapsuleBuildInput = {
   lineageRef?: string | undefined;
   selectiveProofRefs?: string[] | undefined;
   viewSummaries?: CapsuleViewSummaries | undefined;
+  /** Optional graded adoption summary for peers (Plan 13). */
+  adoptionDisclosure?: CapsuleAdoptionDisclosureSummary | undefined;
+  /** When true with peer-summary, adoptionDisclosure is required. */
+  advertisingAdoption?: boolean | undefined;
 };
 
 export type BuiltCapsule = TrustStateCapsuleV2 & {
@@ -59,6 +65,7 @@ export type BuiltCapsule = TrustStateCapsuleV2 & {
   selectiveProofRefs?: string[] | undefined;
   coverageMetricVersion: number;
   viewSummaries?: CapsuleViewSummaries | undefined;
+  advertisingAdoption?: boolean | undefined;
 };
 
 function toCapsuleCoverage(metrics: CapsuleCoverageMetrics): {
@@ -107,6 +114,20 @@ export function buildTrustStateCapsule(input: CapsuleBuildInput): BuiltCapsule {
   if (input.viewSummaries) {
     capsule.viewSummaries = input.viewSummaries;
   }
+  if (input.adoptionDisclosure) {
+    capsule.adoptionDisclosure = input.adoptionDisclosure;
+  }
+  if (input.advertisingAdoption) {
+    capsule.advertisingAdoption = true;
+  }
+
+  const consistency = validateCapsuleAdoptionConsistency({
+    ...capsule,
+    advertisingAdoption: input.advertisingAdoption === true,
+  });
+  if (!consistency.ok) {
+    throw new Error(consistency.error ?? "adoption disclosure inconsistent");
+  }
 
   const payload = canonicalizeV2(unsignedCapsuleFields(capsule));
   const sig = input.identity.sign(new TextEncoder().encode(payload));
@@ -142,6 +163,11 @@ export function validateTrustStateCapsule(
   const capsule = parsed.capsule as BuiltCapsule;
   const fresh = validateFreshness(capsule.freshness, policy);
   if (!fresh.valid) reasons.push(fresh.reason);
+
+  const adoptionCheck = validateCapsuleAdoptionConsistency(capsule);
+  if (!adoptionCheck.ok && adoptionCheck.error) {
+    reasons.push(adoptionCheck.error);
+  }
 
   let signatureOk = false;
   try {

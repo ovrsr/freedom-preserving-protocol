@@ -36,7 +36,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appendAuditEntry } from "./audit-append.ts";
 import { verify as verifyAuditChain } from "./audit-verify.ts";
-import { appendAdoptionState, currentAdoptionState } from "./adoption-state.ts";
+import { appendAdoptionState, currentAdoptionState, readAdoptionHistory } from "./adoption-state.ts";
 import { bytesToHex } from "@noble/hashes/utils";
 import { sha256 } from "@noble/hashes/sha256";
 
@@ -270,14 +270,30 @@ export function revokeAdoption(opts: RevokeOptions): void {
         const constitutionHash = existsSync(constitutionPath)
           ? bytesToHex(sha256(readFileSync(constitutionPath)))
           : "0".repeat(64);
-        appendAdoptionState(adoptionLog, {
-          agentId: "local-adopter",
-          state: "revoked",
-          constitutionHash,
-          notes: opts.reason.slice(0, 280),
-          recordedAt: ts,
-        });
-        console.log(`[STATE] adoption-state ledger → revoked (history preserved)`);
+        const history = readAdoptionHistory(adoptionLog);
+        const last = history.at(-1)?.record;
+        const notes = `${opts.reason.slice(0, 200)}; peer ads cleared — no active acceptance`;
+        if (last && last.schemaVersion === 2) {
+          appendAdoptionState(adoptionLog, {
+            agentId: "local-adopter",
+            state: "revoked",
+            constitutionHash,
+            notes,
+            recordedAt: ts,
+            harnessId: last.harnessId,
+            enforcementGrade: last.enforcementGrade,
+            overlays: last.overlays,
+          });
+        } else {
+          appendAdoptionState(adoptionLog, {
+            agentId: "local-adopter",
+            state: "revoked",
+            constitutionHash,
+            notes,
+            recordedAt: ts,
+          });
+        }
+        console.log(`[STATE] adoption-state ledger → revoked (history preserved; peer ads cleared)`);
       }
     } catch (err) {
       console.warn(`[adoption-state] ${(err as Error).message}`);

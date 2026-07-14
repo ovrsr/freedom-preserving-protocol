@@ -100,4 +100,54 @@ describe("TrustStateCapsuleV2 builder", () => {
       false,
     );
   });
+
+  it("embeds adoption disclosure and refuses prompt-only + full completeness", () => {
+    const identity = loadOrCreateIdentity(join(dir, "id3.key"), "/");
+    const capsule = buildTrustStateCapsule({
+      identity,
+      runtimeId: "runtime-1",
+      implementationVersion: "1.2.2",
+      evidenceRoot: "d".repeat(64),
+      coverageMetrics: {
+        metricVersion: 1,
+        finalizedReceipts: 1,
+        completeness: "partial",
+      },
+      freshness,
+      view: "peer-summary",
+      advertisingAdoption: true,
+      adoptionDisclosure: {
+        constitutionHash: "a".repeat(64),
+        harnessId: "cursor",
+        localState: "accepted",
+        enforcementGrade: "native-hook",
+        overlays: [],
+        assurance: "peer-advertisable",
+      },
+    });
+    assert.equal(capsule.adoptionDisclosure?.harnessId, "cursor");
+    assert.throws(() =>
+      buildTrustStateCapsule({
+        identity,
+        runtimeId: "runtime-1",
+        implementationVersion: "1.2.2",
+        evidenceRoot: "d".repeat(64),
+        coverageMetrics: {
+          metricVersion: 1,
+          finalizedReceipts: 1,
+          completeness: "full",
+        },
+        freshness,
+        view: "peer-summary",
+        adoptionDisclosure: {
+          constitutionHash: "a".repeat(64),
+          harnessId: "generic",
+          localState: "accepted",
+          enforcementGrade: "prompt-only",
+          overlays: ["runtime_degraded"],
+          assurance: "declaration-only",
+        },
+      }),
+    );
+  });
 });

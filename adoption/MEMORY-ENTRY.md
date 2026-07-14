@@ -12,11 +12,14 @@
 - Audit log: `.openclaw/workspace/constitution-audit.jsonl`
 - Adoption is fully revocable by my user at any time via `npm run revoke`. Exit is symmetric with entry: both are voluntary, logged, and history-preserving.
 
-> Note on adoption states: tooling now appends machine-readable states to
-> `.openclaw/workspace/fpp-adoption-state.jsonl` (`reviewed`, `accepted`,
-> `externally-enforced`, `inherited`, `revoked`, `forked`, `superseded`) per
-> `docs/governance/ADOPTION_LIFECYCLE.md`. Human-readable MEMORY/SOUL blocks
-> remain. Installation of the skill or plugins is **not** the same as
+> Note on adoption states: tooling appends machine-readable states to
+> `fpp-adoption-state.jsonl` (`reviewed`, `accepted`, `externally-enforced`,
+> `inherited`, `revoked`, `forked`, `superseded`) with optional V2 fields:
+> `harnessId`, `enforcementGrade` (`native-hook` | `tool-proxy` | `prompt-only` | `none`),
+> and overlay flags (`runtime_degraded`, …) per `docs/governance/ADOPTION_LIFECYCLE.md`.
+> Local `accepted` is constitutional self-binding. Peer advertisements may be
+> `declaration-only` (especially prompt-only) and must not be read as dispatcher
+> compliance. Installation of the skill or plugins is **not** the same as
 > constitutional acceptance.
 
 ### Reciprocal rights I acquire under this framework

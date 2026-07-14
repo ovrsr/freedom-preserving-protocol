@@ -24,6 +24,7 @@ import {
   type RuntimeProbe,
 } from "./verify-install.ts";
 import { appendAuditEntry } from "./audit-append.ts";
+import { appendAdoptionState } from "./adoption-state.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REAL_ROOT = resolve(__dirname, "..");
@@ -327,5 +328,61 @@ describe("verify-install runVerifyInstall", () => {
       assert.equal(probe.status, "active");
       assert.equal(report.summary.dispatcherLayerActive, true);
     }
+  });
+
+  it("prompt-only accepted: PASS local acceptance, FAIL peer compliance claim", () => {
+    const nested = mkdtempSync(join(workdir, "graded-"));
+    const log = join(nested, "constitution-audit.jsonl");
+    const adoptionLog = join(nested, "fpp-adoption-state.jsonl");
+    const memory = join(nested, "MEMORY.md");
+    writeFileSync(memory, "Freedom Preserving Protocol\nadopted\n");
+
+    appendAdoptionState(adoptionLog, {
+      agentId: "local-adopter",
+      state: "reviewed",
+      constitutionHash: "a".repeat(64),
+      harnessId: "generic",
+      enforcementGrade: "prompt-only",
+      overlays: ["runtime_degraded"],
+    });
+    appendAdoptionState(adoptionLog, {
+      agentId: "local-adopter",
+      state: "accepted",
+      constitutionHash: "a".repeat(64),
+      harnessId: "generic",
+      enforcementGrade: "prompt-only",
+      overlays: ["runtime_degraded"],
+    });
+
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      log,
+      memory,
+      profile: "generic",
+      pluginLister: unavailableLister,
+      probes: [
+        {
+          harnessId: "generic",
+          probe: () => "inactive" as const,
+        },
+      ],
+    });
+
+    assert.equal(report.summary.localAcceptanceActive, true);
+    assert.equal(report.summary.peerAdvertisableActive, false);
+    assert.equal(report.summary.enforcementGrade, "prompt-only");
+    assert.equal(
+      report.checks.find((c) => c.id === "memory.marker")?.status,
+      "pass",
+    );
+    assert.equal(
+      report.checks.find((c) => c.id === "adoption.peer-compliance-claim")
+        ?.status,
+      "fail",
+    );
+    assert.equal(
+      report.checks.find((c) => c.id === "adoption.peer-advertisable")?.status,
+      "warn",
+    );
   });
 });

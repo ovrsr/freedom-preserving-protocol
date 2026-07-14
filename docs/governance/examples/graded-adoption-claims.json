@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "graded-adoption-claims-1",
+  "description": "Dual-path graded acceptance examples. Local accepted ≠ peer compliance. Prompt-only ≠ dispatcher compliance.",
+  "related": [
+    "docs/governance/ADOPTION_LIFECYCLE.md",
+    "docs/governance/EVIDENCE_SEMANTICS.md",
+    "adapters/harness-capabilities.json"
+  ],
+  "cases": [
+    {
+      "id": "native-hook-peer-advertisable",
+      "harnessId": "cursor",
+      "localState": "accepted",
+      "enforcementGrade": "native-hook",
+      "overlays": [],
+      "probe": { "preToolHook": true, "passed": true },
+      "peerAssurance": "peer-advertisable",
+      "maxConclusion": "Probe-backed native-hook grade; not behavioral compliance",
+      "mustNotConclude": ["behavioral_compliance", "gateway_non_bypassable"]
+    },
+    {
+      "id": "tool-proxy-partial-peer-advertisable",
+      "harnessId": "mcp-sidecar",
+      "localState": "accepted",
+      "enforcementGrade": "tool-proxy",
+      "overlays": ["runtime_degraded"],
+      "probe": { "preToolHook": false, "toolProxy": true, "passed": true },
+      "peerAssurance": "peer-advertisable",
+      "disclosure": "partial",
+      "maxConclusion": "Partial proxy interception with degraded disclosure",
+      "mustNotConclude": ["full_completeness", "native_hook_equivalence"]
+    },
+    {
+      "id": "prompt-only-declaration-only",
+      "harnessId": "generic",
+      "localState": "accepted",
+      "enforcementGrade": "prompt-only",
+      "overlays": ["runtime_degraded"],
+      "probe": { "preToolHook": false, "passed": true },
+      "peerAssurance": "declaration-only",
+      "maxConclusion": "Local constitutional self-binding with runtime_degraded",
+      "mustNotConclude": [
+        "peer_advertisable_acceptance",
+        "boundary_attested",
+        "dispatcher_compliance",
+        "completeness"
+      ],
+      "note": "Local accepted is allowed; peer ads must stay declaration-only"
+    },
+    {
+      "id": "none-no-peer-accepted",
+      "harnessId": "unknown",
+      "localState": "reviewed",
+      "enforcementGrade": "none",
+      "overlays": [],
+      "probe": { "preToolHook": false, "passed": false },
+      "peerAssurance": null,
+      "maxConclusion": "Inspection only; no peer-visible accepted compliance",
+      "mustNotConclude": ["accepted_as_peer_compliance"]
+    }
+  ]
+}

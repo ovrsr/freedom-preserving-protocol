@@ -108,20 +108,41 @@ export {
 } from "./disposition.js";
 
 export {
+  CapsuleAdoptionDisclosureSummarySchema,
   TrustStateCapsuleV2Schema,
   parseTrustStateCapsule,
+  validateCapsuleAdoptionConsistency,
+  type CapsuleAdoptionConsistency,
+  type CapsuleAdoptionDisclosureSummary,
   type CapsuleParseResult,
   type TrustStateCapsuleV2,
 } from "./capsules.js";
 
 export {
+  ADOPTION_OVERLAY_FLAGS,
   ADOPTION_STATES,
   AdoptionStateRecordV1Schema,
+  AdoptionStateRecordV2Schema,
+  ENFORCEMENT_GRADES,
   parseAdoptionStateRecord,
+  type AdoptionOverlayFlag,
   type AdoptionParseResult,
   type AdoptionState,
+  type AdoptionStateRecord,
   type AdoptionStateRecordV1,
+  type AdoptionStateRecordV2,
+  type EnforcementGrade,
 } from "./adoption.js";
+
+export {
+  ADOPTION_ASSURANCE_CLASSES,
+  AdoptionDisclosureV1Schema,
+  maxJustifiedConclusion,
+  parseAdoptionDisclosure,
+  type AdoptionAssurance,
+  type AdoptionDisclosureParseResult,
+  type AdoptionDisclosureV1,
+} from "./adoption-disclosure.js";
 
 export {
   EvidenceEnvelopeV1Schema,

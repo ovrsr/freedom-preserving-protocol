@@ -1,6 +1,6 @@
 # Graded Harness Adoption Claims
 
-**Status:** PENDING
+**Status:** COMPLETE
 **Created:** 2026-07-10
 **Series:** Plan 13 (follow-on to autonomy + harness-agnostic program 8–12)
 **Depends on:** Plans 8 and 11 (disposition engine + cross-harness adapters with honest capability probes). Plans 9–10 and 12 are helpful but not hard blockers for schema/ledger work; capsule wiring assumes Plan 10 trust-core or current `plugin-trust` surfaces.
@@ -73,18 +73,18 @@ npm run adopt -- --profile <harness>
 
 ## Progress Tracking
 
-- [ ] Task 1: Protocol-core adoption V2 schema (overlays, harness, grade)
-- [ ] Task 2: Governance spec + examples for dual-path graded acceptance
-- [ ] Task 3: Adoption ledger helpers and peer-advertisability policy
-- [ ] Task 4: AdoptionDisclosure type + parse/validate rules
-- [ ] Task 5: Wire adopt / safe-append / revoke for profile-graded records
-- [ ] Task 6: Capsule summary fields + trust-plugin emission
-- [ ] Task 7: Peer validation — refuse elevating declaration-only / prompt-only
-- [ ] Task 8: verify-install graded adoption report (bind Plan 11 probes)
-- [ ] Task 9: CAPABILITY_STATUS, MEMORY-ENTRY, COMPATIBILITY, program index
-- [ ] Task 10: End-to-end tests for local accepted vs peer disclosure ceilings
+- [x] Task 1: Protocol-core adoption V2 schema (overlays, harness, grade)
+- [x] Task 2: Governance spec + examples for dual-path graded acceptance
+- [x] Task 3: Adoption ledger helpers and peer-advertisability policy
+- [x] Task 4: AdoptionDisclosure type + parse/validate rules
+- [x] Task 5: Wire adopt / safe-append / revoke for profile-graded records
+- [x] Task 6: Capsule summary fields + trust-plugin emission
+- [x] Task 7: Peer validation — refuse elevating declaration-only / prompt-only
+- [x] Task 8: verify-install graded adoption report (bind Plan 11 probes)
+- [x] Task 9: CAPABILITY_STATUS, MEMORY-ENTRY, COMPATIBILITY, program index
+- [x] Task 10: End-to-end tests for local accepted vs peer disclosure ceilings
 
-**Total Tasks:** 10 | **Completed:** 0 | **Remaining:** 10
+**Total Tasks:** 10 | **Completed:** 10 | **Remaining:** 0
 
 ## Implementation Tasks
 
@@ -105,10 +105,10 @@ npm run adopt -- --profile <harness>
 4. Run package tests + typecheck on touched files.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] No new type errors
-- [ ] No new linter errors
-- [ ] V1 records still parse; V2 requires explicit schemaVersion
+- [x] Target tests pass
+- [x] No new type errors
+- [x] No new linter errors
+- [x] V1 records still parse; V2 requires explicit schemaVersion
 
 ### Task 2: Governance spec + examples for dual-path graded acceptance
 
@@ -127,10 +127,10 @@ npm run adopt -- --profile <harness>
 4. Cross-link Plan 11 harness capability matrix vocabulary.
 
 **Definition of Done:**
-- [ ] Spec distinguishes local acceptance vs peer advertisability
-- [ ] Examples cover all four enforcement grades
-- [ ] No claim that prompt-only equals dispatcher compliance
-- [ ] Dependent docs updated (if applicable)
+- [x] Spec distinguishes local acceptance vs peer advertisability
+- [x] Examples cover all four enforcement grades
+- [x] No claim that prompt-only equals dispatcher compliance
+- [x] Dependent docs updated (if applicable)
 
 ### Task 3: Adoption ledger helpers and peer-advertisability policy
 
@@ -147,10 +147,10 @@ npm run adopt -- --profile <harness>
 4. Typecheck/lint touched files.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] Invalid transitions still fail
-- [ ] Prompt-only never returns peer-advertisable
-- [ ] Tool-proxy returns peer-advertisable only with partial/degraded disclosure flags
+- [x] Target tests pass
+- [x] Invalid transitions still fail
+- [x] Prompt-only never returns peer-advertisable
+- [x] Tool-proxy returns peer-advertisable only with partial/degraded disclosure flags
 
 ### Task 4: AdoptionDisclosure type + parse/validate rules
 
@@ -167,10 +167,10 @@ npm run adopt -- --profile <harness>
 3. Document max justified conclusion per assurance class (align Evidence Semantics).
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] No new type errors
-- [ ] No new linter errors
-- [ ] Invalid elevation combinations fail closed
+- [x] Target tests pass
+- [x] No new type errors
+- [x] No new linter errors
+- [x] Invalid elevation combinations fail closed
 
 ### Task 5: Wire adopt / safe-append / revoke for profile-graded records
 
@@ -189,10 +189,10 @@ npm run adopt -- --profile <harness>
 4. Keep human MEMORY/SOUL append behavior; update templates only as needed for grade honesty.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] Installation still ≠ acceptance
-- [ ] Profile grade appears on ledger records
-- [ ] No new type/lint errors on touched files
+- [x] Target tests pass
+- [x] Installation still ≠ acceptance
+- [x] Profile grade appears on ledger records
+- [x] No new type/lint errors on touched files
 
 ### Task 6: Capsule summary fields + trust-plugin emission
 
@@ -211,10 +211,10 @@ npm run adopt -- --profile <harness>
 3. Keep backward-compatible parse for older capsules (missing field → no adoption advertisement).
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] Capsule + ledger fields stay consistent
-- [ ] Legacy capsules still parse
-- [ ] No new type/lint errors
+- [x] Target tests pass
+- [x] Capsule + ledger fields stay consistent
+- [x] Legacy capsules still parse
+- [x] No new type/lint errors
 
 ### Task 7: Peer validation — refuse elevating declaration-only / prompt-only
 
@@ -231,10 +231,10 @@ npm run adopt -- --profile <harness>
 3. Ensure steward/trust views record assurance class separately from reputation.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] Elevation attempts fail closed
-- [ ] Diagnostics name the grade and assurance
-- [ ] No new type/lint errors
+- [x] Target tests pass
+- [x] Elevation attempts fail closed
+- [x] Diagnostics name the grade and assurance
+- [x] No new type/lint errors
 
 ### Task 8: verify-install graded adoption report (bind Plan 11 probes)
 
@@ -251,10 +251,10 @@ npm run adopt -- --profile <harness>
 3. Document exit codes / warning classes for CI operators.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] Local vs peer columns are distinct in output
-- [ ] Unknown harness does not false-PASS dispatcher
-- [ ] Dependent docs updated (if applicable)
+- [x] Target tests pass
+- [x] Local vs peer columns are distinct in output
+- [x] Unknown harness does not false-PASS dispatcher
+- [x] Dependent docs updated (if applicable)
 
 ### Task 9: CAPABILITY_STATUS, MEMORY-ENTRY, COMPATIBILITY, program index
 
@@ -274,10 +274,10 @@ npm run adopt -- --profile <harness>
 4. Index Plan 13 with dependency on 8+11.
 
 **Definition of Done:**
-- [ ] CAPABILITY_STATUS row matches code
-- [ ] No present-tense overclaim of gateway enforcement
-- [ ] Program index lists Plan 13
-- [ ] MEMORY/COMPATIBILITY honest about prompt-only
+- [x] CAPABILITY_STATUS row matches code
+- [x] No present-tense overclaim of gateway enforcement
+- [x] Program index lists Plan 13
+- [x] MEMORY/COMPATIBILITY honest about prompt-only
 
 ### Task 10: End-to-end tests for local accepted vs peer disclosure ceilings
 
@@ -293,10 +293,10 @@ npm run adopt -- --profile <harness>
 3. Assert revoke removes peer-active acceptance without erasing history.
 
 **Definition of Done:**
-- [ ] E2E tests pass
-- [ ] All three grade ceilings covered
-- [ ] Revocation history preserved
-- [ ] No new type/lint errors
+- [x] E2E tests pass
+- [x] All three grade ceilings covered
+- [x] Revocation history preserved
+- [x] No new type/lint errors
 
 ## Testing Strategy
 
