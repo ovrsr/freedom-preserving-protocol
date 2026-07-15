@@ -7,14 +7,30 @@ import {
 } from "./workspace-profile.js";
 
 describe("workspace profile resolution", () => {
-  it("defaults to openclaw profile → .openclaw/workspace", () => {
+  it("defaults to openclaw profile → absolute <homedir>/.openclaw/workspace", () => {
     assert.equal(DEFAULT_WORKSPACE_PROFILE, "openclaw");
     assert.equal(
-      resolveWorkspaceRoot({ profile: "openclaw", env: {} }),
-      ".openclaw/workspace",
+      resolveWorkspaceRoot({
+        profile: "openclaw",
+        env: {},
+        homedir: () => "/home/agent",
+      }),
+      "/home/agent/.openclaw/workspace",
     );
     assert.equal(
-      resolveWorkspaceRoot({ env: {} }),
+      resolveWorkspaceRoot({
+        env: {},
+        homedir: () => "/home/agent",
+      }),
+      "/home/agent/.openclaw/workspace",
+    );
+    // Relative .openclaw/workspace must no longer be returned when env is empty
+    assert.notEqual(
+      resolveWorkspaceRoot({
+        profile: "openclaw",
+        env: {},
+        homedir: () => "/home/agent",
+      }),
       ".openclaw/workspace",
     );
   });
@@ -50,8 +66,12 @@ describe("workspace profile resolution", () => {
 
   it("workspaceFile joins root and filename with forward slashes", () => {
     assert.equal(
-      workspaceFile("fpp-plugin-audit.jsonl", { profile: "openclaw", env: {} }),
-      ".openclaw/workspace/fpp-plugin-audit.jsonl",
+      workspaceFile("fpp-plugin-audit.jsonl", {
+        profile: "openclaw",
+        env: {},
+        homedir: () => "/home/agent",
+      }),
+      "/home/agent/.openclaw/workspace/fpp-plugin-audit.jsonl",
     );
     assert.equal(
       workspaceFile("fpp-receipts.jsonl", {

@@ -148,6 +148,69 @@ describe("security regressions (enforcement)", () => {
     assert.match(result.blockReason ?? "", /^abstain:/);
   });
 
+  it("E2E: unattended fpp_trust_status allows (fpp.governance, not abstain)", async () => {
+    resetStrictModeCache();
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "unattended-fpp-trust-audit.jsonl"),
+      respectTrustStrictMode: false,
+      dispositionMode: "unattended",
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = await handler(
+      { toolName: "fpp_trust_status", params: {} },
+      ctx,
+    );
+    assert.equal(result, undefined, "fpp_trust_status must allow (no block/approval)");
+    const line = JSON.parse(
+      readFileSync(join(ws.path, "unattended-fpp-trust-audit.jsonl"), "utf8").trim(),
+    );
+    assert.equal(line.outcome, "allowed");
+    assert.equal(line.classification, "fpp.governance");
+  });
+
+  it("E2E: unattended memory_search allows via seeded knownCustomTools", async () => {
+    resetStrictModeCache();
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "unattended-memory-search-audit.jsonl"),
+      respectTrustStrictMode: false,
+      dispositionMode: "unattended",
+      knownCustomTools: DEFAULT_CONFIG.knownCustomTools,
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = await handler(
+      { toolName: "memory_search", params: { query: "adoption" } },
+      ctx,
+    );
+    assert.equal(result, undefined, "memory_search must allow under default seed");
+    const line = JSON.parse(
+      readFileSync(
+        join(ws.path, "unattended-memory-search-audit.jsonl"),
+        "utf8",
+      ).trim(),
+    );
+    assert.equal(line.outcome, "allowed");
+  });
+
+  it("E2E: unattended random unknown still abstains", async () => {
+    resetStrictModeCache();
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "unattended-random-unknown-audit.jsonl"),
+      respectTrustStrictMode: false,
+      dispositionMode: "unattended",
+      knownCustomTools: DEFAULT_CONFIG.knownCustomTools,
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = (await handler(
+      { toolName: "totally_unknown_xyz", params: {} },
+      ctx,
+    )) as { block?: boolean; blockReason?: string };
+    assert.equal(result.block, true);
+    assert.match(result.blockReason ?? "", /^abstain:/);
+  });
+
   it("CONTROL: malformed tool params do not throw in classifier", () => {
     const r = classifyToolCall("shell_exec", null as unknown as Record<string, unknown>);
     assert.ok(r.classification);

@@ -37,6 +37,7 @@ export type ClassificationId =
   | "gateway.config-change"
   | "credential.exposure"
   | "message.external"
+  | "fpp.governance"
   | "unknown.unclassified";
 
 /** Stable ordered list of all classification ids (for ruleset hashing). */
@@ -59,6 +60,7 @@ export const CLASSIFICATION_IDS: readonly ClassificationId[] = [
   "gateway.config-change",
   "credential.exposure",
   "message.external",
+  "fpp.governance",
   "unknown.unclassified",
 ] as const;
 
@@ -427,6 +429,17 @@ export function classifyToolCall(
   ];
   for (const r of results) {
     if (r) return r;
+  }
+
+  // Fallthrough-only: fpp_* governance tools allow with audit.
+  // Must not run before specific classifiers (fpp_shell_exec still hits exec).
+  if (/^fpp_/.test(toolName)) {
+    return {
+      classification: "fpp.governance",
+      decision: "allow",
+      reason: `tool ${toolName} is an FPP governance/introspection tool (fpp.governance); allowing with audit.`,
+      matchedPatterns: ["/^fpp_/"],
+    };
   }
 
   const allowlist = options?.knownCustomTools ?? [];

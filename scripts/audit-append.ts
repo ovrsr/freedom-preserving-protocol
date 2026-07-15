@@ -39,7 +39,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
-import { hashEntryV1 as hashEntry, computeMerkleRoot } from "./skill-lib/index.ts";
+import { hashEntryV1 as hashEntry, computeMerkleRoot, absolutizeWorkspacePath, workspaceFile } from "./skill-lib/index.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -66,7 +66,7 @@ type Args = {
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
-    log: ".openclaw/workspace/constitution-audit.jsonl",
+    log: workspaceFile("constitution-audit.jsonl"),
     kind: "heartbeat",
     laws: [],
     actions: 0,
@@ -97,7 +97,7 @@ function printHelp() {
   console.log(`Usage: npm run audit:append -- [options]
 
 Options:
-  --log <path>           Audit log path (default: .openclaw/workspace/constitution-audit.jsonl)
+  --log <path>           Audit log path (default: <homedir>/.openclaw/workspace/constitution-audit.jsonl)
   --kind <kind>          One of: heartbeat | adoption | revocation | tamper_detected
   --laws <l1,l2,...>     Comma-separated law ids invoked since last entry
   --actions <n>          Count of tool calls reviewed since last entry
@@ -190,7 +190,7 @@ export function appendAuditEntry(opts: AppendOptions): {
   if (notes.length > 280) {
     throw new Error("notes must be <= 280 chars (PII risk).");
   }
-  const logPath = resolve(opts.log);
+  const logPath = resolve(absolutizeWorkspacePath(opts.log));
   mkdirSync(dirname(logPath), { recursive: true });
   const previousHash = readPreviousHash(logPath);
 

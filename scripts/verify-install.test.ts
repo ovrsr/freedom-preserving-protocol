@@ -385,4 +385,89 @@ describe("verify-install runVerifyInstall", () => {
       "warn",
     );
   });
+
+  it("default relative log resolves to absolutized live workspace path (not CWD)", () => {
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      // omit log → use default relative form
+      env: {},
+      homedir: () => "/home/agent",
+      pluginLister: unavailableLister,
+    });
+    const chain = report.checks.find((c) => c.id === "audit.chain");
+    assert.ok(chain);
+    const normalized = chain.detail.replace(/\\/g, "/");
+    assert.match(
+      normalized,
+      /\/home\/agent\/\.openclaw\/workspace\/constitution-audit\.jsonl/,
+    );
+    assert.doesNotMatch(normalized, /no audit log yet at \.openclaw\//);
+  });
+
+  it("warns audit.adopted-without-log when SOUL adopted but audit log missing", () => {
+    const soul = join(workdir, "SOUL-adopted-no-audit.md");
+    writeFileSync(soul, "# preface\n\nFreedom Preserving Protocol\n");
+    const missingLog = join(workdir, "missing-audit", "constitution-audit.jsonl");
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      soul,
+      log: missingLog,
+      pluginLister: unavailableLister,
+    });
+    assert.equal(
+      report.checks.find((c) => c.id === "audit.chain")?.status,
+      "skip",
+    );
+    const warn = report.checks.find((c) => c.id === "audit.adopted-without-log");
+    assert.ok(warn, "expected audit.adopted-without-log check");
+    assert.equal(warn.status, "warn");
+    assert.match(warn.detail, /adopt/i);
+    assert.match(warn.detail, /audit/i);
+    // Q5-A: missing audit alone must not flip peer advertisability
+    assert.equal(report.summary.peerAdvertisableActive, false);
+  });
+
+  it("warns plugin.version-drift when runtime and install metadata versions diverge", () => {
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      log: join(workdir, "no-log-drift.jsonl"),
+      pluginLister: () => ({
+        available: true,
+        stdout: JSON.stringify([
+          {
+            id: "openclaw-fpp-plugin",
+            version: "1.1.7",
+            installVersion: "1.1.4",
+          },
+        ]),
+        plugins: [
+          {
+            id: "openclaw-fpp-plugin",
+            runtimeVersion: "1.1.7",
+            installVersion: "1.1.4",
+          },
+        ],
+      }),
+    });
+    const drift = report.checks.find((c) => c.id === "plugin.version-drift");
+    assert.ok(drift, "expected plugin.version-drift check");
+    assert.equal(drift.status, "warn");
+    assert.match(drift.detail, /1\.1\.7/);
+    assert.match(drift.detail, /1\.1\.4/);
+    assert.match(drift.detail, /drift/i);
+  });
+
+  it("skips plugin.version-drift when version fields are not inspectable", () => {
+    const report = runVerifyInstall({
+      rootDir: REAL_ROOT,
+      log: join(workdir, "no-log-nodrift.jsonl"),
+      pluginLister: () => ({
+        available: true,
+        stdout: "openclaw-fpp-plugin",
+      }),
+    });
+    const drift = report.checks.find((c) => c.id === "plugin.version-drift");
+    assert.ok(drift);
+    assert.equal(drift.status, "skip");
+  });
 });

@@ -54,7 +54,9 @@ openclaw fpp-trust strict clear <key|all>            # clear strict sessions
 
 ## Strict-Mode Contract
 
-When `strictModeOnHandshakeFailure` is enabled and a handshake fails or returns `TrustLevel.UNKNOWN`, the plugin writes a strict-mode entry to `strictModeStatePath` (default `.openclaw/workspace/fpp-strict-sessions.json`). The enforcement plugin (`@ovrsr/openclaw-fpp-plugin`) reads this file and escalates classifications listed in `strictModeAddApprovalOn` to `requireApproval` for that session.
+When `strictModeOnHandshakeFailure` is enabled and a handshake fails or returns `TrustLevel.UNKNOWN`, the plugin writes a strict-mode entry to `strictModeStatePath` (default `<homedir>/.openclaw/workspace/fpp-strict-sessions.json`; relative forms are absolutized). The enforcement plugin (`@ovrsr/openclaw-fpp-plugin`) reads this file and escalates classifications listed in `strictModeAddApprovalOn` to `requireApproval` for that session.
+
+Under default unattended disposition, trust tools named `fpp_*` (including `fpp_trust_status`) classify as `fpp.governance` and **allow with audit** — they no longer self-abstain as `unknown.unclassified`. This is configuration/event evidence, not behavioral compliance.
 
 The coupling is intentionally loose: the trust plugin only writes; the enforcement plugin only reads. Either can be installed alone.
 

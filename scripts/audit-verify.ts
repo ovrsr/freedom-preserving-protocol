@@ -22,7 +22,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
-import { hashEntryV1 as hashEntry, computeMerkleRoot } from "./skill-lib/index.ts";
+import { hashEntryV1 as hashEntry, computeMerkleRoot, absolutizeWorkspacePath, workspaceFile } from "./skill-lib/index.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -32,7 +32,7 @@ function constitutionHash(): string {
 }
 
 function parseArgs(argv: string[]): { log: string; json: boolean } {
-  let log = ".openclaw/workspace/constitution-audit.jsonl";
+  let log = workspaceFile("constitution-audit.jsonl");
   let json = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -145,7 +145,7 @@ function verify(logPath: string): Report {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const report = verify(resolve(args.log));
+  const report = verify(resolve(absolutizeWorkspacePath(args.log)));
 
   if (args.json) {
     console.log(JSON.stringify(report, null, 2));

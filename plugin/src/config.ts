@@ -51,9 +51,45 @@ export type ManifestValidationResult = {
   mismatches: string[];
 };
 
+/** Path-like config keys — manifest may keep relative forms for readability. */
+const PATH_DEFAULT_KEYS = new Set<keyof FppPluginConfig>([
+  "auditLogPath",
+  "strictModeStatePath",
+  "receiptLogPath",
+  "identityKeyPath",
+  "mandateStorePath",
+]);
+
+/**
+ * Relative OpenClaw defaults (manifest) match absolute runtime defaults
+ * that end with the same `.openclaw/workspace/<file>` suffix.
+ */
+function defaultsEquivalent(
+  key: keyof FppPluginConfig,
+  manifestDefault: unknown,
+  runtimeDefault: unknown,
+): boolean {
+  if (JSON.stringify(manifestDefault) === JSON.stringify(runtimeDefault)) {
+    return true;
+  }
+  if (
+    PATH_DEFAULT_KEYS.has(key) &&
+    typeof manifestDefault === "string" &&
+    typeof runtimeDefault === "string"
+  ) {
+    const rel = manifestDefault.replace(/\\/g, "/");
+    const abs = runtimeDefault.replace(/\\/g, "/");
+    if (rel.startsWith(".openclaw/workspace/")) {
+      return abs.endsWith(`/${rel}`) || abs.endsWith(rel);
+    }
+  }
+  return false;
+}
+
 /**
  * Validate that openclaw.plugin.json configSchema defaults match DEFAULT_CONFIG.
  * Does not rewrite the manifest — reports drift only.
+ * Path defaults may remain relative in the manifest while runtime resolves absolute.
  */
 export function validateManifestDefaults(manifestPath: string): ManifestValidationResult {
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
@@ -70,7 +106,7 @@ export function validateManifestDefaults(manifestPath: string): ManifestValidati
     }
     const expected = DEFAULT_CONFIG[key];
     const actual = prop.default;
-    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    if (!defaultsEquivalent(key, actual, expected)) {
       mismatches.push(
         `${key}: manifest=${JSON.stringify(actual)} runtime=${JSON.stringify(expected)}`,
       );

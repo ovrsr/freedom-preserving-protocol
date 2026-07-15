@@ -5,7 +5,8 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClaudeCodeRuntime, handleClaudeCodePreToolUse, } from "./adapter.js";
-import { workspaceFile } from "@ovrsr/fpp-protocol-core";
+import { workspaceFile, resolveWorkspaceRoot, } from "@ovrsr/fpp-protocol-core";
+import { assertConfigPathAllowed } from "@ovrsr/fpp-enforcement-core";
 async function readStdin() {
     const chunks = [];
     for await (const chunk of process.stdin) {
@@ -14,26 +15,32 @@ async function readStdin() {
     return Buffer.concat(chunks).toString("utf8");
 }
 function loadConfig() {
-    const configPath = process.env.FPP_ENFORCEMENT_CONFIG?.trim() ||
-        workspaceFile("fpp-enforcement.json", { profile: "claude-code" });
-    const resolved = resolve(configPath);
-    if (existsSync(resolved)) {
-        return JSON.parse(readFileSync(resolved, "utf8"));
+    const profile = "claude-code";
+    const wsRoot = resolve(resolveWorkspaceRoot({ profile }));
+    const envPath = process.env.FPP_ENFORCEMENT_CONFIG?.trim();
+    const configPath = envPath
+        ? assertConfigPathAllowed({
+            configPath: envPath,
+            workspaceRoot: wsRoot,
+        })
+        : resolve(workspaceFile("fpp-enforcement.json", { profile }));
+    if (existsSync(configPath)) {
+        return JSON.parse(readFileSync(configPath, "utf8"));
     }
     return {
         dispositionMode: "unattended",
         auditLogPath: workspaceFile("fpp-plugin-audit.jsonl", {
-            profile: "claude-code",
+            profile,
         }),
         receiptLogPath: workspaceFile("fpp-receipts.jsonl", {
-            profile: "claude-code",
+            profile,
         }),
-        identityKeyPath: workspaceFile("agent.key", { profile: "claude-code" }),
+        identityKeyPath: workspaceFile("agent.key", { profile }),
         mandateStorePath: workspaceFile("fpp-mandates.json", {
-            profile: "claude-code",
+            profile,
         }),
         strictModeStatePath: workspaceFile("fpp-strict-mode.json", {
-            profile: "claude-code",
+            profile,
         }),
     };
 }

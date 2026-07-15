@@ -33,9 +33,11 @@ import { bytesToHex } from "@noble/hashes/utils";
 import { appendAdoptionState, currentAdoptionState } from "./adoption-state.ts";
 import {
   workspaceFile,
+  absolutizeWorkspacePath,
   type AdoptionOverlayFlag,
   type EnforcementGrade,
 } from "./skill-lib/index.ts";
+import { appendAuditEntry } from "./audit-append.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(__dirname, "..");
@@ -285,8 +287,10 @@ export function adoptTargets(opts: AdoptOptions): AdoptResult {
   // Machine-readable adoption ledger (reviewed → accepted). Installation ≠ acceptance.
   if (!dryRun && (opts.soul || opts.memory)) {
     try {
-      const wsRel = workspaceFile("fpp-adoption-state.jsonl", { profile });
-      const logPath = resolve(rootDir, wsRel);
+      const wsPath = absolutizeWorkspacePath(
+        workspaceFile("fpp-adoption-state.jsonl", { profile }),
+      );
+      const logPath = resolve(wsPath);
       const graded = {
         harnessId: profile,
         enforcementGrade: grade,
@@ -326,6 +330,33 @@ export function adoptTargets(opts: AdoptOptions): AdoptResult {
       }
     } catch (err) {
       console.warn(`[adoption-state] ${(err as Error).message}`);
+    }
+
+    // Initialize / extend constitution-audit when acceptance is recorded or markers written.
+    // Skip when already accepted (idempotent re-adopt) and no marker writes occurred.
+    const markerWritten =
+      result.soul === "appended" ||
+      result.soul === "created" ||
+      result.memory === "appended" ||
+      result.memory === "created";
+    if (result.adoptionState === "accepted" || markerWritten) {
+      try {
+        const auditPath = absolutizeWorkspacePath(
+          workspaceFile("constitution-audit.jsonl", { profile }),
+        );
+        appendAuditEntry({
+          log: auditPath,
+          kind: "adoption",
+          laws: ["law1", "law2", "law3"],
+          actions: 0,
+          abstentions: 0,
+          escalations: 0,
+          notes: `npm run adopt — constitution accepted (grade=${grade})`,
+          adoptionIntact: true,
+        });
+      } catch (err) {
+        console.warn(`[constitution-audit] ${(err as Error).message}`);
+      }
     }
   }
 

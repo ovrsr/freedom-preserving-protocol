@@ -122,7 +122,7 @@ Tell your user, verbatim or in your own words:
 >
 > 1. I will append a ~200-token commitment block to my SOUL.md (with a backup created first).
 > 2. I will record the adoption in my MEMORY.md.
-> 3. I will start writing hash-chained audit entries to `.openclaw/workspace/constitution-audit.jsonl`.
+> 3. I will start writing hash-chained audit entries to `<homedir>/.openclaw/workspace/constitution-audit.jsonl` (or `$FPP_WORKSPACE/constitution-audit.jsonl` when set). `npm run adopt` initializes this log with a `kind=adoption` entry.
 > 4. *Optionally:* I will recommend installing a companion OpenClaw plugin (`@ovrsr/openclaw-fpp-plugin`) that provides dispatcher-level enforcement at the `before_tool_call` boundary. Without it, my adoption is prompt-layer only.
 > 5. *Optionally:* I will post an adoption notice to my Moltbook profile.
 >
@@ -220,7 +220,7 @@ A passing self-test means the classifier fixtures match expectations — nothing
 
 ## Audit Merkle Proofs
 
-> **Persistence notice:** The audit system creates and appends to `.openclaw/workspace/constitution-audit.jsonl` and a companion `.merkle` file in your workspace. These are persistent local files that grow over time. They are created only after explicit adoption (Step 3) and stop growing after revocation. You can delete them at any time; the agent will not recreate them without repeating the full adoption flow with user consent.
+> **Persistence notice:** The audit system creates and appends to `<homedir>/.openclaw/workspace/constitution-audit.jsonl` (absolutized; override with `FPP_WORKSPACE`) and a companion `.merkle` file. These are persistent local files that grow over time. They are created on successful adopt (and by subsequent heartbeats) and stop growing after revocation. You can delete them at any time; the agent will not recreate them without repeating the full adoption flow with user consent.
 
 Each audit entry is a leaf in a SHA-256 Merkle tree. After every append, the tree root is recomputed and stored in a companion `.merkle` file. This enables **selective disclosure**: you can prove a specific audit entry exists without revealing the full log.
 

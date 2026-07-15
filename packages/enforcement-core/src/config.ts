@@ -121,7 +121,7 @@ export const DEFAULT_CONFIG: FppPluginConfig = {
     "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
   strictModeStatePath: workspaceFile("fpp-strict-sessions.json"),
   respectTrustStrictMode: true,
-  knownCustomTools: [],
+  knownCustomTools: ["memory_search"],
   auditFailureBehavior: "fail-closed",
   acknowledgeDangerousOverrides: false,
   receiptMaxPending: 256,

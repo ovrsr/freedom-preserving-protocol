@@ -47,8 +47,8 @@
       "knownCustomTools": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Explicit operator allowlist of known custom tool names that may bypass the unknown.unclassified → approval default. Scoped — not a global fail-open.",
-        "default": []
+        "description": "Explicit operator allowlist of known custom tool names that may bypass the unknown.unclassified → approval default. Default seeds OpenClaw introspection tool memory_search. Scoped — not a global fail-open. Allowing these tools is configuration evidence, not behavioral compliance.",
+        "default": ["memory_search"]
       },
       "auditFailureBehavior": {
         "type": "string",

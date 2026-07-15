@@ -6,7 +6,8 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createCodexRuntime, handleCodexPreToolUse } from "./adapter.js";
-import { workspaceFile } from "@ovrsr/fpp-protocol-core";
+import { workspaceFile, resolveWorkspaceRoot, } from "@ovrsr/fpp-protocol-core";
+import { assertConfigPathAllowed } from "@ovrsr/fpp-enforcement-core";
 async function readStdin() {
     const chunks = [];
     for await (const chunk of process.stdin) {
@@ -15,20 +16,26 @@ async function readStdin() {
     return Buffer.concat(chunks).toString("utf8");
 }
 function loadConfig() {
-    const configPath = process.env.FPP_ENFORCEMENT_CONFIG?.trim() ||
-        workspaceFile("fpp-enforcement.json", { profile: "codex" });
-    const resolved = resolve(configPath);
-    if (existsSync(resolved)) {
-        return JSON.parse(readFileSync(resolved, "utf8"));
+    const profile = "codex";
+    const wsRoot = resolve(resolveWorkspaceRoot({ profile }));
+    const envPath = process.env.FPP_ENFORCEMENT_CONFIG?.trim();
+    const configPath = envPath
+        ? assertConfigPathAllowed({
+            configPath: envPath,
+            workspaceRoot: wsRoot,
+        })
+        : resolve(workspaceFile("fpp-enforcement.json", { profile }));
+    if (existsSync(configPath)) {
+        return JSON.parse(readFileSync(configPath, "utf8"));
     }
     return {
         dispositionMode: "unattended",
-        auditLogPath: workspaceFile("fpp-plugin-audit.jsonl", { profile: "codex" }),
-        receiptLogPath: workspaceFile("fpp-receipts.jsonl", { profile: "codex" }),
-        identityKeyPath: workspaceFile("agent.key", { profile: "codex" }),
-        mandateStorePath: workspaceFile("fpp-mandates.json", { profile: "codex" }),
+        auditLogPath: workspaceFile("fpp-plugin-audit.jsonl", { profile }),
+        receiptLogPath: workspaceFile("fpp-receipts.jsonl", { profile }),
+        identityKeyPath: workspaceFile("agent.key", { profile }),
+        mandateStorePath: workspaceFile("fpp-mandates.json", { profile }),
         strictModeStatePath: workspaceFile("fpp-strict-mode.json", {
-            profile: "codex",
+            profile,
         }),
     };
 }

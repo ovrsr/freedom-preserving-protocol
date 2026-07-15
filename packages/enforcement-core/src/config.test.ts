@@ -128,12 +128,21 @@ describe("mergeConfig", () => {
   it("defaults standingAllowOn empty and mandate store path", () => {
     const cfg = mergeConfig({});
     assert.deepEqual(cfg.standingAllowOn, []);
-    assert.equal(
-      cfg.mandateStorePath,
-      ".openclaw/workspace/fpp-mandates.json",
+    assert.match(
+      cfg.mandateStorePath.replace(/\\/g, "/"),
+      /\/\.openclaw\/workspace\/fpp-mandates\.json$|\/\.fpp\/fpp-mandates\.json$/,
+    );
+    assert.ok(
+      cfg.mandateStorePath.includes("fpp-mandates.json"),
+      `expected absolute mandate path, got ${cfg.mandateStorePath}`,
     );
     assert.equal(cfg.mandateDefaultMaxActions, 10);
     assert.equal(cfg.stagedUndoWindowMs, 60_000);
+  });
+
+  it("defaults knownCustomTools to seeded introspection list", () => {
+    assert.deepEqual(DEFAULT_CONFIG.knownCustomTools, ["memory_search"]);
+    assert.deepEqual(mergeConfig({}).knownCustomTools, ["memory_search"]);
   });
 
   it("rejects standingAllowOn that covers hard-floor classes without acknowledgement", () => {

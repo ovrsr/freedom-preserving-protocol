@@ -18,7 +18,7 @@ Path defaults are resolved via `resolveWorkspaceRoot` / `workspaceFile`:
 
 | Profile | Root |
 |---------|------|
-| `openclaw` (default) | `.openclaw/workspace` |
+| `openclaw` (default) | `<homedir>/.openclaw/workspace` (absolute) |
 | `generic` | `$FPP_WORKSPACE` or `~/.fpp` |
 
 `FPP_WORKSPACE` overrides the root for any profile when set.

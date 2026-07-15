@@ -10,7 +10,9 @@
  *   2. signature.ed25519.txt verifies against pubkey.ed25519.txt over the hash.
  *   3. SOUL.md (if --soul given) contains the adoption marker.
  *   4. MEMORY.md (if --memory given) contains the adoption marker.
- *   5. Audit log (default .openclaw/workspace/constitution-audit.jsonl) chain verifies.
+ *   5. Audit log (default <homedir>/.openclaw/workspace/constitution-audit.jsonl) chain verifies.
+ *      Relative legacy paths are absolutized (never skill CWD). When adoption is
+ *      active but the log is missing, emit warn audit.adopted-without-log.
  *   6. The enforcement and trust plugins are checked by invoking
  *      `openclaw plugins list --json` if `openclaw` is on PATH. Absence is
  *      reported as a warning — not an adoption failure.
@@ -38,7 +40,7 @@ import {
   type AdoptionProbeEvidence,
 } from "./adoption-state.ts";
 import { resolveEnforcementGradeForProfile } from "./safe-append.ts";
-import { workspaceFile } from "./skill-lib/index.ts";
+import { workspaceFile, absolutizeWorkspacePath } from "./skill-lib/index.ts";
 
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 
@@ -95,10 +97,18 @@ export type Report = {
   probes: RuntimeProbeResult[];
 };
 
+export type PluginVersionInfo = {
+  id: string;
+  runtimeVersion?: string | undefined;
+  installVersion?: string | undefined;
+};
+
 export type PluginListResult = {
   available: boolean;
   stdout?: string;
   stderr?: string;
+  /** Optional structured plugin version info (tests / richer listers). */
+  plugins?: PluginVersionInfo[];
 };
 
 export type PluginLister = () => PluginListResult;
@@ -121,12 +131,16 @@ export type VerifyInstallOptions = {
   enforcementConfig?: Record<string, unknown>;
   /** Optional trust plugin config to diagnose (never rewritten). */
   trustConfig?: Record<string, unknown>;
+  /** Injectable env for workspace path resolution (tests). */
+  env?: NodeJS.ProcessEnv;
+  /** Injectable homedir for workspace path resolution (tests). */
+  homedir?: () => string;
 };
 
 function parseArgs(argv: string[]): {
   soul?: string;
   memory?: string;
-  log: string;
+  log?: string;
   json: boolean;
   profile: string;
 } {
@@ -148,7 +162,7 @@ function parseArgs(argv: string[]): {
 Options:
   --soul    <path>   Check that SOUL.md contains the adoption block
   --memory  <path>   Check that MEMORY.md contains the adoption entry
-  --log     <path>   Audit log path (default: <workspace>/constitution-audit.jsonl)
+  --log     <path>   Audit log path (default: <homedir>/.openclaw/workspace/constitution-audit.jsonl)
   --profile <id>     Workspace/harness profile: openclaw (default), generic,
                      cursor, claude-code, codex (unknown → warn, not false PASS)
   --json             Emit a machine-readable JSON report on stdout
@@ -159,8 +173,7 @@ Environment:
       process.exit(0);
     }
   }
-  // Deferred import keeps script load light when only --help is used.
-  return { soul, memory, log: log ?? "", json, profile };
+  return { soul, memory, log, json, profile };
 }
 
 function checkConstitution(rootDir: string, expectedHash: string): Check {
@@ -450,6 +463,103 @@ function checkPluginInstalled(
   };
 }
 
+/**
+ * Warn when inspectable runtime vs install-metadata versions diverge.
+ * Skip when version fields are absent. Never fails required checks.
+ */
+export function checkPluginVersionDrift(lister: PluginLister): Check {
+  const result = lister();
+  if (!result.available) {
+    return {
+      id: "plugin.version-drift",
+      label: "Plugin runtime vs install metadata version",
+      status: "skip",
+      detail: "plugin list not inspectable — version drift check skipped",
+    };
+  }
+
+  const plugins =
+    result.plugins ?? parsePluginVersionsFromStdout(result.stdout ?? "");
+  const withFields = plugins.filter(
+    (p) => p.runtimeVersion || p.installVersion,
+  );
+  if (withFields.length === 0) {
+    return {
+      id: "plugin.version-drift",
+      label: "Plugin runtime vs install metadata version",
+      status: "skip",
+      detail: "version fields not inspectable on plugin list output",
+    };
+  }
+
+  const drifts = withFields.filter(
+    (p) =>
+      p.runtimeVersion &&
+      p.installVersion &&
+      p.runtimeVersion !== p.installVersion,
+  );
+  if (drifts.length === 0) {
+    return {
+      id: "plugin.version-drift",
+      label: "Plugin runtime vs install metadata version",
+      status: "pass",
+      detail: "runtime and install metadata versions align (where present)",
+    };
+  }
+
+  const detail = drifts
+    .map(
+      (p) =>
+        `${p.id}: runtime=${p.runtimeVersion} install-metadata=${p.installVersion}`,
+    )
+    .join("; ");
+  return {
+    id: "plugin.version-drift",
+    label: "Plugin runtime vs install metadata version",
+    status: "warn",
+    detail: `Version drift detected (configuration/install skew — not automatic compromise): ${detail}`,
+  };
+}
+
+function parsePluginVersionsFromStdout(stdout: string): PluginVersionInfo[] {
+  const trimmed = stdout.trim();
+  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) return [];
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    const rows = Array.isArray(parsed)
+      ? parsed
+      : parsed &&
+          typeof parsed === "object" &&
+          Array.isArray((parsed as { plugins?: unknown }).plugins)
+        ? ((parsed as { plugins: unknown[] }).plugins)
+        : [];
+    const out: PluginVersionInfo[] = [];
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      const rec = row as Record<string, unknown>;
+      const id = String(rec.id ?? rec.name ?? rec.pluginId ?? "").trim();
+      if (!id) continue;
+      const runtimeVersion = stringOrUndef(
+        rec.runtimeVersion ?? rec.version ?? rec.loadedVersion,
+      );
+      const installVersion = stringOrUndef(
+        rec.installVersion ??
+          rec.installedVersion ??
+          rec.packageVersion ??
+          rec.metadataVersion,
+      );
+      out.push({ id, runtimeVersion, installVersion });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function stringOrUndef(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+
 function statusGlyph(s: CheckStatus): string {
   switch (s) {
     case "pass":
@@ -548,7 +658,15 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
     options.expectedConstitutionHash ?? DEFAULT_EXPECTED_CONSTITUTION_HASH;
   const lister = options.pluginLister ?? defaultPluginLister;
   const profile = options.profile ?? "openclaw";
-  const logPath = options.log ?? ".openclaw/workspace/constitution-audit.jsonl";
+  const pathOpts = {
+    profile,
+    env: options.env,
+    homedir: options.homedir,
+  };
+  const logPath = absolutizeWorkspacePath(
+    options.log ?? workspaceFile("constitution-audit.jsonl", pathOpts),
+    pathOpts,
+  );
   const probesToRun: RuntimeProbe[] =
     options.probes ??
     defaultProbesForProfile(profile, {
@@ -562,10 +680,15 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
   checks.push(checkConstitution(rootDir, expectedHash));
   checks.push(checkSignature(rootDir));
 
+  let soulAdopted = false;
   if (options.soul) {
-    checks.push(
-      checkMarker(resolve(options.soul), "soul.marker", "SOUL adoption block"),
+    const soulCheck = checkMarker(
+      resolve(options.soul),
+      "soul.marker",
+      "SOUL adoption block",
     );
+    checks.push(soulCheck);
+    soulAdopted = soulCheck.status === "pass";
   } else {
     checks.push({
       id: "soul.marker",
@@ -575,14 +698,15 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
     });
   }
 
+  let memoryAdopted = false;
   if (options.memory) {
-    checks.push(
-      checkMarker(
-        resolve(options.memory),
-        "memory.marker",
-        "MEMORY adoption entry",
-      ),
+    const memoryCheck = checkMarker(
+      resolve(options.memory),
+      "memory.marker",
+      "MEMORY adoption entry",
     );
+    checks.push(memoryCheck);
+    memoryAdopted = memoryCheck.status === "pass";
   } else {
     checks.push({
       id: "memory.marker",
@@ -592,7 +716,8 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
     });
   }
 
-  checks.push(checkAuditChain(resolve(logPath)));
+  const resolvedLog = logPath;
+  checks.push(checkAuditChain(resolvedLog));
 
   // Graded harness probes (OpenClaw by default; inject others for non-OpenClaw).
   for (const runtimeProbe of probesToRun) {
@@ -627,6 +752,7 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
         profile,
       ),
     );
+    checks.push(checkPluginVersionDrift(lister));
   }
 
   checks.push(...checkEnforcementConfig(options.enforcementConfig));
@@ -634,7 +760,7 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
 
   // Distinguish installation vs constitutional adoption vs enforcement.
   const adoptionLog = resolve(
-    dirname(resolve(logPath)),
+    dirname(resolvedLog),
     "fpp-adoption-state.jsonl",
   );
   let localAcceptanceActive = false;
@@ -734,6 +860,22 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
     });
   }
 
+  // Warn when local adoption is active but constitution-audit is missing (Q4-C).
+  // Does not fail required checks; does not flip peerAdvertisable (Q5-A).
+  const adoptionEvidence =
+    soulAdopted || memoryAdopted || localAcceptanceActive;
+  if (adoptionEvidence && !existsSync(resolvedLog)) {
+    checks.push({
+      id: "audit.adopted-without-log",
+      label: "Adoption without constitution-audit log",
+      status: "warn",
+      detail:
+        `Local adoption is active but no constitution-audit log at ${resolvedLog}. ` +
+        `Run adopt (non-dry-run) or audit:append --kind adoption so the chain is initialized. ` +
+        `This warn does not by itself revoke peer-advertisability.`,
+    });
+  }
+
   const requiredIds = new Set<string>([
     "constitution.hash",
     "constitution.signature",
@@ -778,13 +920,10 @@ export function runVerifyInstall(options: VerifyInstallOptions = {}): Report {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const log =
-    args.log ||
-    workspaceFile("constitution-audit.jsonl", { profile: args.profile });
   const report = runVerifyInstall({
     soul: args.soul,
     memory: args.memory,
-    log,
+    log: args.log,
     profile: args.profile,
   });
   const promptLayerActive = report.summary.promptLayerActive;

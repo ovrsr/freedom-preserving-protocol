@@ -23,13 +23,14 @@ import {
   verifyMerkleProof,
   type MerkleProof,
 } from "./merkle.ts";
+import { absolutizeWorkspacePath, workspaceFile } from "./skill-lib/index.ts";
 
 function usage() {
   console.log(`Usage: npm run audit:proof -- [options]
 
 Generate:
   --index <n>        Entry index (0-based) to prove
-  --log <path>       Audit log path (default: .openclaw/workspace/constitution-audit.jsonl)
+  --log <path>       Audit log path (default: <homedir>/.openclaw/workspace/constitution-audit.jsonl)
   --out <path>       Write proof JSON to file (default: stdout)
 
 Verify:
@@ -51,7 +52,7 @@ type Args = {
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     mode: "generate",
-    log: ".openclaw/workspace/constitution-audit.jsonl",
+    log: workspaceFile("constitution-audit.jsonl"),
     index: -1,
     json: false,
   };
@@ -160,7 +161,7 @@ function main() {
     );
     const valid = verifyMerkleProof(proof);
 
-    const leaves = loadLeaves(resolve(args.log));
+    const leaves = loadLeaves(resolve(absolutizeWorkspacePath(args.log)));
     const currentRoot = computeMerkleRoot(leaves);
     const rootMatch = proof.root === currentRoot;
 
@@ -187,7 +188,7 @@ function main() {
     process.exit(2);
   }
 
-  const leaves = loadLeaves(resolve(args.log));
+  const leaves = loadLeaves(resolve(absolutizeWorkspacePath(args.log)));
   if (args.index >= leaves.length) {
     console.error(
       `Index ${args.index} out of range (log has ${leaves.length} entries)`,

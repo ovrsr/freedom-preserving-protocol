@@ -37,6 +37,7 @@ import { fileURLToPath } from "node:url";
 import { appendAuditEntry } from "./audit-append.ts";
 import { verify as verifyAuditChain } from "./audit-verify.ts";
 import { appendAdoptionState, currentAdoptionState, readAdoptionHistory } from "./adoption-state.ts";
+import { absolutizeWorkspacePath, workspaceFile } from "./skill-lib/index.ts";
 import { bytesToHex } from "@noble/hashes/utils";
 import { sha256 } from "@noble/hashes/sha256";
 
@@ -54,7 +55,7 @@ type Args = {
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
-    log: ".openclaw/workspace/constitution-audit.jsonl",
+    log: workspaceFile("constitution-audit.jsonl"),
     reason: "",
     dryRun: false,
   };
@@ -76,7 +77,7 @@ Targets (at least one):
   --memory  <path>   Append revocation entry to MEMORY.md
 
 Options:
-  --log <path>       Audit log path (default .openclaw/workspace/constitution-audit.jsonl)
+  --log <path>       Audit log path (default <homedir>/.openclaw/workspace/constitution-audit.jsonl)
   --dry-run          Show what would change without writing
   -h, --help         This help
 
@@ -251,7 +252,7 @@ export type RevokeOptions = {
 export function revokeAdoption(opts: RevokeOptions): void {
   const ts = nowIso();
   const dryRun = opts.dryRun ?? false;
-  const logResolved = resolve(opts.log);
+  const logResolved = resolve(absolutizeWorkspacePath(opts.log));
 
   if (existsSync(logResolved)) {
     const chainReport = verifyAuditChain(logResolved);

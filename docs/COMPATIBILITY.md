@@ -159,7 +159,11 @@ Freedom Preserving Protocol — installation check
 [SKIP] MEMORY adoption entry
         no --memory path provided
 [SKIP] Audit chain
-        no audit log yet at .../.openclaw/workspace/constitution-audit.jsonl — first heartbeat will create it
+        no audit log yet at /home/<user>/.openclaw/workspace/constitution-audit.jsonl — first heartbeat will create it
+[WARN] Adoption without constitution-audit log
+        (emitted when SOUL/MEMORY/ledger show adoption but the audit log is missing)
+[WARN] Plugin runtime vs install metadata version
+        (emitted when inspectable runtime and install-metadata versions diverge — drift, not automatic compromise)
 [WARN] Dispatcher-layer plugin
         openclaw CLI not on PATH; cannot check plugin installation. The skill works without it but only at prompt-layer.
 
@@ -205,7 +209,9 @@ The plugin reads its configuration from your OpenClaw config:
 }
 ```
 
-If you do not set these, sensible defaults apply (see `plugin/src/config.ts` and `plugin-trust/openclaw.plugin.json`). The trust plugin uses `fallbackAuditLogPath` when `constitution-audit.jsonl` has no entries yet, so handshakes can bootstrap from enforcement audit activity before the first heartbeat. Set `fallbackAuditLogPath` to `null` if you run trust without the enforcement plugin.
+If you do not set these, sensible defaults apply (see `plugin/src/config.ts` and `plugin-trust/openclaw.plugin.json`). Manifest path defaults may remain relative (`.openclaw/workspace/...`) for readability; runtime and scripts absolutize them under `<homedir>/.openclaw/workspace` (or `FPP_WORKSPACE` when set — use this when OpenClaw `workspaceDir` is non-default). The trust plugin uses `fallbackAuditLogPath` when `constitution-audit.jsonl` has no entries yet, so handshakes can bootstrap from enforcement audit activity before the first heartbeat. Set `fallbackAuditLogPath` to `null` if you run trust without the enforcement plugin.
+
+Default `knownCustomTools` seeds `memory_search`. Tools matching `/^fpp_/` classify as `fpp.governance` and allow with audit in unattended mode. **Neither proves behavioral compliance** — only configuration/event evidence.
 
 ## Claim-format migration terminology
 

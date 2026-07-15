@@ -140,6 +140,28 @@ describe("resolveDisposition (unattended)", () => {
     assert.notEqual(result.disposition, "require_approval");
   });
 
+  it("allows fpp.governance (decision=allow) in unattended mode", () => {
+    const result = resolveDisposition({
+      classification: cls("fpp.governance", "allow"),
+      config: unattended,
+    });
+    // Reversible allow path may be allow or allow_staged; must not abstain.
+    assert.ok(
+      result.disposition === "allow" || result.disposition === "allow_staged",
+      `expected allow/allow_staged, got ${result.disposition}`,
+    );
+    assert.notEqual(result.disposition, "abstain");
+  });
+
+  it("honors classifier decision=allow for unknown.unclassified (knownCustomTools)", () => {
+    const result = resolveDisposition({
+      classification: cls("unknown.unclassified", "allow"),
+      config: unattended,
+    });
+    assert.equal(result.disposition, "allow");
+    assert.notEqual(result.disposition, "abstain");
+  });
+
   it("never returns require_approval while dispositionMode is unattended", () => {
     for (const id of DEFAULT_CONFIG.approvalOn) {
       const result = resolveDisposition({

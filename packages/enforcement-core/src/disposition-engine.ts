@@ -140,6 +140,17 @@ export function resolveDisposition(
     };
   }
 
+  // Honor explicit classifier allow (e.g. knownCustomTools) before abstain.
+  // Without this, allowlisted unknown tools would abstain in unattended mode
+  // because unknown.unclassified is not in the reversible set.
+  if (classification.decision === "allow") {
+    return {
+      disposition: "allow",
+      authorization: "approved",
+      reason: `classifier allow: ${classification.classification}`,
+    };
+  }
+
   // Quorum path: Plan 9 issues signed mandates; this plan only consumes the flag
   // / live mandate with quorum authorization. Prefer liveMandate above when set.
   if (quorumMandatePresent && budgetAvailable) {

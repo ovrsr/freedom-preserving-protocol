@@ -168,7 +168,8 @@ If you find an older MEMORY.md you want to restore, you can do so safely — `sa
 
 The plugin is running but a runtime check failed. Common causes:
 
-- `auditLogPath` directory is not writable. Create it: `mkdir -p .openclaw/workspace && touch .openclaw/workspace/fpp-plugin-audit.jsonl`.
+- `auditLogPath` directory is not writable. Create it under the live OpenClaw workspace (default `<homedir>/.openclaw/workspace`, or `$FPP_WORKSPACE`): `mkdir -p "$HOME/.openclaw/workspace" && touch "$HOME/.openclaw/workspace/fpp-plugin-audit.jsonl"`. Relative `.openclaw/workspace` paths in config are absolutized — do not rely on skill CWD.
+- Runtime vs install metadata version drift: `verify-install` emits `[WARN] plugin.version-drift` when both versions are inspectable and differ. This is install/config skew, not automatic compromise — reinstall or align versions deliberately.
 - The plugin's manifest declares hooks the runtime version doesn't support. Compare `openclaw --version` with the `pluginApi` field in `plugin/package.json`'s `openclaw.compat`. If your runtime is older, you must either upgrade OpenClaw or pin the plugin to an older version.
 - `allowConversationAccess` is required for a hook you don't actually use. The default plugin only registers `before_tool_call`, which does NOT require `allowConversationAccess`. If you've forked the plugin to add `llm_input` or `llm_output` hooks, you'll need to set `plugins.entries.openclaw-fpp-plugin.hooks.allowConversationAccess: true` in your OpenClaw config.
 
@@ -206,6 +207,8 @@ The dispatcher plugin's risk classifier ships with conservative defaults. If you
 Restart the gateway for changes to take effect. Be wary of tuning so aggressively that the framework no longer protects you — every removal from `approvalOn` is a deliberate Law 1 trade-off.
 
 For **headless / unattended** agents, set `dispositionMode: "unattended"` (new-install default). Uncertainty then **abstains** instead of opening `requireApproval`. Cover routine classes with `standingAllowOn` or signed mandates at `mandateStorePath` — do not put hard-floor (`blockOn`) classes on the standing allowlist without `acknowledgeDangerousOverrides: true`.
+
+**Introspection under unattended:** tools matching `/^fpp_/` (e.g. `fpp_trust_status`) classify as `fpp.governance` and **allow with audit**. Default `knownCustomTools` seeds `memory_search` (exact name only). Random unknown tools still abstain. Allowing these tools is **not** behavioral compliance.
 
 ### Quorum mandates (peer / steward) — not ratification
 

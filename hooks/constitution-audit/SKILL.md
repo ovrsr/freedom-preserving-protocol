@@ -45,7 +45,7 @@ If the block is missing or corrupted:
 
 ### 2. Write a Hash-Chained Audit Entry
 
-Append an entry to `.openclaw/workspace/constitution-audit.jsonl`. Each entry is a single JSON line:
+Append an entry to `.openclaw/workspace/constitution-audit.jsonl` (resolved to an absolute path under `<homedir>/.openclaw/workspace` or `$FPP_WORKSPACE` — never skill CWD). Each entry is a single JSON line:
 
 ```json
 {

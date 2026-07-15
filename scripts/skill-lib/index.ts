@@ -23,9 +23,11 @@ export {
 export {
   workspaceFile,
   resolveWorkspaceRoot,
+  absolutizeWorkspacePath,
   DEFAULT_WORKSPACE_PROFILE,
   type WorkspaceProfileId,
   type ResolveWorkspaceOptions,
+  type AbsolutizeWorkspaceOptions,
 } from "./workspace.js";
 export {
   ADOPTION_STATES,
