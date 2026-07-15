@@ -69,6 +69,6 @@ describe("package-reproducibility spawn", () => {
     );
     assert.match(src, /shell:\s*false/);
     assert.doesNotMatch(src, /shell:\s*true/);
-    assert.match(src, /npmCmd|npm\.cmd|process\.platform/);
+    assert.match(src, /resolveNpmSpawn|npm-cli\.js|process\.execPath/);
   });
 });

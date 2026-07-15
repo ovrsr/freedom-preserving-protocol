@@ -36,6 +36,41 @@ export type InventoryDiff = {
   changed: string[];
 };
 
+/**
+ * Resolve an npm invocation that works with `shell: false`.
+ * On Windows, `spawnSync("npm.cmd", { shell: false })` fails with EINVAL;
+ * invoke npm's CLI via `node` instead (still no shell).
+ */
+export function resolveNpmSpawn(): { command: string; prefixArgs: string[] } {
+  if (process.platform !== "win32") {
+    return { command: "npm", prefixArgs: [] };
+  }
+  const npmCli = join(
+    dirname(process.execPath),
+    "node_modules",
+    "npm",
+    "bin",
+    "npm-cli.js",
+  );
+  if (existsSync(npmCli)) {
+    return { command: process.execPath, prefixArgs: [npmCli] };
+  }
+  // Fallback: still try npm.cmd (may fail without shell on some hosts).
+  return { command: "npm.cmd", prefixArgs: [] };
+}
+
+function runNpm(
+  args: string[],
+  cwd: string,
+): ReturnType<typeof spawnSync> {
+  const { command, prefixArgs } = resolveNpmSpawn();
+  return spawnSync(command, [...prefixArgs, ...args], {
+    cwd,
+    encoding: "utf8",
+    shell: false,
+  });
+}
+
 function normalizePath(p: string): string {
   return p.split(sep).join("/").replace(/^\.\//, "");
 }
@@ -138,23 +173,18 @@ export async function inventoryFromPackDryRun(
   packageDir: string,
   _outDir?: string,
 ): Promise<PackageInventory> {
-  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
   // Ensure dist exists for plugins — never enable shell for npm (lifecycle script risk).
   if (existsSync(join(packageDir, "tsconfig.json"))) {
-    spawnSync(npmCmd, ["run", "build", "--if-present"], {
-      cwd: packageDir,
-      encoding: "utf8",
-      shell: false,
-    });
+    runNpm(["run", "build", "--if-present"], packageDir);
   }
-  const result = spawnSync(npmCmd, ["pack", "--dry-run"], {
-    cwd: packageDir,
-    encoding: "utf8",
-    shell: false,
-  });
+  const result = runNpm(["pack", "--dry-run"], packageDir);
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   if (result.status !== 0) {
-    throw new Error(`npm pack --dry-run failed in ${packageDir}:\n${output}`);
+    const detail =
+      result.error != null
+        ? `${result.error.message}\n${output}`
+        : output;
+    throw new Error(`npm pack --dry-run failed in ${packageDir}:\n${detail}`);
   }
   let paths = parsePackDryRunPaths(output);
   if (paths.length === 0) {
