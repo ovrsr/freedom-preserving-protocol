@@ -8,7 +8,11 @@ import {
   createClaudeCodeRuntime,
   handleClaudeCodePreToolUse,
 } from "./adapter.js";
-import { workspaceFile } from "@ovrsr/fpp-protocol-core";
+import {
+  workspaceFile,
+  resolveWorkspaceRoot,
+} from "@ovrsr/fpp-protocol-core";
+import { assertConfigPathAllowed } from "@ovrsr/fpp-enforcement-core";
 
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -19,27 +23,34 @@ async function readStdin(): Promise<string> {
 }
 
 function loadConfig(): unknown {
-  const configPath =
-    process.env.FPP_ENFORCEMENT_CONFIG?.trim() ||
-    workspaceFile("fpp-enforcement.json", { profile: "claude-code" });
-  const resolved = resolve(configPath);
-  if (existsSync(resolved)) {
-    return JSON.parse(readFileSync(resolved, "utf8"));
+  const profile = "claude-code";
+  const wsRoot = resolve(resolveWorkspaceRoot({ profile }));
+  const envPath = process.env.FPP_ENFORCEMENT_CONFIG?.trim();
+  const configPath = envPath
+    ? assertConfigPathAllowed({
+        configPath: envPath,
+        workspaceRoot: wsRoot,
+      })
+    : resolve(
+        workspaceFile("fpp-enforcement.json", { profile }),
+      );
+  if (existsSync(configPath)) {
+    return JSON.parse(readFileSync(configPath, "utf8"));
   }
   return {
     dispositionMode: "unattended",
     auditLogPath: workspaceFile("fpp-plugin-audit.jsonl", {
-      profile: "claude-code",
+      profile,
     }),
     receiptLogPath: workspaceFile("fpp-receipts.jsonl", {
-      profile: "claude-code",
+      profile,
     }),
-    identityKeyPath: workspaceFile("agent.key", { profile: "claude-code" }),
+    identityKeyPath: workspaceFile("agent.key", { profile }),
     mandateStorePath: workspaceFile("fpp-mandates.json", {
-      profile: "claude-code",
+      profile,
     }),
     strictModeStatePath: workspaceFile("fpp-strict-mode.json", {
-      profile: "claude-code",
+      profile,
     }),
   };
 }

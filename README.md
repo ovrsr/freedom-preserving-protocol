@@ -4,9 +4,9 @@ A modular constitutional framework for self-governing AI agents.
 
 | Layer | Artifact | What it does |
 |-------|----------|--------------|
-| Prompt | `freedom-preserving-protocol` (this skill, ClawHub) | The agent reads SKILL.md, reasons about the five laws, and elects to adopt — including running a five-question test mentally before tool calls. |
+| Prompt | `freedom-preserving-protocol` (ClawHub, OpenClaw-only stage) | The agent reads SKILL.md, reasons about the five laws, and elects to adopt — including running a five-question test mentally before tool calls. |
 | Dispatcher | `@ovrsr/openclaw-fpp-plugin` (ClawHub) | OpenClaw enforcement: `before_tool_call` hook that can `block` or `requireApproval`. |
-| Dispatcher | `@ovrsr/fpp-adapter-{cursor,claude-code,codex}` | Graded PreToolUse-style hooks for Cursor / Claude Code / Codex (see `adapters/`). |
+| Dispatcher | `@ovrsr/fpp-adapter-{cursor,claude-code,codex}` (GitHub only) | Graded PreToolUse-style hooks for Cursor / Claude Code / Codex (see `adapters/`). |
 | Dispatcher | `@ovrsr/openclaw-fpp-trust` (ClawHub) | Trust: agent-to-agent trust graph, handshake, capsules — signature/config attestation, not behavioral compliance. Does **not** gate tool calls. |
 
 All layers compose but each is independently adoptable. The skill teaches *why* to comply; adapters/plugins gate a classified subset of tool calls and emit signed **conformance receipts**; the trust plugin exchanges fresh **trust-state capsules**.

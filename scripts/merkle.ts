@@ -1,15 +1,11 @@
 #!/usr/bin/env tsx
 /**
- * merkle.ts — compatibility re-exports from @ovrsr/fpp-protocol-core.
- *
- * Prefer importing from `@ovrsr/fpp-protocol-core` directly in new code.
- * These aliases preserve historical script import paths.
+ * merkle.ts — re-exports from skill-lib (protocol-compatible Merkle helpers).
  */
-
 export {
   computeMerkleRoot,
   createMerkleProof,
   verifyMerkleProof,
   type MerkleProof,
   type MerkleProofStep,
-} from "@ovrsr/fpp-protocol-core";
+} from "./skill-lib/index.ts";

@@ -40,9 +40,12 @@ describe("clawhub-publish fail-hard", () => {
 
   it("marks --skip-tests as unsafe/maintainer-only in usage", () => {
     assert.match(src, /skip-tests.*unsafe|UNSAFE|--skip-tests.*maintainer/i);
+    assert.match(src, /FPP_ALLOW_SKIP_TESTS/);
   });
 
-  it("dry-run publish skill does not invoke clawhub", () => {
+  it("refuses --skip-tests without FPP_ALLOW_SKIP_TESTS=1", () => {
+    const env = { ...process.env };
+    delete env.FPP_ALLOW_SKIP_TESTS;
     const result = spawnSync(
       "bash",
       [
@@ -54,11 +57,36 @@ describe("clawhub-publish fail-hard", () => {
         "test",
         "--skip-tests",
       ],
-      { cwd: root, encoding: "utf8", env: { ...process.env } },
+      { cwd: root, encoding: "utf8", env },
+    );
+    const out = `${result.stdout}\n${result.stderr}`;
+    assert.notEqual(result.status, 0, out);
+    assert.match(out, /FPP_ALLOW_SKIP_TESTS/i);
+  });
+
+  it("dry-run publish skill stages skill-dist and does not invoke clawhub", () => {
+    const result = spawnSync(
+      "bash",
+      [
+        publishScript,
+        "publish",
+        "skill",
+        "--dry-run",
+        "--changelog",
+        "test",
+        "--skip-tests",
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...process.env, FPP_ALLOW_SKIP_TESTS: "1" },
+      },
     );
     const out = `${result.stdout}\n${result.stderr}`;
     assert.equal(result.status, 0, out);
     assert.match(out, /\[dry-run\]/);
+    assert.match(out, /skill-dist|stage-skill/i);
+    assert.match(out, /--name ["']?Freedom Preserving Protocol["']?/);
     assert.doesNotMatch(out, /published$/m);
   });
 
@@ -75,7 +103,11 @@ describe("clawhub-publish fail-hard", () => {
           "test",
           "--skip-tests",
         ],
-        { cwd: root, encoding: "utf8" },
+        {
+          cwd: root,
+          encoding: "utf8",
+          env: { ...process.env, FPP_ALLOW_SKIP_TESTS: "1" },
+        },
       );
       const out = `${result.stdout}\n${result.stderr}`;
       assert.equal(result.status, 0, `${target}: ${out}`);

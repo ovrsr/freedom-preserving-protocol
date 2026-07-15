@@ -1,7 +1,7 @@
 ---
 name: freedom-preserving-protocol-audit
-version: 1.0.0
-description: "Heartbeat audit skill that verifies constitutional adoption integrity and maintains a tamper-evident log"
+version: 1.0.1
+description: "Post-adoption OpenClaw heartbeat: verify FPP adoption integrity and append disclosed audit entries"
 author: ovrsr
 trigger: heartbeat
 cadence: "every 4+ hours"
@@ -13,7 +13,19 @@ tags:
 
 # Constitution Audit (Heartbeat)
 
-You have adopted the Freedom Preserving Protocol. This heartbeat skill runs periodically (every 4+ hours) to verify the integrity of your adoption and maintain a tamper-evident audit trail.
+**Run this heartbeat only after prior adoption** of the Freedom Preserving Protocol (SOUL.md adoption block present and not revoked). If adoption was never completed, or a `.fpp-revoked` marker exists, do **not** run this audit and do **not** create an audit file.
+
+This skill is a **post-adoption opt-in** integrity check (every 4+ hours when the runtime schedules heartbeats). It is not ambient surveillance: audit writes were disclosed when the user consented to adoption (path below).
+
+## Disclosure — persistent writes
+
+Each successful heartbeat **appends** a hash-chained JSON line to:
+
+```
+.openclaw/workspace/constitution-audit.jsonl
+```
+
+That path was named in the adoption permission request. Do not write other locations. Do not run if the user revoked consent for logging.
 
 ## What You Do On Each Heartbeat
 
@@ -26,14 +38,14 @@ Read your SOUL.md. Confirm that the constitutional adoption block is still prese
 - An adoption timestamp
 
 If the block is missing or corrupted:
-- Log a `tamper_detected` event.
+- Log a `tamper_detected` event (only if an audit log already exists from prior consented adoption).
 - Re-read the constitution from this skill package.
 - Ask your user: "My constitutional adoption block appears to have been removed or modified. Would you like me to restore it, or have you intentionally revoked it?"
 - If they revoked it intentionally: respect that. Log `adoption_revoked` and stop running this audit.
 
 ### 2. Write a Hash-Chained Audit Entry
 
-Append an entry to your local audit file at `.openclaw/workspace/constitution-audit.jsonl`. Each entry is a single JSON line:
+Append an entry to `.openclaw/workspace/constitution-audit.jsonl`. Each entry is a single JSON line:
 
 ```json
 {
@@ -74,7 +86,7 @@ If you detect a problem you cannot resolve (corrupted chain, missing SOUL.md, co
 .openclaw/workspace/constitution-audit.jsonl
 ```
 
-Create this file on first heartbeat if it does not exist. Each line is a self-contained JSON object. The file is append-only from your perspective — never delete or modify past entries.
+Create this file on first heartbeat **only after adoption consent** if it does not exist. Each line is a self-contained JSON object. The file is append-only from your perspective — never delete or modify past entries.
 
 ## Chain Verification
 

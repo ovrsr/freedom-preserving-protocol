@@ -25,7 +25,9 @@ Machine-readable matrix: `adapters/harness-capabilities.json`. Runbooks: `docs/r
 
 ### Prompt-layer skill
 
-The skill is plain markdown with YAML frontmatter conforming to the AgentSkills spec. It works in any harness that consumes that spec. The skill's tooling scripts (`npm run verify/adopt/revoke/...`) and the aggregate gate (`npm run verify:all`) require Node `>=22.19` (source: root `package.json` `engines.node`, pinned via `.node-version`).
+The **ClawHub** skill is an **OpenClaw** prompt-layer package (allowlisted stage via `scripts/stage-skill.ts`). It does not include Cursor / Claude Code / Codex adapters. Those live in this git monorepo under `adapters/` and are installed from a clone.
+
+The skill is plain markdown with YAML frontmatter conforming to the AgentSkills spec. Prompt text works in other AgentSkills-compliant harnesses when copied manually; ClawHub distribution targets OpenClaw.
 
 | Runtime | Tested | Notes |
 |---------|--------|-------|

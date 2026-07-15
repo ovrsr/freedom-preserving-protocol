@@ -14,3 +14,7 @@ Codex `FppRuntimeAdapter` for the Freedom Preserving Protocol.
 - No FPP operator approval UI → `dispositionMode: "unattended"` forced; `require_approval` → deny
 
 See `adapters/harness-capabilities.json` and `docs/runbooks/codex.md`.
+
+**Matcher:** Codex hooks use `matcher: "Bash"` (graded shell coverage — not full tool parity).
+
+**Config:** Optional `FPP_ENFORCEMENT_CONFIG` must stay under the Codex workspace profile root (`~/.fpp/codex` or `$FPP_WORKSPACE`).

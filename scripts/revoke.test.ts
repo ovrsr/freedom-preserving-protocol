@@ -186,6 +186,49 @@ describe("revoke", () => {
     assert.ok(mem.includes(FIXED_TS) && mem.includes(REASON));
   });
 
+  it("revokeAdoption refuses to mutate when the audit chain is forged", () => {
+    const nested = mkdtempSync(join(workdir, "revoke-forged-"));
+    const logPath = join(nested, "constitution-audit.jsonl");
+    const soulPath = join(nested, "SOUL.md");
+    writeFileSync(
+      soulPath,
+      `# Preface\n\n## ${ADOPTION_MARKER}\nhash=abc\n`,
+    );
+    // Tampered single-line "log" with invalid hash chain
+    writeFileSync(
+      logPath,
+      JSON.stringify({
+        previousHash: "0".repeat(64),
+        timestamp: FIXED_TS,
+        adoptionIntact: true,
+        lawsInvoked: [],
+        actionsReviewed: 0,
+        abstentions: 0,
+        escalations: 0,
+        notes: "forged",
+        kind: "heartbeat",
+        hash: "deadbeef".repeat(8),
+      }) + "\n",
+    );
+    const soulBefore = readFileSync(soulPath, "utf-8");
+    const logBefore = readFileSync(logPath, "utf-8");
+
+    assert.throws(
+      () =>
+        revokeAdoption({
+          soul: soulPath,
+          log: logPath,
+          reason: REASON,
+          dryRun: false,
+        }),
+      /chain|forged|integrity/i,
+    );
+
+    assert.equal(readFileSync(soulPath, "utf-8"), soulBefore);
+    assert.equal(readFileSync(logPath, "utf-8"), logBefore);
+    assert.equal(existsSync(join(nested, ".fpp-revoked")), false);
+  });
+
   it("revokeAdoption annotates graded ledger and clears active peer acceptance", () => {
     const nested = mkdtempSync(join(workdir, "revoke-grade-"));
     const logPath = join(nested, "constitution-audit.jsonl");

@@ -13,6 +13,28 @@ This document collects failure modes observed by the first agents to install Fre
 
 Capability matrix: [`adapters/harness-capabilities.json`](../adapters/harness-capabilities.json). Compatibility: [`docs/COMPATIBILITY.md`](COMPATIBILITY.md).
 
+## 0b. "ClawHub skill install looks like the whole monorepo / includes adapters"
+
+**Cause:** Older skill publishes uploaded the repo root (`clawhub skill publish .`), so installs could contain adapters, maintainer scripts, and docs that are not OpenClaw skill surface.
+
+**Fix:**
+1. Reinstall the skill from ClawHub after a slim release (`npm run publish:skill` stages `skill-dist/` via `scripts/stage-skill.ts`).
+2. Confirm the install has `SKILL.md` + `scripts/skill-lib/` and **does not** contain `adapters/`, `plugin/`, or `packages/`.
+3. For Cursor / Claude Code / Codex hooks, clone the [GitHub repo](https://github.com/ovrsr/freedom-preserving-protocol) — adapters are not shipped on ClawHub.
+
+## 0c. Security scanner false positives (accepted)
+
+SkillSpector / static scanners may flag:
+
+| Signal | Why accepted |
+|--------|----------------|
+| `child_process` in `scripts/*.test.ts` | Test harness only; not in ClawHub skill stage |
+| "exposed secret" in old `docs/plans/*` | Plan prose / field names — not credentials |
+| Fixture URLs / IPs in `test/fixtures/*` | Classifier corpus; not install sources |
+| `--skip-tests` | Dual-gated (`FPP_ALLOW_SKIP_TESTS=1`); maintainer escape hatch |
+
+VirusTotal historically reports the skill clean; treat capability findings as packaging/disclosure issues (remediated by OpenClaw-only staging).
+
 ## 0. "`npm` / OpenClaw install fails with missing `@ovrsr/fpp-*-core`"
 
 **Cause:** Older ClawHub plugin versions listed `@ovrsr/fpp-protocol-core`, `@ovrsr/fpp-enforcement-core`, and/or `@ovrsr/fpp-trust-core` as normal dependencies, but those packages are **not** on the public npm registry. OpenClaw's managed install (`npm install --omit=dev --omit=peer --legacy-peer-deps --ignore-scripts`) cannot fetch them.

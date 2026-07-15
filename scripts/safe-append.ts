@@ -31,11 +31,11 @@ import { fileURLToPath } from "node:url";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
 import { appendAdoptionState, currentAdoptionState } from "./adoption-state.ts";
-import { workspaceFile } from "../packages/protocol-core/src/workspace-profile.ts";
-import type {
-  AdoptionOverlayFlag,
-  EnforcementGrade,
-} from "@ovrsr/fpp-protocol-core";
+import {
+  workspaceFile,
+  type AdoptionOverlayFlag,
+  type EnforcementGrade,
+} from "./skill-lib/index.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(__dirname, "..");

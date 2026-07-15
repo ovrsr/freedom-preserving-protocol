@@ -10,8 +10,11 @@ packages/*/coverage/
 # Runtime audit logs (per-agent; not committed)
 .openclaw/
 
-# Stale npm-pack snapshot from v1.0.0 (safe to delete but kept around for diff)
-package/
+# Generated OpenClaw-only ClawHub skill root (see scripts/stage-skill.ts)
+skill-dist/
+
+# Legacy stale skill snapshot removed; do not recreate
+# package/
 
 # npm pack artifacts
 *.tgz

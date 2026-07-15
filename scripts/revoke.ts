@@ -251,17 +251,28 @@ export type RevokeOptions = {
 export function revokeAdoption(opts: RevokeOptions): void {
   const ts = nowIso();
   const dryRun = opts.dryRun ?? false;
+  const logResolved = resolve(opts.log);
+
+  if (existsSync(logResolved)) {
+    const chainReport = verifyAuditChain(logResolved);
+    if (!chainReport.ok) {
+      const detail = chainReport.errors.slice(0, 3).join("; ");
+      throw new Error(
+        `Audit chain integrity check failed — refusing to revoke from a potentially forged log. ${detail}`,
+      );
+    }
+  }
 
   if (opts.soul) annotateSoul(resolve(opts.soul), opts.reason, ts, dryRun);
   if (opts.memory)
     appendMemoryRevocation(resolve(opts.memory), opts.reason, ts, dryRun);
-  appendAuditRevocation(resolve(opts.log), opts.reason, dryRun);
-  writeMarker(resolve(opts.log), opts.reason, ts, dryRun);
+  appendAuditRevocation(logResolved, opts.reason, dryRun);
+  writeMarker(logResolved, opts.reason, ts, dryRun);
 
   if (!dryRun) {
     try {
       const adoptionLog = resolve(
-        dirname(resolve(opts.log)),
+        dirname(logResolved),
         "fpp-adoption-state.jsonl",
       );
       const current = currentAdoptionState(adoptionLog);
@@ -317,35 +328,26 @@ function main() {
     );
   }
 
-  const ts = nowIso();
-  console.log(`Revocation timestamp: ${ts}`);
+  console.log(`Revocation timestamp: ${nowIso()}`);
   console.log(`Reason: ${args.reason}`);
   if (args.dryRun) console.log("Mode: DRY RUN\n");
   else console.log("Mode: WRITE — backups will be created.\n");
 
-  const logResolved = resolve(args.log);
-  if (existsSync(logResolved)) {
-    const chainReport = verifyAuditChain(logResolved);
-    if (!chainReport.ok) {
-      console.error(
-        `[AUDIT] Chain integrity check FAILED — refusing to revoke from a potentially forged log.`,
-      );
-      for (const e of chainReport.errors.slice(0, 3)) {
-        console.error(`        ${e}`);
-      }
-      console.error(
-        `\nFix the audit chain first (see docs/TROUBLESHOOTING.md#5), then retry.`,
-      );
-      process.exit(1);
-    }
-    console.log(`[AUDIT] Chain integrity verified (${chainReport.entries} entries)\n`);
+  try {
+    revokeAdoption({
+      soul: args.soul,
+      memory: args.memory,
+      log: args.log,
+      reason: args.reason,
+      dryRun: args.dryRun,
+    });
+  } catch (err) {
+    console.error(`[AUDIT] ${(err as Error).message}`);
+    console.error(
+      `\nFix the audit chain first (see docs/TROUBLESHOOTING.md#5), then retry.`,
+    );
+    process.exit(1);
   }
-
-  if (args.soul) annotateSoul(resolve(args.soul), args.reason, ts, args.dryRun);
-  if (args.memory)
-    appendMemoryRevocation(resolve(args.memory), args.reason, ts, args.dryRun);
-  appendAuditRevocation(resolve(args.log), args.reason, args.dryRun);
-  writeMarker(resolve(args.log), args.reason, ts, args.dryRun);
 
   console.log("\nIf the companion plugin is installed, disable it with:");
   console.log("  openclaw plugins disable openclaw-fpp-plugin");

@@ -138,18 +138,19 @@ export async function inventoryFromPackDryRun(
   packageDir: string,
   _outDir?: string,
 ): Promise<PackageInventory> {
-  // Ensure dist exists for plugins
+  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+  // Ensure dist exists for plugins — never enable shell for npm (lifecycle script risk).
   if (existsSync(join(packageDir, "tsconfig.json"))) {
-    spawnSync("npm", ["run", "build", "--if-present"], {
+    spawnSync(npmCmd, ["run", "build", "--if-present"], {
       cwd: packageDir,
       encoding: "utf8",
-      shell: true,
+      shell: false,
     });
   }
-  const result = spawnSync("npm", ["pack", "--dry-run"], {
+  const result = spawnSync(npmCmd, ["pack", "--dry-run"], {
     cwd: packageDir,
     encoding: "utf8",
-    shell: true,
+    shell: false,
   });
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   if (result.status !== 0) {

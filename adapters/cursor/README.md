@@ -21,6 +21,8 @@ See `adapters/harness-capabilities.json` and `docs/runbooks/cursor.md`.
 
 Default profile: `cursor` → `~/.fpp/cursor` (override with `FPP_WORKSPACE`).
 
+Optional `FPP_ENFORCEMENT_CONFIG` must point to a JSON file **inside** that workspace root; paths outside are rejected.
+
 ## Install (hooks)
 
 Copy [`hooks/hooks.json`](./hooks/hooks.json) into `.cursor/hooks.json` (project)

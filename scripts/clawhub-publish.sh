@@ -10,6 +10,7 @@ SOURCE_REPO="https://github.com/ovrsr/freedom-preserving-protocol"
 CORE_DIR="packages/protocol-core"
 CORE_NAME="@ovrsr/fpp-protocol-core"
 SKILL_SLUG="freedom-preserving-protocol"
+SKILL_DISPLAY_NAME="Freedom Preserving Protocol"
 PLUGIN_NAME="@ovrsr/openclaw-fpp-plugin"
 PLUGIN_DIR="plugin"
 TRUST_NAME="@ovrsr/openclaw-fpp-trust"
@@ -95,6 +96,7 @@ OPTIONS:
   --changelog <msg>  Changelog message (required for publish)
   --dry-run          Show what would happen without executing
   --skip-tests       UNSAFE / maintainer-only: skip pre-publish verification
+                     (also requires FPP_ALLOW_SKIP_TESTS=1)
   --help             Show this help
 
 EXAMPLES:
@@ -239,8 +241,17 @@ run_strict_checks_core() {
 run_strict_checks_skill() {
   bold "Running pre-publish checks for skill (fail-hard)..."
   (cd "$REPO_ROOT" && npm run verify)
-  (cd "$REPO_ROOT" && npm run self-test)
-  green "  ✓ Skill checks passed"
+  (cd "$REPO_ROOT" && npx tsx scripts/stage-skill.ts --out skill-dist)
+  (cd "$REPO_ROOT" && npx tsx scripts/skill-self-check.ts --root skill-dist)
+  green "  ✓ Skill checks passed (verify + stage + skill-self-check)"
+}
+
+stage_skill_dist() {
+  bold "Staging OpenClaw-only skill → skill-dist/..."
+  (cd "$REPO_ROOT" && npx tsx scripts/stage-skill.ts --out skill-dist)
+  [[ -f "$REPO_ROOT/skill-dist/SKILL.md" ]] || die "skill-dist/SKILL.md missing after stage"
+  [[ -f "$REPO_ROOT/skill-dist/package.json" ]] || die "skill-dist/package.json missing after stage"
+  green "  ✓ skill-dist staged"
 }
 
 run_strict_checks_plugin() {
@@ -292,6 +303,10 @@ do_bump_skill() {
   fi
   set_json_version "$REPO_ROOT/package.json" "$new_ver"
   set_skill_version "$new_ver"
+  if [[ -f "$REPO_ROOT/skill/package.json" ]]; then
+    set_json_version "$REPO_ROOT/skill/package.json" "$new_ver"
+    green "  ✓ skill/package.json → $new_ver"
+  fi
   green "  ✓ package.json  → $new_ver"
   green "  ✓ SKILL.md      → $new_ver"
 }
@@ -344,14 +359,26 @@ publish_skill() {
     run_strict_checks_skill
   fi
 
-  bold "Publishing skill v${ver}..."
+  stage_skill_dist
+
+  # Keep staged package.json / SKILL.md versions aligned with bumped root.
+  if [[ "$DRY_RUN" != "true" ]]; then
+    set_json_version "$REPO_ROOT/skill-dist/package.json" "$ver"
+    if grep -q '^version:' "$REPO_ROOT/skill-dist/SKILL.md"; then
+      sed -i.bak "s/^version: .*/version: $ver/" "$REPO_ROOT/skill-dist/SKILL.md"
+      rm -f "$REPO_ROOT/skill-dist/SKILL.md.bak"
+    fi
+  fi
+
+  bold "Publishing skill v${ver} from skill-dist/..."
   if [[ "$DRY_RUN" == "true" ]]; then
-    yellow "  [dry-run] clawhub skill publish . --slug $SKILL_SLUG --version $ver --changelog \"$changelog\" --owner $OWNER"
+    yellow "  [dry-run] clawhub skill publish skill-dist --slug $SKILL_SLUG --name \"$SKILL_DISPLAY_NAME\" --version $ver --changelog \"$changelog\" --owner $OWNER"
     return
   fi
 
-  (cd "$REPO_ROOT" && clawhub skill publish . \
+  (cd "$REPO_ROOT" && clawhub skill publish skill-dist \
     --slug "$SKILL_SLUG" \
+    --name "$SKILL_DISPLAY_NAME" \
     --version "$ver" \
     --changelog "$changelog" \
     --owner "$OWNER")
@@ -462,8 +489,11 @@ while [[ $# -gt 0 ]]; do
     --changelog)  CHANGELOG="$2"; shift 2 ;;
     --dry-run)    DRY_RUN="true"; shift ;;
     --skip-tests)
+      if [[ "${FPP_ALLOW_SKIP_TESTS:-}" != "1" ]]; then
+        die "--skip-tests requires FPP_ALLOW_SKIP_TESTS=1 (UNSAFE / maintainer-only dual gate)"
+      fi
       SKIP_TESTS="true"
-      yellow "WARNING: --skip-tests is UNSAFE and maintainer-only"
+      yellow "WARNING: --skip-tests is UNSAFE and maintainer-only (FPP_ALLOW_SKIP_TESTS=1 set)"
       shift
       ;;
     --help|-h)    usage ;;

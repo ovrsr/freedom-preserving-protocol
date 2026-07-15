@@ -1,0 +1,25 @@
+# OpenClaw ClawHub skill allowlist (paths relative to repo root).
+# Globs: trailing /** copies a directory tree; bare paths copy a single file.
+# Maintainer scripts, adapters, plugins, packages, and plans must NOT appear here.
+
+SKILL.md
+constitution.json
+constitution.yaml
+pubkey.ed25519.txt
+signature.ed25519.txt
+LICENSE
+adoption/**
+hooks/**
+docs/REVOCATION.md
+skill/package.json
+skill/README.md
+scripts/skill-lib/**
+scripts/safe-append.ts
+scripts/revoke.ts
+scripts/audit-append.ts
+scripts/audit-verify.ts
+scripts/adoption-state.ts
+scripts/merkle.ts
+scripts/verify-constitution.ts
+scripts/verify-install.ts
+scripts/skill-self-check.ts

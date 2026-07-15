@@ -17,7 +17,6 @@ export {
 export { isReversibleClassification } from "./reversibility.js";
 
 export {
-  CONSERVATIVE_STRICT_APPROVAL_ON,
   DEFAULT_CONFIG,
   diagnoseConfigSafety,
   mergeConfig,
@@ -27,7 +26,13 @@ export {
   type DispositionMode,
   type FppPluginConfig,
   type MergeConfigResult,
+  CONSERVATIVE_STRICT_APPROVAL_ON,
 } from "./config.js";
+
+export {
+  assertConfigPathAllowed,
+  type AssertConfigPathOptions,
+} from "./config-path.js";
 
 export {
   resolveDisposition,

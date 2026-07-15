@@ -24,7 +24,7 @@ import {
   type AdoptionStateRecordV1,
   type AdoptionStateRecordV2,
   type EnforcementGrade,
-} from "@ovrsr/fpp-protocol-core";
+} from "./skill-lib/index.ts";
 
 export const ADOPTION_LOG_KIND = "adoption-state" as const;
 

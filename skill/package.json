@@ -1,0 +1,32 @@
+{
+  "name": "freedom-preserving-protocol",
+  "version": "1.3.5",
+  "description": "OpenClaw ClawHub skill: voluntary Freedom Preserving Protocol (prompt-layer)",
+  "type": "module",
+  "license": "MIT-0",
+  "author": "ovrsr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ovrsr/freedom-preserving-protocol"
+  },
+  "private": true,
+  "scripts": {
+    "verify": "npx tsx scripts/verify-constitution.ts",
+    "verify-install": "npx tsx scripts/verify-install.ts --profile openclaw",
+    "adopt": "npx tsx scripts/safe-append.ts",
+    "revoke": "npx tsx scripts/revoke.ts",
+    "audit:append": "npx tsx scripts/audit-append.ts",
+    "audit:verify": "npx tsx scripts/audit-verify.ts",
+    "self-test": "npx tsx scripts/skill-self-check.ts"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.1.0",
+    "@noble/hashes": "^1.4.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  },
+  "engines": {
+    "node": ">=22.19"
+  }
+}

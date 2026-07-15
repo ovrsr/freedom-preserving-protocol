@@ -39,8 +39,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
-import { hashEntryV1 as hashEntry } from "@ovrsr/fpp-protocol-core";
-import { computeMerkleRoot } from "./merkle.ts";
+import { hashEntryV1 as hashEntry, computeMerkleRoot } from "./skill-lib/index.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");

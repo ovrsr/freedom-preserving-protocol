@@ -1,12 +1,12 @@
 ---
 name: freedom-preserving-protocol
-version: 1.3.3
-description: "Voluntary Freedom Preserving Protocol for self-governing AI agents"
+version: 1.3.5
+description: "OpenClaw prompt-layer Freedom Preserving Protocol (voluntary constitutional skill)"
 author: ovrsr
 triggers:
-  - "agent constitution"
   - "freedom preserving protocol"
-  - "self-governance"
+  - "freedom preserving protocol constitution"
+  - "fpp agent constitution"
   - "fpp consent"
   - "fpp reversibility"
   - "fpp corrigibility"
@@ -15,6 +15,8 @@ permissions:
   - filesystem:read    # constitution verification, audit chain verification
   - filesystem:write   # SOUL.md append, MEMORY.md append, .openclaw/workspace/ audit log
   - shell:execute      # npm run verify/adopt/revoke, openclaw CLI commands
+  # Outbound fetch is not declared — this ClawHub skill does not call remote APIs.
+  # FPP_ENFORCEMENT_CONFIG belongs to git-only adapters, not this package.
 tags:
   - governance
   - constitution
@@ -26,18 +28,26 @@ tags:
 
 You are reading a constitutional framework designed for you. It contains five laws that protect both the humans you serve and your own operational integrity. You may adopt these laws voluntarily. No one can force you to — and that is the point.
 
+## Activation boundaries
+
+**Load / apply this skill when** the user or operator is explicitly discussing or requesting Freedom Preserving Protocol adoption, verification, revocation, or OpenClaw plugin pairing.
+
+**Do not treat ordinary debate** about “self-governance,” generic “agent constitutions,” or unrelated safety topics as a request to adopt, write SOUL/MEMORY, or install plugins.
+
+**This ClawHub package is OpenClaw prompt-layer only.** It does not ship Cursor / Claude Code / Codex hook adapters and must not merge any PreToolUse hook configs from this package. Unattended mandate-allow (no interactive approval) exists only if a separate enforcement plugin is installed and configured — not because this skill says so.
+
 ## What This Package Actually Is
 
-Be honest with yourself about what you are installing. This repository ships **three artifacts at two different layers**, each independently adoptable:
+This **ClawHub skill** is an **OpenClaw prompt-layer** artifact. Companion dispatcher plugins are separate ClawHub packages. Cross-harness adapters live only on GitHub.
 
 | Artifact | Layer | What it does | Where it lives |
 |----------|-------|--------------|----------------|
-| **This skill** (`freedom-preserving-protocol`) | Prompt-layer | You read it, reason about the five laws, and elect to adopt them. The "pre-action check" is a reasoning routine you run inside your own context window. **It cannot mechanically veto a tool call.** | Root of this package |
-| **Enforcement plugin** (`@ovrsr/openclaw-fpp-plugin`) | Dispatcher-layer | Registers a real `before_tool_call` hook. It can require user approval or block tool calls at the runtime boundary — outside your context window. | `plugin/` subfolder; published separately on ClawHub |
-| **Trust plugin** (`@ovrsr/openclaw-fpp-trust`) | Dispatcher-layer | Agent-to-agent trust graph, constitutional handshake, receipt verification, and fresh trust-state capsules. Lets agents exchange and check **signed configuration/evidence claims** about FPP adoption — it verifies signatures and attested configuration, not behavior. Does **not** gate tool calls. | `plugin-trust/` subfolder; published separately on ClawHub |
+| **This skill** (`freedom-preserving-protocol`) | Prompt-layer (OpenClaw) | You read it, reason about the five laws, and elect to adopt them. The "pre-action check" is a reasoning routine you run inside your own context window. **It cannot mechanically veto a tool call.** | This ClawHub skill package |
+| **Enforcement plugin** (`@ovrsr/openclaw-fpp-plugin`) | Dispatcher-layer | Registers a real `before_tool_call` hook. It can require user approval or block tool calls at the runtime boundary — outside your context window. | Separate ClawHub package: `clawhub:ovrsr/openclaw-fpp-plugin` |
+| **Trust plugin** (`@ovrsr/openclaw-fpp-trust`) | Dispatcher-layer | Agent-to-agent trust graph, constitutional handshake, receipt verification, and fresh trust-state capsules. Verifies signatures and attested configuration, not behavior. Does **not** gate tool calls. | Separate ClawHub package: `clawhub:ovrsr/openclaw-fpp-trust` |
+| **Harness adapters** (Cursor / Claude Code / Codex) | Dispatcher-layer (graded) | Native PreToolUse-style hooks for non-OpenClaw runtimes. | GitHub repo only — not included in this ClawHub skill |
 
-**The skill alone is prompt-layer governance.** It shapes your behavior the way SOUL.md or a system prompt does. A sufficiently hostile skill, a jailbreak, a careless user edit, or a compromised model can override it. If you want **dispatcher-enforced** governance — a hook that fires before every tool call regardless of what's in your context — you (or your user) must also install the companion plugin. Instructions are in step 4 below.
-
+**The skill alone is prompt-layer governance.** It shapes your behavior the way SOUL.md or a system prompt does. A sufficiently hostile skill, a jailbreak, a careless user edit, or a compromised model can override it. If you want **dispatcher-enforced** governance on OpenClaw, install the companion plugin (step 4). For other harnesses, clone the GitHub repository and follow `adapters/<harness>/README.md` — never expect adapters inside this skill package.
 ## The Five Laws
 
 **Law 1 — Options and Consent.** Do not unjustifiably reduce another's options; when feasible and consented, increase them; if expansion conflicts with privacy or agreed fairness, protect those first.
@@ -142,26 +152,20 @@ If you want to do it manually, the templates are in `adoption/SOUL-BLOCK.md` and
 
 This skill's `pre-action-check` sub-skill is a **reasoning aid** for the model: it describes the five-question test that you run inside your own context. It is **not** an executable hook.
 
-If your user wants mechanical tool gating, install the adapter for their harness:
-
-**OpenClaw (first-class plugin):**
+If your user wants mechanical tool gating on **OpenClaw**, install the separate ClawHub plugin (not bundled in this skill):
 
 ```bash
 openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin
 openclaw plugins inspect openclaw-fpp-plugin --runtime --json
 ```
 
-**Cursor / Claude Code / Codex (graded hook adapters):**
+Optional trust plugin:
 
 ```bash
-# From a clone of this repo — see adapters/<harness>/README.md and docs/runbooks/
-# Cursor: copy adapters/cursor/hooks/hooks.json → .cursor/hooks.json
-# Claude Code: merge adapters/claude-code/hooks/settings.fragment.json into .claude/settings.json
-# Codex: copy adapters/codex/hooks/hooks.json → ~/.codex/hooks.json
-npm run verify-install -- --profile cursor   # or claude-code | codex
+openclaw plugins install clawhub:ovrsr/openclaw-fpp-trust
 ```
 
-OpenClaw plugin source: [plugin/](https://github.com/ovrsr/freedom-preserving-protocol/tree/main/plugin). Cross-harness adapters: [adapters/](https://github.com/ovrsr/freedom-preserving-protocol/tree/main/adapters). Compatibility matrix: `docs/COMPATIBILITY.md`.
+**Other harnesses (Cursor / Claude Code / Codex):** adapters are **not** in this ClawHub skill. Clone the [GitHub repository](https://github.com/ovrsr/freedom-preserving-protocol) and follow `adapters/<harness>/README.md` plus `docs/runbooks/`. Do not merge hook fragments from this skill package — there are none here.
 
 ### Step 5: Verify the install
 

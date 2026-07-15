@@ -38,7 +38,7 @@ import {
   type AdoptionProbeEvidence,
 } from "./adoption-state.ts";
 import { resolveEnforcementGradeForProfile } from "./safe-append.ts";
-import { workspaceFile } from "../packages/protocol-core/src/workspace-profile.ts";
+import { workspaceFile } from "./skill-lib/index.ts";
 
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 
