@@ -207,9 +207,11 @@ If you do not set these, sensible defaults apply (see `plugin/src/config.ts` and
 
 ## Claim-format migration terminology
 
-`@ovrsr/fpp-protocol-core` is the shared contract package. Published plugins pin an **exact** core version (no ranges) so protocol drift cannot happen silently. Local development uses npm workspaces; isolated plugin installs must resolve core with `--ignore-scripts` (OpenClaw install style).
+`@ovrsr/fpp-protocol-core` (and the other `@ovrsr/fpp-*-core` packages) are **not** on the public npm registry. Published ClawHub plugins pin exact core versions and embed those packages via npm `bundledDependencies` (staged by `scripts/bundle-workspace-deps.ts` at `prepack`). Isolated installs must succeed with OpenClaw-style flags alone — no side-loaded core tarballs (`bash scripts/verify-pack.sh`, `bash scripts/smoke-plugin-install.sh`).
 
-Release order: build/test/pack protocol-core → enforcement-core → trust-core → skill → enforcement plugin → trust plugin. Rollback: restore the previous exact core version before rolling back dependent packages. See `docs/RELEASE_ASSURANCE.md`.
+Harness adapters under `adapters/` stay `private: true`. Install from a workspace clone, or `npm pack` after `bundle:deps` / `prepack` and install the resulting tarball.
+
+Release order: build cores → **bundle into consumers** → skill → enforcement plugin → trust plugin. Rollback: republish the previous plugin version (embeds previous core pins). See `docs/RELEASE_ASSURANCE.md`.
 
 - **Legacy-v1 claim** — handshake claim format without `schemaVersion`: timestamped, optionally Ed25519-signed, no freshness nonce. Parsed as **declaration-only**; never silently escalated to v2 assurance. Under default `verificationPolicy: "hardened-v2"`, unsigned/legacy claims cannot establish trust.
 - **v2 claim** — carries explicit `schemaVersion: 2`, key-bound agent ID (`fpp:ed25519:<fingerprint>`), claim class, and freshness envelope. Runtime-validated by `parseClaim`.

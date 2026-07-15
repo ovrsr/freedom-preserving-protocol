@@ -1,6 +1,6 @@
 {
   "name": "@ovrsr/openclaw-fpp-trust",
-  "version": "1.2.3",
+  "version": "1.2.5",
   "description": "OpenClaw plugin: agent-to-agent trust graph and constitutional handshake for the Freedom Preserving Protocol",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -19,6 +19,10 @@
     "LICENSE",
     "README.md"
   ],
+  "bundledDependencies": [
+    "@ovrsr/fpp-protocol-core",
+    "@ovrsr/fpp-trust-core"
+  ],
   "openclaw": {
     "extensions": [
       "./dist/index.js"
@@ -34,9 +38,10 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "prepack": "npm run build",
+    "bundle:deps": "npx tsx ../scripts/bundle-workspace-deps.ts --package plugin-trust",
+    "prepack": "npm run build && npm run bundle:deps",
     "typecheck": "tsc -p tsconfig.json --noEmit --declaration false --declarationMap false",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test src/**/*.test.ts pack-bundle.test.ts",
     "test:coverage": "c8 tsx --test src/**/*.test.ts"
   },
   "dependencies": {

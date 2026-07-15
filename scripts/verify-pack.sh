@@ -111,36 +111,63 @@ for pkg in plugin plugin-trust; do
   echo ""
 done
 
-# Isolated install proof (plugins resolve core with lifecycle scripts disabled)
+# Isolated install proof: each consumer tarball alone under OpenClaw-style flags.
+# Do NOT side-load core tarballs — cores must be embedded via bundledDependencies.
 if [[ "${SKIP_ISOLATED_INSTALL:-}" != "1" ]]; then
-  echo "--- Isolated plugin installs (--ignore-scripts) ---"
+  echo "--- Isolated plugin installs (OpenClaw flags, no side-loaded cores) ---"
   TMP="$(mktemp -d)"
   cleanup() { rm -rf "$TMP"; }
   trap cleanup EXIT
 
-  (cd "$ROOT/packages/protocol-core" && npm pack --pack-destination "$TMP" >/dev/null)
-  CORE_TGZ="$(ls "$TMP"/ovrsr-fpp-protocol-core-*.tgz | head -1)"
-
   for pkg in plugin plugin-trust; do
+    echo "Packing $pkg (prepack stages bundled cores)..."
     (cd "$ROOT/$pkg" && npm pack --pack-destination "$TMP" >/dev/null)
   done
 
   for tgz in "$TMP"/ovrsr-openclaw-fpp-*.tgz; do
-    name="$(basename "$tgz" .tgz)"
+    [[ -f "$tgz" ]] || continue
+    base="$(basename "$tgz" .tgz)"
+    # Strip version suffix: ovrsr-openclaw-fpp-plugin-1.1.5 → ovrsr-openclaw-fpp-plugin
+    name="$(echo "$base" | sed -E 's/-[0-9]+\.[0-9]+\.[0-9]+.*$//')"
+    expected="@ovrsr/fpp-protocol-core"
+    case "$name" in
+      *fpp-plugin) expected="@ovrsr/fpp-enforcement-core" ;;
+      *fpp-trust) expected="@ovrsr/fpp-trust-core" ;;
+    esac
+
     isol="$TMP/isol-$name"
     mkdir -p "$isol"
     (cd "$isol" && npm init -y >/dev/null 2>&1)
-    if ! (cd "$isol" && npm install --ignore-scripts "$CORE_TGZ" "$tgz" >/dev/null 2>&1); then
-      echo "FAIL: isolated install failed for $name"
+
+    if ! (cd "$isol" && npm install --omit=dev --omit=peer --legacy-peer-deps --ignore-scripts "$tgz" >/dev/null 2>&1); then
+      echo "FAIL: isolated install failed for $name (tarball alone, no core side-load)"
       errors=$((errors + 1))
       continue
     fi
-    if (cd "$isol" && node --input-type=module -e "import('@ovrsr/fpp-protocol-core').then(m=>{if(m.PACKAGE_NAME!=='@ovrsr/fpp-protocol-core')process.exit(1)}).catch(e=>{console.error(e);process.exit(1)})"); then
-      echo "PASS: isolated install resolves core for $name"
+
+    # Import from inside the installed plugin package (OpenClaw load path)
+    plugin_dir="$(cd "$isol" && node -e "
+      const fs=require('fs');const path=require('path');
+      const scope=path.join('node_modules','@ovrsr');
+      for (const e of fs.readdirSync(scope)) {
+        if (e.startsWith('openclaw-fpp-')) { process.stdout.write(path.join(scope,e)); break; }
+      }
+    ")"
+    if [[ -z "$plugin_dir" || ! -d "$isol/$plugin_dir" ]]; then
+      echo "FAIL: isolated install missing plugin package dir for $name"
+      errors=$((errors + 1))
+      continue
+    fi
+
+    check_js="$isol/$plugin_dir/_isol_check.mjs"
+    printf "import('%s').then(m=>{if(!m||typeof m!=='object')process.exit(1)}).catch(e=>{console.error(e);process.exit(1)})\n" "$expected" > "$check_js"
+    if (cd "$isol/$plugin_dir" && node "_isol_check.mjs"); then
+      echo "PASS: isolated install resolves $expected for $name (no side-loaded cores)"
     else
-      echo "FAIL: isolated install cannot resolve core for $name"
+      echo "FAIL: isolated install cannot resolve $expected for $name"
       errors=$((errors + 1))
     fi
+    rm -f "$check_js"
   done
   echo ""
 fi

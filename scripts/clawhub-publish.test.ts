@@ -82,4 +82,12 @@ describe("clawhub-publish fail-hard", () => {
       assert.match(out, /\[dry-run\]/);
     }
   });
+
+  it("windows pack path extracts .tgz filename from multiline npm pack output", () => {
+    // bundle:deps used to print "Staged …" on stdout during prepack; raw
+    // capture of `npm pack --silent` then failed -f checks. Must grep .tgz.
+    assert.match(src, /grep.*\\.tgz\$|grep '\.tgz\$'/);
+    assert.match(src, /tail -1/);
+    assert.match(src, /needs_tarball_publish[\s\S]*npm pack --silent/);
+  });
 });

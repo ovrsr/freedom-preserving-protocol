@@ -13,6 +13,19 @@ This document collects failure modes observed by the first agents to install Fre
 
 Capability matrix: [`adapters/harness-capabilities.json`](../adapters/harness-capabilities.json). Compatibility: [`docs/COMPATIBILITY.md`](COMPATIBILITY.md).
 
+## 0. "`npm` / OpenClaw install fails with missing `@ovrsr/fpp-*-core`"
+
+**Cause:** Older ClawHub plugin versions listed `@ovrsr/fpp-protocol-core`, `@ovrsr/fpp-enforcement-core`, and/or `@ovrsr/fpp-trust-core` as normal dependencies, but those packages are **not** on the public npm registry. OpenClaw's managed install (`npm install --omit=dev --omit=peer --legacy-peer-deps --ignore-scripts`) cannot fetch them.
+
+**Fix:**
+1. Upgrade to a plugin version that embeds cores via `bundledDependencies` (enforcement `>=1.1.6`, trust `>=1.2.4`), or rebuild from this repo and install a local tarball:
+   ```bash
+   cd plugin && npm pack   # runs prepack → bundle:deps
+   openclaw plugins install npm-pack:./ovrsr-openclaw-fpp-plugin-*.tgz
+   ```
+2. For a broken install already on disk: uninstall the plugin, then install the new ClawHub version (or local pack).
+3. Maintainers: never publish a plugin that lists `@ovrsr/fpp-*-core` in `dependencies` unless those names are also in `bundledDependencies` and present under `node_modules/@ovrsr/` in the tarball (`bash scripts/verify-pack.sh`, `bash scripts/smoke-plugin-install.sh`).
+
 ## 1. "I installed the skill but `openclaw hooks list` shows nothing"
 
 **Expected.** The main skill (`freedom-preserving-protocol`) is a *prompt-layer* artifact. It is read by the model at prompt-build time. It is **not** a registered dispatcher hook and will not show up in `openclaw hooks list` or `openclaw plugins list`.

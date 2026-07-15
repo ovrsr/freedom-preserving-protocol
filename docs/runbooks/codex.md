@@ -8,7 +8,7 @@ some Codex runtimes. No FPP operator approval UI — unattended defaults only.
 ## Prerequisites
 
 - Node `>=22.19`
-- Clone of this repository
+- Clone of this repository **or** packed adapter tarball after `bundle:deps` / `prepack` (private; embeds unpublished `@ovrsr/*`)
 - Codex CLI with hooks support (`~/.codex/hooks.json`)
 
 ## Install prompt layer

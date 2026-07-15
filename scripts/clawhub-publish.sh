@@ -39,9 +39,12 @@ clawhub_package_publish() {
 
   if needs_tarball_publish; then
     yellow "  [windows] packing $pkg_dir via npm pack (clawhub spawnSync npm workaround)"
-    local tgz
-    tgz="$(cd "$abs_dir" && npm pack --silent | tr -d '\r')"
-    [[ -n "$tgz" && -f "$abs_dir/$tgz" ]] || die "npm pack produced no tarball in $pkg_dir"
+    local pack_out tgz
+    # prepack may print staging logs on stderr; take the last .tgz filename from stdout
+    pack_out="$(cd "$abs_dir" && npm pack --silent | tr -d '\r')" \
+      || die "npm pack failed in $pkg_dir"
+    tgz="$(printf '%s\n' "$pack_out" | grep '\.tgz$' | tail -1)"
+    [[ -n "$tgz" && -f "$abs_dir/$tgz" ]] || die "npm pack produced no tarball in $pkg_dir (got: ${tgz:-<empty>})"
     (cd "$abs_dir" && clawhub package publish "$tgz" \
       --family code-plugin \
       --name "$name" \
@@ -81,9 +84,10 @@ TARGETS:
   trust              Trust plugin (@ovrsr/openclaw-fpp-trust)
   all                Skill + plugins (protocol-core is built/checked first)
 
-Release order for consumers: protocol-core build + exact pin check, then
-skill / enforcement plugin / trust plugin. Rollback: republish the previous
-exact core version before rolling back dependent plugins.
+Release order for consumers: build cores → bundle into consumers (bundledDependencies)
+→ skill / enforcement plugin / trust plugin. Cores are NOT published to ClawHub or npm;
+they ship embedded in plugin tarballs. Rollback: republish the previous plugin version
+(which embeds the previous core pins).
 
 OPTIONS:
   --bump <level>     Version bump level: major | minor | patch (default: patch)
@@ -183,6 +187,46 @@ require_exact_core_dependency() {
   green "  ✓ $label pins $CORE_NAME@$core_ver"
 }
 
+# Fail if plugin tarball would ship without embedded @ovrsr cores.
+require_bundled_cores() {
+  local pkg_dir="$1" label="$2"
+  shift 2
+  local expected=("$@")
+  local pkg_json="$REPO_ROOT/$pkg_dir/package.json"
+  local bundled
+  bundled="$(node -p "
+    const p=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));
+    JSON.stringify(p.bundledDependencies || p.bundleDependencies || [])
+  " "$pkg_json" | tr -d '\r\n')"
+
+  for name in "${expected[@]}"; do
+    echo "$bundled" | grep -q "$name" \
+      || die "$label missing $name in bundledDependencies (got $bundled)"
+  done
+
+  bold "Verifying $label pack embeds bundled cores..."
+  (cd "$REPO_ROOT/$pkg_dir" && npm run bundle:deps)
+
+  # Real pack (not --dry-run): dry-run listings omit node_modules paths on some npm versions.
+  local pack_tmp tgz listing
+  pack_tmp="$(mktemp -d)"
+  (cd "$REPO_ROOT/$pkg_dir" && npm pack --pack-destination "$pack_tmp" --ignore-scripts >/dev/null) \
+    || { rm -rf "$pack_tmp"; die "$label npm pack failed"; }
+  tgz="$(ls "$pack_tmp"/*.tgz 2>/dev/null | head -1)"
+  [[ -n "$tgz" && -f "$tgz" ]] || { rm -rf "$pack_tmp"; die "$label npm pack produced no tarball"; }
+  listing="$(tar --force-local -tzf "$tgz" 2>/dev/null || tar -tzf "$tgz")"
+  rm -rf "$pack_tmp"
+
+  for name in "${expected[@]}"; do
+    local short="${name#@ovrsr/}"
+    echo "$listing" | grep -q "node_modules/@ovrsr/$short/" \
+      || die "$label pack missing bundled path node_modules/@ovrsr/$short/ — refuse publish"
+  done
+  echo "$listing" | grep -q "dist/index.js" \
+    || die "$label pack missing dist/index.js"
+  green "  ✓ $label tarball embeds: ${expected[*]}"
+}
+
 run_strict_checks_core() {
   bold "Building and testing protocol-core before consumers..."
   (cd "$REPO_ROOT" && npm run build -w "$CORE_NAME")
@@ -203,6 +247,8 @@ run_strict_checks_plugin() {
   bold "Building, typechecking, and testing enforcement plugin (fail-hard)..."
   run_strict_checks_core
   require_exact_core_dependency "$REPO_ROOT/$PLUGIN_DIR/package.json" "enforcement plugin"
+  require_bundled_cores "$PLUGIN_DIR" "enforcement plugin" \
+    "@ovrsr/fpp-protocol-core" "@ovrsr/fpp-enforcement-core"
   (cd "$REPO_ROOT" && npm run typecheck -w "$PLUGIN_NAME")
   (cd "$REPO_ROOT" && npm run build -w "$PLUGIN_NAME")
   (cd "$REPO_ROOT" && npm test -w "$PLUGIN_NAME")
@@ -221,6 +267,8 @@ run_strict_checks_trust() {
   bold "Building, typechecking, and testing trust plugin (fail-hard)..."
   run_strict_checks_core
   require_exact_core_dependency "$REPO_ROOT/$TRUST_DIR/package.json" "trust plugin"
+  require_bundled_cores "$TRUST_DIR" "trust plugin" \
+    "@ovrsr/fpp-protocol-core" "@ovrsr/fpp-trust-core"
   (cd "$REPO_ROOT" && npm run typecheck -w "$TRUST_NAME")
   (cd "$REPO_ROOT" && npm run build -w "$TRUST_NAME")
   (cd "$REPO_ROOT" && npm test -w "$TRUST_NAME")
@@ -319,8 +367,14 @@ publish_plugin() {
 
   if [[ "$SKIP_TESTS" == "true" ]]; then
     yellow "  ⚠ UNSAFE: --skip-tests set (maintainer-only); skipping enforcement plugin verification"
-    yellow "  [order] protocol-core checked/built before enforcement plugin consumers"
+    yellow "  [order] build cores → bundle into consumers → publish plugins (cores not on npm/ClawHub)"
     require_exact_core_dependency "$REPO_ROOT/$PLUGIN_DIR/package.json" "enforcement plugin"
+    require_bundled_cores "$PLUGIN_DIR" "enforcement plugin" \
+      "@ovrsr/fpp-protocol-core" "@ovrsr/fpp-enforcement-core"
+    if [[ -x "$REPO_ROOT/scripts/smoke-plugin-install.sh" ]] || [[ -f "$REPO_ROOT/scripts/smoke-plugin-install.sh" ]]; then
+      bold "Running OpenClaw-style install smoke for enforcement plugin..."
+      (cd "$REPO_ROOT" && bash scripts/smoke-plugin-install.sh plugin)
+    fi
   else
     run_strict_checks_plugin
   fi
@@ -328,6 +382,7 @@ publish_plugin() {
   bold "Publishing enforcement plugin v${ver}..."
   if [[ "$DRY_RUN" == "true" ]]; then
     yellow "  [dry-run] clawhub package publish $PLUGIN_DIR/ --family code-plugin --name $PLUGIN_NAME --version $ver --source-repo $SOURCE_REPO --source-commit $sha --changelog \"$changelog\" --owner $OWNER"
+    green "  ✓ [dry-run] bundle verification already succeeded for enforcement plugin"
     return
   fi
 
@@ -344,8 +399,10 @@ publish_trust() {
 
   if [[ "$SKIP_TESTS" == "true" ]]; then
     yellow "  ⚠ UNSAFE: --skip-tests set (maintainer-only); skipping trust plugin verification"
-    yellow "  [order] protocol-core checked/built before trust plugin consumers"
+    yellow "  [order] build cores → bundle into consumers → publish plugins (cores not on npm/ClawHub)"
     require_exact_core_dependency "$REPO_ROOT/$TRUST_DIR/package.json" "trust plugin"
+    require_bundled_cores "$TRUST_DIR" "trust plugin" \
+      "@ovrsr/fpp-protocol-core" "@ovrsr/fpp-trust-core"
   else
     run_strict_checks_trust
   fi
@@ -353,6 +410,7 @@ publish_trust() {
   bold "Publishing trust plugin v${ver}..."
   if [[ "$DRY_RUN" == "true" ]]; then
     yellow "  [dry-run] clawhub package publish $TRUST_DIR/ --family code-plugin --name $TRUST_NAME --version $ver --source-repo $SOURCE_REPO --source-commit $sha --changelog \"$changelog\" --owner $OWNER"
+    green "  ✓ [dry-run] bundle verification already succeeded for trust plugin"
     return
   fi
 

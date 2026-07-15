@@ -41,6 +41,8 @@ On Claude Code, Cursor, and Codex, install the matching adapter under `adapters/
 openclaw plugins install clawhub:ovrsr/openclaw-fpp-plugin
 ```
 
+Plugin tarballs embed unpublished `@ovrsr/fpp-*-core` packages via `bundledDependencies` (cores are not on npm). If install fails resolving those packages, upgrade to a bundled release — see `docs/TROUBLESHOOTING.md`.
+
 ### Trust plugin (dispatcher-layer, optional)
 
 ```bash

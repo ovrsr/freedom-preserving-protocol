@@ -7,7 +7,7 @@ hooks or use `--dangerously-skip-permissions`.
 ## Prerequisites
 
 - Node `>=22.19`
-- Clone of this repository
+- Clone of this repository **or** packed adapter tarball after `bundle:deps` / `prepack` (private; embeds unpublished `@ovrsr/*`)
 - Claude Code with hooks configured in `.claude/settings.json` or `~/.claude/settings.json`
 
 ## Install prompt layer

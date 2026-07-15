@@ -7,8 +7,15 @@ hooks. See `adapters/harness-capabilities.json` and `docs/COMPATIBILITY.md`.
 ## Prerequisites
 
 - Node `>=22.19` (repo `package.json` `engines.node`)
-- Clone of this repository (adapter packages are workspace-local today)
+- Clone of this repository **or** a packed adapter tarball after `bundle:deps` / `prepack` (adapters are `private: true` and embed unpublished `@ovrsr/*` via `bundledDependencies`; they are not on npm)
 - Cursor with Agent hooks enabled
+
+## Install from pack (optional, outside workspace)
+
+```bash
+cd adapters/cursor && npm run bundle:deps && npm pack
+# then npm install ./ovrsr-fpp-adapter-cursor-*.tgz in the consumer project
+```
 
 ## Install prompt layer
 
