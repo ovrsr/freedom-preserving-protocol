@@ -1,6 +1,6 @@
 ---
 name: freedom-preserving-protocol
-version: 1.3.6
+version: 1.3.7
 description: "OpenClaw prompt-layer Freedom Preserving Protocol (voluntary constitutional skill)"
 author: ovrsr
 triggers:
