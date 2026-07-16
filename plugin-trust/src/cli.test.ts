@@ -322,9 +322,12 @@ describe("cli quorum-status / quorum-revoke-mandate", () => {
     });
 
     const file = JSON.parse(readFileSync(mandateStorePath, "utf8")) as {
-      mandates: Array<{ revoked?: boolean; issuerClass: string }>;
+      mandates: Array<{ revoked?: boolean; issuerClass: string; mandateId: string }>;
+      ledgers?: Record<string, { revoked?: boolean }>;
     };
-    assert.equal(file.mandates[0]?.revoked, true);
+    const mandateId = fin.mandate.mandateId;
+    assert.notEqual(file.mandates[0]?.revoked, true);
+    assert.equal(file.ledgers?.[mandateId]?.revoked, true);
     assert.equal(file.mandates[0]?.issuerClass, "steward-quorum");
     // steward-override must remain a separate path — no silent peer-mandate mint
     const overrides = trustGraph
