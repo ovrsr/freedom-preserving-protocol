@@ -6,9 +6,9 @@ in this repository defers to this file when describing implementation status.
 If a claim elsewhere conflicts with this matrix, this matrix wins and the other
 document has a bug.
 
-Last reconciled against: skill `v1.3.6`, `@ovrsr/fpp-protocol-core` `v1.0.2`,
+Last reconciled against: skill `v1.3.7`, `@ovrsr/fpp-protocol-core` `v1.0.2`,
 `@ovrsr/fpp-enforcement-core` `v1.0.2`, `@ovrsr/fpp-trust-core` `v1.0.2`,
-`@ovrsr/openclaw-fpp-plugin` `v1.1.11`, `@ovrsr/openclaw-fpp-trust` `v1.2.8`
+`@ovrsr/openclaw-fpp-plugin` `v1.1.13`, `@ovrsr/openclaw-fpp-trust` `v1.2.8`
 (versions sourced from root / `packages/*/package.json` / plugin package.json files).
 Local rebuilds may exceed ClawHub install-metadata — see TROUBLESHOOTING §0d (Q7-B).
 
