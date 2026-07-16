@@ -14,6 +14,10 @@ import {
   saveTrustGraph,
   saveTrustGraphSync,
 } from "@ovrsr/fpp-trust-core";
+import {
+  workspaceFile,
+  absolutizeWorkspacePath,
+} from "@ovrsr/fpp-protocol-core";
 import { registerFppTrustCli, FPP_TRUST_CLI_DESCRIPTORS } from "./cli.js";
 import type { ToolDependencies } from "./tools.js";
 import {
@@ -172,6 +176,11 @@ function initStack(api: OpenClawPluginApi): {
   process.once("SIGTERM", flushSync);
   process.once("SIGINT", flushSync);
 
+  const adoptionStatePath = absolutizeWorkspacePath(
+    workspaceFile("fpp-adoption-state.jsonl"),
+  );
+  const soulPath = process.env.FPP_SOUL;
+
   // -- hooks --
   api.on("before_tool_call", async (_event, ctx) => {
     handshake.cleanupExpired();
@@ -197,6 +206,8 @@ function initStack(api: OpenClawPluginApi): {
         replayCache: stack.replayCache,
         requireFreshness: config.requireFreshness,
         quorum: stack.quorum,
+        adoptionStatePath,
+        ...(soulPath ? { soulPath } : {}),
       });
     },
     { descriptors: FPP_TRUST_CLI_DESCRIPTORS },
@@ -314,6 +325,8 @@ function initStack(api: OpenClawPluginApi): {
     strictModeOnHandshakeFailure: config.strictModeOnHandshakeFailure,
     strictModeTtlMs: config.strictModeTtlMs,
     receiptLogPath: config.receiptLogPath,
+    adoptionStatePath,
+    ...(soulPath ? { soulPath } : {}),
   };
 
   _stack = stack;

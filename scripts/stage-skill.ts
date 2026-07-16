@@ -17,6 +17,7 @@ import {
   readdirSync,
   statSync,
 } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join, dirname, resolve, relative, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -42,12 +43,41 @@ export type StageSkillOptions = {
   repoRoot?: string;
   outDir?: string;
   allowlistPath?: string;
+  /** After staging, run `npm install` in the skill root so @noble/* resolves. */
+  installDeps?: boolean;
 };
 
 export type StageSkillResult = {
   outDir: string;
   files: string[];
+  depsInstalled?: boolean;
 };
+
+/**
+ * Install skill package.json dependencies into a staged (or host) skill root.
+ * Fails loudly if npm cannot install — verify scripts need @noble/ed25519.
+ */
+export function installSkillRuntimeDeps(skillRoot: string): void {
+  const root = resolve(skillRoot);
+  const pkgPath = join(root, "package.json");
+  if (!existsSync(pkgPath)) {
+    throw new Error(
+      `Cannot install skill deps: package.json missing at ${pkgPath}`,
+    );
+  }
+  const result = spawnSync("npm", ["install", "--omit=dev"], {
+    cwd: root,
+    encoding: "utf8",
+    shell: true,
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `npm install failed in ${root} (skill runtime deps).\n` +
+        `${result.stderr || result.stdout || "no output"}\n` +
+        `Run \`npm install\` in the skill directory, then retry verify.`,
+    );
+  }
+}
 
 function walkRelative(dir: string, base = dir): string[] {
   const out: string[] = [];
@@ -144,16 +174,25 @@ export function stageSkill(opts: StageSkillOptions = {}): StageSkillResult {
     }
   }
 
-  const files = walkRelative(outDir).filter((f) => f !== ".skill-stage.json");
+  let depsInstalled = false;
+  if (opts.installDeps) {
+    installSkillRuntimeDeps(outDir);
+    depsInstalled = true;
+  }
+
+  const files = walkRelative(outDir).filter(
+    (f) => f !== ".skill-stage.json" && !f.startsWith("node_modules/"),
+  );
   assertNoForbiddenPaths(files);
 
   const stamp = {
     generatedAt: new Date().toISOString(),
     files: files.sort(),
+    depsInstalled,
   };
   writeFileSync(join(outDir, ".skill-stage.json"), JSON.stringify(stamp, null, 2));
 
-  return { outDir, files: stamp.files };
+  return { outDir, files: stamp.files, depsInstalled };
 }
 
 function parseArgs(argv: string[]): StageSkillOptions {
@@ -166,6 +205,8 @@ function parseArgs(argv: string[]): StageSkillOptions {
       opts.repoRoot = argv[++i];
     } else if (a === "--allowlist" && argv[i + 1]) {
       opts.allowlistPath = argv[++i];
+    } else if (a === "--install-deps") {
+      opts.installDeps = true;
     }
   }
   return opts;

@@ -11,7 +11,7 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { classifyToolCall } from "./risk-classifier.js";
+import { classifyToolCall, normalizeOpenClawToolName } from "./risk-classifier.js";
 import { DEFAULT_CONFIG } from "./config.js";
 import { createTempWorkspace } from "./test-helpers.js";
 
@@ -155,6 +155,65 @@ test("default knownCustomTools seeds memory_search → allow", () => {
   });
   assert.equal(r.decision, "allow");
   assert.ok(r.matchedPatterns.includes("knownCustomTools"));
+});
+
+test("openclaw.memory_search normalizes then allows via seed", () => {
+  const r = classifyToolCall(
+    "openclaw.memory_search",
+    { query: "adoption" },
+    { knownCustomTools: DEFAULT_CONFIG.knownCustomTools },
+  );
+  assert.equal(r.decision, "allow");
+  assert.ok(r.matchedPatterns.includes("knownCustomTools"));
+  assert.equal(normalizeOpenClawToolName("openclaw.memory_search"), "memory_search");
+});
+
+test("openclawmemory_search strips prefix when remainder is seeded", () => {
+  assert.equal(
+    normalizeOpenClawToolName("openclawmemory_search", ["memory_search"]),
+    "memory_search",
+  );
+  const r = classifyToolCall(
+    "openclawmemory_search",
+    { query: "x" },
+    { knownCustomTools: DEFAULT_CONFIG.knownCustomTools },
+  );
+  assert.equal(r.decision, "allow");
+});
+
+test("openclaw.foo_bar stays unknown (not seeded) after normalize", () => {
+  assert.equal(normalizeOpenClawToolName("openclaw.foo_bar"), "foo_bar");
+  const r = classifyToolCall(
+    "openclaw.foo_bar",
+    {},
+    { knownCustomTools: DEFAULT_CONFIG.knownCustomTools },
+  );
+  assert.equal(r.classification, "unknown.unclassified");
+  assert.equal(r.decision, "approval");
+});
+
+test("unrelated openclawxyz tool is not stripped", () => {
+  assert.equal(
+    normalizeOpenClawToolName("openclawxyz_custom", ["memory_search"]),
+    "openclawxyz_custom",
+  );
+});
+
+test("apply_patch is not in default knownCustomTools seeds", () => {
+  assert.equal(DEFAULT_CONFIG.knownCustomTools.includes("apply_patch"), false);
+});
+
+test("bare apply_patch classifies as code.patch → approval", () => {
+  const r = classifyToolCall("apply_patch", {});
+  assert.equal(r.classification, "code.patch");
+  assert.equal(r.decision, "approval");
+  assert.ok(DEFAULT_CONFIG.approvalOn.includes("code.patch"));
+});
+
+test("openclaw.apply_patch classifies as code.patch after normalize", () => {
+  const r = classifyToolCall("openclaw.apply_patch", { patch: "..." });
+  assert.equal(r.classification, "code.patch");
+  assert.equal(r.decision, "approval");
 });
 
 test("seeded allowlist remains scoped — totally_unknown_xyz still approval", () => {

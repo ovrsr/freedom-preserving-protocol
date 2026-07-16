@@ -221,6 +221,47 @@ describe("security regressions (enforcement)", () => {
     assert.equal(line.outcome, "allowed");
   });
 
+  it("E2E: unattended openclaw.memory_search allows after normalize + seed", async () => {
+    resetStrictModeCache();
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "unattended-openclaw-memory-search-audit.jsonl"),
+      respectTrustStrictMode: false,
+      dispositionMode: "unattended",
+      knownCustomTools: DEFAULT_CONFIG.knownCustomTools,
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = await handler(
+      { toolName: "openclaw.memory_search", params: { query: "adoption" } },
+      ctx,
+    );
+    assert.equal(
+      result,
+      undefined,
+      "openclaw.memory_search must allow after normalize + seed",
+    );
+  });
+
+  it("E2E: bare apply_patch requires approval (code.patch, not allowlist)", async () => {
+    resetStrictModeCache();
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "apply-patch-audit.jsonl"),
+      respectTrustStrictMode: false,
+      dispositionMode: "operator-present",
+      knownCustomTools: DEFAULT_CONFIG.knownCustomTools,
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = (await handler(
+      { toolName: "apply_patch", params: {} },
+      ctx,
+    )) as { requireApproval?: unknown } | undefined;
+    assert.ok(result && result.requireApproval);
+    const classification = classifyToolCall("apply_patch", {});
+    assert.equal(classification.classification, "code.patch");
+    assert.ok(DEFAULT_CONFIG.approvalOn.includes("code.patch"));
+  });
+
   it("E2E: unattended random unknown still abstains", async () => {
     resetStrictModeCache();
     const capture = createHookCapture({

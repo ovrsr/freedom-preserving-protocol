@@ -23,6 +23,7 @@
     "adopt": "npx tsx scripts/safe-append.ts",
     "revoke": "npx tsx scripts/revoke.ts",
     "audit:append": "npx tsx scripts/audit-append.ts",
+    "audit:bootstrap": "npx tsx scripts/audit-bootstrap.ts",
     "audit:verify": "npx tsx scripts/audit-verify.ts",
     "audit:proof": "npx tsx scripts/audit-proof.ts",
     "receipt:verify": "npx tsx scripts/receipt-verify.ts",

@@ -10,6 +10,8 @@ import {
   readdirSync,
   statSync,
   existsSync,
+  writeFileSync,
+  mkdirSync,
 } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { tmpdir } from "node:os";
@@ -34,6 +36,54 @@ describe("skill self-check and staged imports", () => {
 
   after(() => {
     rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("detects missing @noble runtime deps with actionable npm install message", async () => {
+    const { checkSkillRuntimeDeps, runSkillSelfCheck } = await import(
+      "./skill-self-check.js"
+    );
+    assert.equal(typeof checkSkillRuntimeDeps, "function");
+
+    const bare = join(tmp, "bare-skill");
+    mkdirSync(bare, { recursive: true });
+    writeFileSync(
+      join(bare, "package.json"),
+      JSON.stringify({
+        name: "bare-skill",
+        type: "module",
+        dependencies: {
+          "@noble/ed25519": "^2.1.0",
+          "@noble/hashes": "^1.4.0",
+        },
+      }),
+    );
+    // Minimal required files so other checks are not the failure mode
+    for (const rel of [
+      "SKILL.md",
+      "constitution.json",
+      "pubkey.ed25519.txt",
+      "signature.ed25519.txt",
+      "scripts/verify-constitution.ts",
+      "scripts/safe-append.ts",
+      "scripts/revoke.ts",
+      "scripts/skill-lib/index.ts",
+    ]) {
+      const p = join(bare, rel);
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, rel === "SKILL.md" ? "---\nname: bare\n---\n" : "x");
+    }
+
+    const deps = checkSkillRuntimeDeps(bare);
+    assert.equal(deps.ok, false);
+    assert.match(deps.detail, /npm install/i);
+    assert.match(deps.detail, /@noble/);
+
+    const report = runSkillSelfCheck({ rootDir: bare });
+    assert.equal(report.ok, false);
+    const depCheck = report.checks.find((c) => c.id === "deps.noble");
+    assert.ok(depCheck);
+    assert.equal(depCheck!.ok, false);
+    assert.match(depCheck!.detail, /npm install/i);
   });
 
   it("skill-self-check documents no dispatcher classifier exercise", async () => {
@@ -73,10 +123,11 @@ describe("skill self-check and staged imports", () => {
     }
   });
 
-  it("skill-self-check CLI exits 0 on staged tree", async () => {
+  it("skill-self-check CLI exits 0 on staged tree after installDeps", async () => {
     const { stageSkill } = await import("./stage-skill.js");
     const outDir = join(tmp, "stage-cli");
-    stageSkill({ repoRoot: root, outDir });
+    const staged = stageSkill({ repoRoot: root, outDir, installDeps: true });
+    assert.equal(staged.depsInstalled, true);
     const result = spawnSync(
       "npx",
       ["tsx", "scripts/skill-self-check.ts"],
@@ -84,5 +135,6 @@ describe("skill self-check and staged imports", () => {
     );
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /does not exercise|dispatcher classifier/i);
+    assert.match(result.stdout, /deps\.noble/);
   });
 });

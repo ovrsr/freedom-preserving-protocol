@@ -241,17 +241,17 @@ run_strict_checks_core() {
 run_strict_checks_skill() {
   bold "Running pre-publish checks for skill (fail-hard)..."
   (cd "$REPO_ROOT" && npm run verify)
-  (cd "$REPO_ROOT" && npx tsx scripts/stage-skill.ts --out skill-dist)
+  (cd "$REPO_ROOT" && npx tsx scripts/stage-skill.ts --out skill-dist --install-deps)
   (cd "$REPO_ROOT" && npx tsx scripts/skill-self-check.ts --root skill-dist)
-  green "  ✓ Skill checks passed (verify + stage + skill-self-check)"
+  green "  ✓ Skill checks passed (verify + stage + install-deps + skill-self-check)"
 }
 
 stage_skill_dist() {
   bold "Staging OpenClaw-only skill → skill-dist/..."
-  (cd "$REPO_ROOT" && npx tsx scripts/stage-skill.ts --out skill-dist)
+  (cd "$REPO_ROOT" && npx tsx scripts/stage-skill.ts --out skill-dist --install-deps)
   [[ -f "$REPO_ROOT/skill-dist/SKILL.md" ]] || die "skill-dist/SKILL.md missing after stage"
   [[ -f "$REPO_ROOT/skill-dist/package.json" ]] || die "skill-dist/package.json missing after stage"
-  green "  ✓ skill-dist staged"
+  green "  ✓ skill-dist staged (runtime deps installed for verify)"
 }
 
 run_strict_checks_plugin() {

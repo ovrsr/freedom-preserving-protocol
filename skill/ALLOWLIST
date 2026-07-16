@@ -17,6 +17,7 @@ scripts/skill-lib/**
 scripts/safe-append.ts
 scripts/revoke.ts
 scripts/audit-append.ts
+scripts/audit-bootstrap.ts
 scripts/audit-verify.ts
 scripts/adoption-state.ts
 scripts/merkle.ts

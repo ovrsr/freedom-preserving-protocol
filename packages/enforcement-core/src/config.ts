@@ -11,7 +11,10 @@
  */
 
 import type { ClassificationId } from "./risk-classifier.js";
-import { workspaceFile } from "@ovrsr/fpp-protocol-core";
+import {
+  workspaceFile,
+  absolutizeWorkspacePath,
+} from "@ovrsr/fpp-protocol-core";
 
 /**
  * Conservative strict-mode approval overrides used when the shared
@@ -113,6 +116,7 @@ export const DEFAULT_CONFIG: FppPluginConfig = {
     "exec.system-modify",
     "gateway.config-change",
     "message.external",
+    "code.patch",
     "unknown.unclassified",
   ],
   approvalTimeoutMs: 60_000,
@@ -269,14 +273,17 @@ export function mergeConfigWithDiagnostics(input: unknown): MergeConfigResult {
   }
 
   const config: FppPluginConfig = {
-    auditLogPath: partial.auditLogPath ?? DEFAULT_CONFIG.auditLogPath,
+    auditLogPath: absolutizeWorkspacePath(
+      partial.auditLogPath ?? DEFAULT_CONFIG.auditLogPath,
+    ),
     blockOn,
     approvalOn: partial.approvalOn ?? DEFAULT_CONFIG.approvalOn,
     approvalTimeoutMs: partial.approvalTimeoutMs ?? DEFAULT_CONFIG.approvalTimeoutMs,
     approvalTimeoutBehavior,
     constitutionHash: partial.constitutionHash ?? DEFAULT_CONFIG.constitutionHash,
-    strictModeStatePath:
+    strictModeStatePath: absolutizeWorkspacePath(
       partial.strictModeStatePath ?? DEFAULT_CONFIG.strictModeStatePath,
+    ),
     respectTrustStrictMode:
       partial.respectTrustStrictMode ?? DEFAULT_CONFIG.respectTrustStrictMode,
     knownCustomTools: partial.knownCustomTools ?? DEFAULT_CONFIG.knownCustomTools,
@@ -286,13 +293,19 @@ export function mergeConfigWithDiagnostics(input: unknown): MergeConfigResult {
     receiptMaxPending: partial.receiptMaxPending ?? DEFAULT_CONFIG.receiptMaxPending,
     receiptPendingTtlMs:
       partial.receiptPendingTtlMs ?? DEFAULT_CONFIG.receiptPendingTtlMs,
-    receiptLogPath: partial.receiptLogPath ?? DEFAULT_CONFIG.receiptLogPath,
-    identityKeyPath: partial.identityKeyPath ?? DEFAULT_CONFIG.identityKeyPath,
+    receiptLogPath: absolutizeWorkspacePath(
+      partial.receiptLogPath ?? DEFAULT_CONFIG.receiptLogPath,
+    ),
+    identityKeyPath: absolutizeWorkspacePath(
+      partial.identityKeyPath ?? DEFAULT_CONFIG.identityKeyPath,
+    ),
     receiptSigningEnabled:
       partial.receiptSigningEnabled ?? DEFAULT_CONFIG.receiptSigningEnabled,
     dispositionMode,
     standingAllowOn,
-    mandateStorePath: partial.mandateStorePath ?? DEFAULT_CONFIG.mandateStorePath,
+    mandateStorePath: absolutizeWorkspacePath(
+      partial.mandateStorePath ?? DEFAULT_CONFIG.mandateStorePath,
+    ),
     mandateDefaultMaxActions:
       partial.mandateDefaultMaxActions ?? DEFAULT_CONFIG.mandateDefaultMaxActions,
     stagedUndoWindowMs:

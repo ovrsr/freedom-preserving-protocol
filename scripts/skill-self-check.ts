@@ -8,6 +8,7 @@
  * Usage: npx tsx scripts/skill-self-check.ts [--root <dir>] [--json]
  */
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve, dirname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,6 +33,45 @@ const REQUIRED_FILES = [
   "scripts/skill-lib/index.ts",
 ];
 
+const RUNTIME_DEPS = ["@noble/ed25519", "@noble/hashes"] as const;
+
+/**
+ * Verify skill-root scripts can resolve @noble/* (needed by verify / verify-install).
+ * ClawHub installs often omit node_modules — operators must `npm install` in the skill dir.
+ */
+export function checkSkillRuntimeDeps(rootDir: string): {
+  ok: boolean;
+  detail: string;
+} {
+  const pkgPath = join(resolve(rootDir), "package.json");
+  if (!existsSync(pkgPath)) {
+    return {
+      ok: false,
+      detail:
+        "package.json missing — cannot resolve @noble/ed25519. Run `npm install` in the skill directory after install.",
+    };
+  }
+  const require = createRequire(pkgPath);
+  const missing: string[] = [];
+  for (const spec of RUNTIME_DEPS) {
+    try {
+      require.resolve(spec);
+    } catch {
+      missing.push(spec);
+    }
+  }
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      detail: `Cannot resolve ${missing.join(", ")}. Run \`npm install\` in the skill directory before \`npm run verify\` / \`verify-install\`.`,
+    };
+  }
+  return {
+    ok: true,
+    detail: `${RUNTIME_DEPS.join(" and ")} resolvable from skill root`,
+  };
+}
+
 export function runSkillSelfCheck(opts: {
   rootDir?: string;
 }): SkillSelfCheckReport {
@@ -47,6 +87,13 @@ export function runSkillSelfCheck(opts: {
       detail: ok ? "present" : `missing: ${rel}`,
     });
   }
+
+  const deps = checkSkillRuntimeDeps(rootDir);
+  checks.push({
+    id: "deps.noble",
+    ok: deps.ok,
+    detail: deps.detail,
+  });
 
   const skillPath = join(rootDir, "SKILL.md");
   if (existsSync(skillPath)) {

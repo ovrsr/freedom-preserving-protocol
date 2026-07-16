@@ -4,7 +4,7 @@
  */
 
 export const PACKAGE_NAME = "@ovrsr/fpp-enforcement-core" as const;
-export const PACKAGE_VERSION = "1.0.1" as const;
+export const PACKAGE_VERSION = "1.0.2" as const;
 
 export {
   CLASSIFICATION_IDS,

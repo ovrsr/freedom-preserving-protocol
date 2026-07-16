@@ -137,4 +137,19 @@ describe("stage-skill", () => {
       /forbidden|adapters/i,
     );
   });
+
+  it("installDeps makes @noble resolvable in staged skill root", async () => {
+    const { stageSkill, installSkillRuntimeDeps } = await import(
+      "./stage-skill.js"
+    );
+    assert.equal(typeof installSkillRuntimeDeps, "function");
+    const outDir = join(tmp, "skill-dist-deps");
+    const result = stageSkill({ repoRoot: root, outDir, installDeps: true });
+    assert.equal(result.depsInstalled, true);
+    assert.ok(existsSync(join(outDir, "node_modules", "@noble", "ed25519")));
+
+    const { checkSkillRuntimeDeps } = await import("./skill-self-check.js");
+    const deps = checkSkillRuntimeDeps(outDir);
+    assert.equal(deps.ok, true, deps.detail);
+  });
 });

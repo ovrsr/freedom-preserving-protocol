@@ -17,6 +17,23 @@ tags:
 
 This skill is a **post-adoption opt-in** integrity check (every 4+ hours when the runtime schedules heartbeats). It is not ambient surveillance: audit writes were disclosed when the user consented to adoption (path below).
 
+## Non-model bootstrap (operators)
+
+If the model heartbeat has not yet created `constitution-audit.jsonl`, operators can bootstrap without the agent:
+
+```bash
+npm run audit:bootstrap -- --soul ~/.openclaw/agents/<agent>/SOUL.md
+npm run audit:verify
+```
+
+Suggested cron (every 6 hours, non-model):
+
+```cron
+0 */6 * * * cd /path/to/skill && npm run audit:bootstrap -- --soul "$HOME/.openclaw/agents/main/SOUL.md"
+```
+
+Use `--if-missing` for create-once. Bootstrap refuses when never adopted or when `.fpp-revoked` is present (same gates as this skill).
+
 ## Disclosure — persistent writes
 
 Each successful heartbeat **appends** a hash-chained JSON line to:

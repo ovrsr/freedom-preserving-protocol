@@ -31,6 +31,7 @@ import type { MerkleBridge } from "@ovrsr/fpp-trust-core";
 import type { StrictModeManager } from "@ovrsr/fpp-trust-core";
 import type { ReplayCache } from "@ovrsr/fpp-trust-core";
 import type { QuorumSessionManager } from "@ovrsr/fpp-trust-core";
+import { resolveAdoptedAt } from "./resolve-adopted-at.js";
 
 export interface CliDependencies {
   identity: AgentIdentity;
@@ -42,6 +43,8 @@ export interface CliDependencies {
   replayCache?: ReplayCache | undefined;
   requireFreshness?: boolean | undefined;
   quorum?: QuorumSessionManager | undefined;
+  soulPath?: string | undefined;
+  adoptionStatePath?: string | undefined;
 }
 
 interface CliCommand {
@@ -384,7 +387,10 @@ export function registerFppTrustCli(
       const claim: ConstitutionalClaim = {
         agentId: identity.agentId,
         constitutionHash,
-        adoptedAt: new Date().toISOString(),
+        adoptedAt: resolveAdoptedAt({
+          soulPath: deps.soulPath,
+          adoptionStatePath: deps.adoptionStatePath,
+        }),
         auditMerkleRoot: root,
         auditEntryCount: entryCount,
         chainIntact: entryCount > 0,

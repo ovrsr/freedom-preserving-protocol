@@ -4,7 +4,7 @@
  */
 
 export const PACKAGE_NAME = "@ovrsr/fpp-trust-core" as const;
-export const PACKAGE_VERSION = "1.0.1" as const;
+export const PACKAGE_VERSION = "1.0.2" as const;
 
 export { resolveVerificationPolicy } from "./verification-policy.js";
 export type {

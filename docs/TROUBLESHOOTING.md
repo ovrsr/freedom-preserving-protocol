@@ -13,6 +13,52 @@ This document collects failure modes observed by the first agents to install Fre
 
 Capability matrix: [`adapters/harness-capabilities.json`](../adapters/harness-capabilities.json). Compatibility: [`docs/COMPATIBILITY.md`](COMPATIBILITY.md).
 
+## 0a. "`npm run verify` / `verify-install` fails with Cannot find module `@noble/ed25519`"
+
+**Cause:** The ClawHub skill declares `@noble/ed25519` and `@noble/hashes` in `package.json`, but OpenClaw skill installs often leave the skill tree **without** `node_modules`. Verify scripts import those packages directly.
+
+**Fix (host):** From the skill install directory:
+
+```bash
+npm install
+npm run verify
+npm run verify-install
+```
+
+**Detect early:** `npx tsx scripts/skill-self-check.ts` (or `npm run self-test` in the skill root) fails the `deps.noble` check with an actionable `npm install` message when `@noble/*` is not resolvable.
+
+**Maintainers:** `scripts/stage-skill.ts --install-deps` (used by `clawhub-publish.sh`) installs runtime deps into `skill-dist/` before self-check so staging does not silently ship an unverifiable tree.
+
+## 0a2. "Trust falls back to enforcement audit / no constitution-audit.jsonl"
+
+**Cause:** Primary `constitution-audit.jsonl` is normally created by the model heartbeat skill. If the heartbeat never ran, trust prefers the enforcement fallback log.
+
+**Fix (non-model):** After adoption:
+
+```bash
+npm run audit:bootstrap -- --soul ~/.openclaw/agents/<agent>/SOUL.md
+npm run audit:verify
+```
+
+Refuses when never adopted or when `.fpp-revoked` is present. Use `--if-missing` for create-once. See `hooks/constitution-audit/SKILL.md`.
+
+## 0a3. "No `fpp-trust-graph.json` / replay / strict / quorum files on disk"
+
+**Investigation (Axiom hosts):**
+
+1. **Relative manifest defaults + CWD** — Older trust/enforcement merges kept relative paths like `.openclaw/workspace/fpp-trust-graph.json` as-is. If the gateway process CWD was not `$HOME`, files could land under `<cwd>/.openclaw/workspace/...` (or nowhere useful). **Fix:** `mergeTrustConfig` / `mergeConfig` now call `absolutizeWorkspacePath` from `@ovrsr/fpp-protocol-core` so relative paths resolve under `$FPP_WORKSPACE` or `<homedir>/.openclaw/workspace`.
+2. **Empty graph = no file (expected)** — `plugin-trust` only persists on `trustGraph.setOnChange` (debounced save after the first mutation, e.g. successful handshake verify). An empty in-memory graph does **not** write a marker file. Missing `fpp-trust-graph.json` before any peer verify is **not** corruption.
+3. **Where to look after a successful handshake** — `$FPP_WORKSPACE/fpp-trust-graph.json` when set, else `~/.openclaw/workspace/fpp-trust-graph.json` (absolutized). Same root for `fpp-replay-cache.json`, `fpp-strict-sessions.json`, `fpp-quorum-sessions.json`.
+
+**Operator check:**
+
+```bash
+# Expected absolute location (example)
+ls -la "${FPP_WORKSPACE:-$HOME/.openclaw/workspace}"/fpp-trust-graph.json
+# Also search accidental CWD-relative leftovers from older builds:
+find "$HOME" -name 'fpp-trust-graph.json' 2>/dev/null | head
+```
+
 ## 0b. "ClawHub skill install looks like the whole monorepo / includes adapters"
 
 **Cause:** Older skill publishes uploaded the repo root (`clawhub skill publish .`), so installs could contain adapters, maintainer scripts, and docs that are not OpenClaw skill surface.
@@ -34,6 +80,44 @@ SkillSpector / static scanners may flag:
 | `--skip-tests` | Dual-gated (`FPP_ALLOW_SKIP_TESTS=1`); maintainer escape hatch |
 
 VirusTotal historically reports the skill clean; treat capability findings as packaging/disclosure issues (remediated by OpenClaw-only staging).
+
+## 0d. Local rebuild provenance (intentional version drift — Q7-B)
+
+**Policy:** This remediation ships **local** plugin/skill rebuilds. ClawHub registry republish is **out of scope**. Runtime versions (e.g. enforcement `1.1.11`, trust `1.2.8`) may be ahead of install-metadata / ClawHub (historically `1.1.4` / `1.2.1`). `plugin.version-drift` WARN is **expected** until a deliberate republish.
+
+**Record provenance on the host:**
+
+```bash
+cd /path/to/freedom-preserving-protocol
+git rev-parse HEAD
+git log -1 --format='%ci %s'
+# After local pack/install:
+npm pack -w @ovrsr/openclaw-fpp-plugin --dry-run
+npm pack -w @ovrsr/openclaw-fpp-trust --dry-run
+```
+
+Keep the git SHA + build time with the host's install notes. Do **not** treat drift alone as compromise.
+
+## 0e. `openclaw fpp-trust` unregistered / Codex plugin registration errors (diagnose only — Q8-C)
+
+**Not fixed in this plan.** Findings only.
+
+### `openclaw fpp-trust …` unregistered
+
+**Code path:** `plugin-trust/src/index.ts` calls `api.registerCli(..., { descriptors: FPP_TRUST_CLI_DESCRIPTORS })` where descriptors name is `fpp-trust` (`plugin-trust/src/cli.ts`). Registration runs inside the OpenClaw **plugin host** during gateway/plugin load — not as a standalone CLI package.
+
+**Likely causes (Axiom-class):**
+
+1. **Gateway vs CLI process split** — `openclaw` CLI may not load the same plugin set as the gateway. If trust plugin is enabled only for the gateway agent, the CLI process never executes `registerCli`.
+2. **Plugin not installed / degraded** — `openclaw plugins list` missing `openclaw-fpp-trust`, or status `degraded` before CLI registration.
+3. **Old plugin build** — host running a pack that predates CLI registration.
+4. **Descriptor mismatch** — OpenClaw expects descriptors at register time; if the host ignores `hasSubcommands`, subcommands appear missing.
+
+**Follow-up fix options (future plan):** document CLI load path in OpenClaw; add a smoke check in `verify-install`; or ship a thin `fpp-trust` bin that does not depend on gateway registration.
+
+### Codex adapter / plugin registration errors
+
+**Reported by Axiom** (not always reproducible in this monorepo CI): Codex plugin registration failures typically mean (a) `~/.codex/hooks.json` points at a missing `adapters/codex` path, (b) Node engine `<22.19` without `--ignore-engines`, or (c) bundled `@ovrsr/fpp-*-core` missing from an incomplete pack. The Codex adapter is **not** an OpenClaw `registerCli` surface — it uses PreToolUse hooks (`adapters/codex`). Treat Codex errors separately from `fpp-trust` CLI gaps.
 
 ## 0. "`npm` / OpenClaw install fails with missing `@ovrsr/fpp-*-core`"
 
@@ -169,7 +253,7 @@ If you find an older MEMORY.md you want to restore, you can do so safely — `sa
 The plugin is running but a runtime check failed. Common causes:
 
 - `auditLogPath` directory is not writable. Create it under the live OpenClaw workspace (default `<homedir>/.openclaw/workspace`, or `$FPP_WORKSPACE`): `mkdir -p "$HOME/.openclaw/workspace" && touch "$HOME/.openclaw/workspace/fpp-plugin-audit.jsonl"`. Relative `.openclaw/workspace` paths in config are absolutized — do not rely on skill CWD.
-- Runtime vs install metadata version drift: `verify-install` emits `[WARN] plugin.version-drift` when both versions are inspectable and differ. This is install/config skew, not automatic compromise — reinstall or align versions deliberately.
+- Runtime vs install metadata version drift: `verify-install` emits `[WARN] plugin.version-drift` when both versions are inspectable and differ. This is install/config skew, not automatic compromise — reinstall or align versions deliberately. See **§0d Local rebuild provenance** when the drift is intentional (local build ahead of ClawHub).
 - The plugin's manifest declares hooks the runtime version doesn't support. Compare `openclaw --version` with the `pluginApi` field in `plugin/package.json`'s `openclaw.compat`. If your runtime is older, you must either upgrade OpenClaw or pin the plugin to an older version.
 - `allowConversationAccess` is required for a hook you don't actually use. The default plugin only registers `before_tool_call`, which does NOT require `allowConversationAccess`. If you've forked the plugin to add `llm_input` or `llm_output` hooks, you'll need to set `plugins.entries.openclaw-fpp-plugin.hooks.allowConversationAccess: true` in your OpenClaw config.
 
@@ -369,6 +453,45 @@ If the persisted trust graph (`fpp-trust-graph.json`) is malformed or a **v2 sna
 ## 17. "Trust status looks different for the same peer in two capabilities"
 
 **Expected.** Trust is `Trust(A→B, capability, context, time)`. A handshake standing does not automatically authorize `shell.exec`. Pass `--capability` / tool params when evaluating standing. There is no global immutable score.
+
+## 18. Axiom / Prax hardened-v2 handshake runbook (after ops remediation)
+
+**Success criteria:** challenge → offer (historical `adoptedAt`) → verify once; peer appears in absolutized trust graph; no silent CWD-relative files.
+
+1. **Reconcile peer IDs** on both hosts:
+   ```bash
+   # Via tool (preferred): fpp_trust_status targeting self / peer
+   # Confirm agentId form fpp:ed25519:<fingerprint> matches the peer you intend
+   ```
+2. **Bootstrap primary audit** if missing:
+   ```bash
+   npm run audit:bootstrap -- --soul "$HOME/.openclaw/agents/<agent>/SOUL.md"
+   npm run audit:verify
+   ```
+3. **Optional:** `export FPP_SOUL=/path/to/SOUL.md` so offer stamps SOUL `- Adopted:` time.
+4. **Challenge (verifier / Axiom):** `fpp_handshake_challenge` → copy JSON.
+5. **Offer (peer / Prax):** `fpp_handshake_offer` with `peerChallenge` = challenge JSON. Confirm claim `adoptedAt` is historical when SOUL/adoption-state exist.
+6. **Verify (verifier):** `fpp_handshake_verify` with offer JSON **once** (replay rejects).
+7. **Confirm persistence:**
+   ```bash
+   ls -la "${FPP_WORKSPACE:-$HOME/.openclaw/workspace}"/fpp-trust-graph.json
+   ```
+   File appears only after first successful mutation (verify). See §0a3.
+
+**Peer ID mismatch:** do not proceed — re-export attestation / compare `fpp_trust_status` IDs before offer/verify.
+
+## Verification matrix (ops remediation — expected signals)
+
+| Command | Expected signal |
+|---------|-----------------|
+| `npx tsx scripts/skill-self-check.ts --root <skill>` after `npm install` | `deps.noble` ok |
+| `npm run audit:bootstrap -- --soul <adopted SOUL>` | creates/appends chain-valid log |
+| `npm run audit:verify` | exit 0 |
+| `npm test -w @ovrsr/fpp-enforcement-core` | `openclaw.memory_search` allow; `apply_patch` → `code.patch` |
+| `npx tsx --test packages/trust-core/src/create-trust-stack.path.test.ts` | relative paths absolutize |
+| `npx tsx --test plugin-trust/src/resolve-adopted-at.test.ts` | SOUL/adoption-state `adoptedAt` |
+
+Do **not** claim plan `VERIFIED` until `/verify` re-runs this matrix.
 
 ## When you're stuck
 

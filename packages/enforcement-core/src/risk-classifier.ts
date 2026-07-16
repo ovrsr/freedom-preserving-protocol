@@ -37,6 +37,7 @@ export type ClassificationId =
   | "gateway.config-change"
   | "credential.exposure"
   | "message.external"
+  | "code.patch"
   | "fpp.governance"
   | "unknown.unclassified";
 
@@ -60,6 +61,7 @@ export const CLASSIFICATION_IDS: readonly ClassificationId[] = [
   "gateway.config-change",
   "credential.exposure",
   "message.external",
+  "code.patch",
   "fpp.governance",
   "unknown.unclassified",
 ] as const;
@@ -413,13 +415,52 @@ function classifyMessage(
 }
 
 /**
- * OpenClaw PreToolUse may surface plugin tools as `openclawfpp_*` instead of
- * `fpp_*` (no separator between the runtime prefix and the tool id). Strip that
- * prefix only when the remainder is an `fpp_*` name.
+ * Dedicated class for apply_patch (and OpenClaw-prefixed forms).
+ * Matches even when path params are absent — classifyFilesystem requires a path
+ * and previously missed bare apply_patch → unknown.unclassified.
+ * Never allowlisted by default (Q3-B → approval).
  */
-export function normalizeOpenClawToolName(toolName: string): string {
+function classifyCodePatch(
+  toolName: string,
+  params: Record<string, unknown>,
+): ClassificationResult | null {
+  void params;
+  if (!/^apply_patch$/i.test(toolName)) return null;
+  return {
+    classification: "code.patch",
+    decision: "approval",
+    reason:
+      "apply_patch modifies code; requires approval (code.patch) — not silently allowlisted.",
+    matchedPatterns: ["/^apply_patch$/i"],
+  };
+}
+
+/**
+ * Normalize OpenClaw-prefixed live tool names before classify / allowlist.
+ *
+ * | Live form | After normalize |
+ * |-----------|-----------------|
+ * | `openclawfpp_*` | `fpp_*` |
+ * | `openclaw.<name>` | `<name>` |
+ * | `openclaw` + remainder when remainder is `fpp_*` or seeded | `<remainder>` |
+ *
+ * Unrelated `openclaw*` names are left unchanged (no over-broad strip).
+ */
+export function normalizeOpenClawToolName(
+  toolName: string,
+  seededNames: readonly string[] = [],
+): string {
   if (/^openclawfpp_/i.test(toolName)) {
     return toolName.replace(/^openclaw/i, "");
+  }
+  if (/^openclaw\./i.test(toolName)) {
+    return toolName.replace(/^openclaw\./i, "");
+  }
+  if (/^openclaw/i.test(toolName)) {
+    const remainder = toolName.replace(/^openclaw/i, "");
+    if (/^fpp_/.test(remainder) || seededNames.includes(remainder)) {
+      return remainder;
+    }
   }
   return toolName;
 }
@@ -429,7 +470,8 @@ export function classifyToolCall(
   params: Record<string, unknown>,
   options?: ClassifyOptions | undefined,
 ): ClassificationResult {
-  const name = normalizeOpenClawToolName(toolName);
+  const allowlist = options?.knownCustomTools ?? [];
+  const name = normalizeOpenClawToolName(toolName, allowlist);
   const safeParams =
     params && typeof params === "object" && !Array.isArray(params)
       ? params
@@ -439,6 +481,7 @@ export function classifyToolCall(
     classifyExec(name, safeParams),
     classifyHttp(name, safeParams),
     classifyMessage(name, safeParams),
+    classifyCodePatch(name, safeParams),
   ];
   for (const r of results) {
     if (r) return r;
@@ -457,13 +500,14 @@ export function classifyToolCall(
     };
   }
 
-  const allowlist = options?.knownCustomTools ?? [];
   if (allowlist.includes(name)) {
+    const matchedPatterns = ["knownCustomTools"];
+    if (name !== toolName) matchedPatterns.push("normalizeOpenClawToolName");
     return {
       classification: "unknown.unclassified",
       decision: "allow",
       reason: `tool ${name} is on the operator known-custom-tool allowlist; allowing with audit.`,
-      matchedPatterns: ["knownCustomTools"],
+      matchedPatterns,
     };
   }
 

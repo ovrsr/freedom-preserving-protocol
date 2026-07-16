@@ -27,6 +27,7 @@ describe("isReversibleClassification", () => {
       "credential.exposure",
       "pkg.install",
       "pkg.publish",
+      "code.patch",
       "unknown.unclassified",
     ];
     for (const id of irreversible) {

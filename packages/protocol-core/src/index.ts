@@ -7,7 +7,7 @@
  */
 
 export const PACKAGE_NAME = "@ovrsr/fpp-protocol-core" as const;
-export const PACKAGE_VERSION = "1.0.1" as const;
+export const PACKAGE_VERSION = "1.0.2" as const;
 /** Protocol schema version carried by this package release. */
 export const SCHEMA_VERSION = 2 as const;
 
@@ -181,6 +181,8 @@ export {
   DEFAULT_WORKSPACE_PROFILE,
   resolveWorkspaceRoot,
   workspaceFile,
+  absolutizeWorkspacePath,
   type ResolveWorkspaceOptions,
+  type AbsolutizeWorkspaceOptions,
   type WorkspaceProfileId,
 } from "./workspace-profile.js";

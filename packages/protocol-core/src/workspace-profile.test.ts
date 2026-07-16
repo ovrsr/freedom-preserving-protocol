@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   resolveWorkspaceRoot,
   workspaceFile,
+  absolutizeWorkspacePath,
   DEFAULT_WORKSPACE_PROFILE,
 } from "./workspace-profile.js";
 
@@ -94,5 +95,35 @@ describe("workspace profile resolution", () => {
         `/home/agent/.fpp/${profile}`,
       );
     }
+  });
+
+  it("absolutizeWorkspacePath maps relative .openclaw/workspace paths under home", () => {
+    assert.equal(
+      absolutizeWorkspacePath(".openclaw/workspace/fpp-trust-graph.json", {
+        env: {},
+        homedir: () => "/home/agent",
+      }),
+      "/home/agent/.openclaw/workspace/fpp-trust-graph.json",
+    );
+  });
+
+  it("absolutizeWorkspacePath with FPP_WORKSPACE ignores CWD-relative layout", () => {
+    assert.equal(
+      absolutizeWorkspacePath(".openclaw/workspace/fpp-trust-graph.json", {
+        env: { FPP_WORKSPACE: "/var/ws" },
+        homedir: () => "/home/agent",
+      }),
+      "/var/ws/fpp-trust-graph.json",
+    );
+  });
+
+  it("absolutizeWorkspacePath leaves already-absolute paths unchanged", () => {
+    assert.equal(
+      absolutizeWorkspacePath("/abs/fpp-trust-graph.json", {
+        env: { FPP_WORKSPACE: "/var/ws" },
+        homedir: () => "/home/agent",
+      }),
+      "/abs/fpp-trust-graph.json",
+    );
   });
 });

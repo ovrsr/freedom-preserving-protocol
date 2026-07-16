@@ -2,7 +2,7 @@
  * Harness-agnostic trust stack factory — graph, handshake, identity, quorum.
  */
 
-import { workspaceFile } from "@ovrsr/fpp-protocol-core";
+import { workspaceFile, absolutizeWorkspacePath } from "@ovrsr/fpp-protocol-core";
 import { TrustGraphProtocol, TrustLevel } from "./trust-graph.js";
 import { ConstitutionalHandshake } from "./handshake.js";
 import { loadTrustGraph } from "./persistence.js";
@@ -108,6 +108,9 @@ export function mergeTrustConfig(
   ) {
     console.warn(`[fpp-trust] ${policy.diagnostic}`);
   }
+
+  const path = (p: string) => absolutizeWorkspacePath(p);
+
   return {
     constitutionHash:
       typeof cfg.constitutionHash === "string"
@@ -133,36 +136,44 @@ export function mergeTrustConfig(
       typeof cfg.propagationEvidenceCeiling === "number"
         ? cfg.propagationEvidenceCeiling
         : 0.45,
-    trustGraphPath:
+    trustGraphPath: path(
       typeof cfg.trustGraphPath === "string"
         ? cfg.trustGraphPath
         : workspaceFile("fpp-trust-graph.json"),
-    identityKeyPath:
+    ),
+    identityKeyPath: path(
       typeof cfg.identityKeyPath === "string"
         ? cfg.identityKeyPath
         : workspaceFile("fpp-agent-identity.key"),
+    ),
     fallbackAuditLogPath:
       cfg.fallbackAuditLogPath === null
         ? null
-        : typeof cfg.fallbackAuditLogPath === "string"
-          ? cfg.fallbackAuditLogPath
-          : workspaceFile("fpp-plugin-audit.jsonl"),
-    auditLogPath:
+        : path(
+            typeof cfg.fallbackAuditLogPath === "string"
+              ? cfg.fallbackAuditLogPath
+              : workspaceFile("fpp-plugin-audit.jsonl"),
+          ),
+    auditLogPath: path(
       typeof cfg.auditLogPath === "string"
         ? cfg.auditLogPath
         : workspaceFile("constitution-audit.jsonl"),
-    receiptLogPath:
+    ),
+    receiptLogPath: path(
       typeof cfg.receiptLogPath === "string"
         ? cfg.receiptLogPath
         : workspaceFile("fpp-receipts.jsonl"),
-    strictModeStatePath:
+    ),
+    strictModeStatePath: path(
       typeof cfg.strictModeStatePath === "string"
         ? cfg.strictModeStatePath
         : workspaceFile("fpp-strict-sessions.json"),
-    replayCachePath:
+    ),
+    replayCachePath: path(
       typeof cfg.replayCachePath === "string"
         ? cfg.replayCachePath
         : workspaceFile("fpp-replay-cache.json"),
+    ),
     verificationPolicy: policy.policy,
     requireSignedClaims: policy.requireSignedClaims,
     requireMerkleProof:
@@ -204,14 +215,16 @@ export function mergeTrustConfig(
       typeof cfg.quorumProposalTtlMs === "number"
         ? cfg.quorumProposalTtlMs
         : 3_600_000,
-    mandateStorePath:
+    mandateStorePath: path(
       typeof cfg.mandateStorePath === "string"
         ? cfg.mandateStorePath
         : workspaceFile("fpp-mandates.json"),
-    quorumStatePath:
+    ),
+    quorumStatePath: path(
       typeof cfg.quorumStatePath === "string"
         ? cfg.quorumStatePath
         : workspaceFile("fpp-quorum-sessions.json"),
+    ),
     migrationDiagnostics,
   };
 }

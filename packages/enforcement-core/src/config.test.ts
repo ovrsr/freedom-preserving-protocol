@@ -145,6 +145,29 @@ describe("mergeConfig", () => {
     assert.deepEqual(mergeConfig({}).knownCustomTools, ["memory_search"]);
   });
 
+  it("absolutizes relative .openclaw/workspace path fields from manifest-style config", () => {
+    const prev = process.env.FPP_WORKSPACE;
+    delete process.env.FPP_WORKSPACE;
+    try {
+      const cfg = mergeConfig({
+        auditLogPath: ".openclaw/workspace/fpp-plugin-audit.jsonl",
+        mandateStorePath: ".openclaw/workspace/fpp-mandates.json",
+      });
+      assert.match(
+        cfg.auditLogPath.replace(/\\/g, "/"),
+        /\/\.openclaw\/workspace\/fpp-plugin-audit\.jsonl$/,
+      );
+      assert.ok(!cfg.auditLogPath.startsWith(".openclaw"));
+      assert.match(
+        cfg.mandateStorePath.replace(/\\/g, "/"),
+        /\/\.openclaw\/workspace\/fpp-mandates\.json$/,
+      );
+    } finally {
+      if (prev === undefined) delete process.env.FPP_WORKSPACE;
+      else process.env.FPP_WORKSPACE = prev;
+    }
+  });
+
   it("rejects standingAllowOn that covers hard-floor classes without acknowledgement", () => {
     const { config, diagnostics } = mergeConfigWithDiagnostics({
       dispositionMode: "unattended",

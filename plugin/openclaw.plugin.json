@@ -41,6 +41,7 @@
           "exec.system-modify",
           "gateway.config-change",
           "message.external",
+          "code.patch",
           "unknown.unclassified"
         ]
       },

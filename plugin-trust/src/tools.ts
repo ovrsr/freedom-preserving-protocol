@@ -40,6 +40,7 @@ import {
   signQuorumBallot,
   signQuorumProposal,
 } from "@ovrsr/fpp-trust-core";
+import { resolveAdoptedAt } from "./resolve-adopted-at.js";
 
 export interface ToolDependencies {
   identity: AgentIdentity;
@@ -52,6 +53,10 @@ export interface ToolDependencies {
   strictModeOnHandshakeFailure: boolean;
   strictModeTtlMs: number;
   receiptLogPath?: string | undefined;
+  /** Optional SOUL.md path for historical adoptedAt (Q6-A). */
+  soulPath?: string | undefined;
+  /** Optional fpp-adoption-state.jsonl path for accepted recordedAt. */
+  adoptionStatePath?: string | undefined;
 }
 
 function textResult(text: string, details: unknown) {
@@ -277,7 +282,10 @@ export function executeHandshakeOffer(
   const claim: ConstitutionalClaim = {
     agentId: identity.agentId,
     constitutionHash,
-    adoptedAt: new Date().toISOString(),
+    adoptedAt: resolveAdoptedAt({
+      soulPath: deps.soulPath,
+      adoptionStatePath: deps.adoptionStatePath,
+    }),
     auditMerkleRoot: root,
     auditEntryCount: entryCount,
     chainIntact: entryCount > 0,

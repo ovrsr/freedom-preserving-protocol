@@ -17,15 +17,18 @@ openclaw plugins install clawhub:ovrsr/openclaw-fpp-trust
 
 ## Adopt / verify / revoke
 
-From the skill install directory:
+From the skill install directory. **Always run `npm install` first** — ClawHub skill trees often ship without `node_modules`, and `verify` / `verify-install` need `@noble/ed25519` + `@noble/hashes`.
 
 ```bash
 npm install
+npm run self-test   # layout + deps.noble check
 npm run verify
 npm run adopt -- --soul /path/to/SOUL.md --memory /path/to/MEMORY.md
 npm run verify-install
 npm run revoke -- --soul /path/to/SOUL.md --memory /path/to/MEMORY.md --reason "…"
 ```
+
+If verify fails with `Cannot find module '@noble/ed25519'`, you skipped `npm install` — see `docs/TROUBLESHOOTING.md` §0a.
 
 Adoption appends to SOUL.md / MEMORY.md and writes hash-chained entries to `.openclaw/workspace/constitution-audit.jsonl` (with your explicit permission).
 
