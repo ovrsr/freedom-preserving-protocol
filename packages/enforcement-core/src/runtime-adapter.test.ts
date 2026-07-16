@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it, after } from "node:test";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
   createEnforcementRuntime,
   type FppRuntimeAdapter,
@@ -119,5 +120,88 @@ describe("FppRuntimeAdapter / createEnforcementRuntime", () => {
     );
     assert.notEqual(result.action, "require_approval");
     assert.equal(approvalCalls, 0);
+  });
+
+  it("wires mandate diagnostics to AUDIT-GAP and audit-log integrity entry", async () => {
+    // Plant a broken signed mandate that fails verify.
+    const mandateStorePath = join(ws.path, "mandates-diag-rt.json");
+    const auditLogPath = join(ws.path, "audit-diag-rt.jsonl");
+    mkdirSync(dirname(mandateStorePath), { recursive: true });
+    writeFileSync(
+      mandateStorePath,
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          mandates: [
+            {
+              schemaVersion: 1,
+              mandateId: "m-rt-diag",
+              issuerClass: "operator",
+              issuerId: "operator:alice",
+              scope: { classifications: ["pkg.install"] },
+              budgets: { maxActions: 5, remainingActions: 5 },
+              validFrom: "2026-01-01T00:00:00.000Z",
+              validTo: "2099-01-01T00:00:00.000Z",
+              revocable: true,
+              evidenceRef: "evidence:rt",
+              publicKey: "aa".repeat(32),
+              signature: "00".repeat(64),
+            },
+          ],
+          ledgers: { "m-rt-diag": { remainingActions: 5 } },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const gaps: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      const msg = args.map(String).join(" ");
+      if (msg.includes("FPP AUDIT-GAP")) gaps.push(msg);
+      originalError.apply(console, args as []);
+    };
+
+    try {
+      const runtime = createEnforcementRuntime(
+        {
+          auditLogPath,
+          receiptLogPath: join(ws.path, "receipts-diag-rt.jsonl"),
+          identityKeyPath: join(ws.path, "agent-diag-rt.key"),
+          mandateStorePath,
+          strictModeStatePath: join(ws.path, "strict-diag-rt.json"),
+          dispositionMode: "unattended",
+          constitutionHash: "test-hash",
+        },
+        fakeAdapter(),
+      );
+      await runtime.onBeforeToolCall(
+        {
+          toolName: "exec",
+          params: { command: "npm install left-pad" },
+          toolCallId: "tc-diag",
+        },
+        { toolCallId: "tc-diag" },
+      );
+
+      assert.ok(
+        gaps.some((g) => /mandate|signature|integrity/i.test(g)),
+        `expected AUDIT-GAP for mandate integrity, got: ${gaps.join(" | ")}`,
+      );
+      assert.ok(existsSync(auditLogPath));
+      const lines = readFileSync(auditLogPath, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean);
+      const integrity = lines
+        .map((l) => JSON.parse(l) as { classification?: string; reason?: string })
+        .find((e) => e.classification === "fpp.mandate.integrity");
+      assert.ok(integrity);
+      assert.match(String(integrity!.reason), /m-rt-diag/);
+    } finally {
+      console.error = originalError;
+    }
   });
 });

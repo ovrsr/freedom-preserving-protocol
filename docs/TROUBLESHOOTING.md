@@ -208,7 +208,9 @@ Restart the gateway for changes to take effect. Be wary of tuning so aggressivel
 
 For **headless / unattended** agents, set `dispositionMode: "unattended"` (new-install default). Uncertainty then **abstains** instead of opening `requireApproval`. Cover routine classes with `standingAllowOn` or signed mandates at `mandateStorePath` — do not put hard-floor (`blockOn`) classes on the standing allowlist without `acknowledgeDangerousOverrides: true`.
 
-**Introspection under unattended:** tools matching `/^fpp_/` (e.g. `fpp_trust_status`) classify as `fpp.governance` and **allow with audit**. Default `knownCustomTools` seeds `memory_search` (exact name only). Random unknown tools still abstain. Allowing these tools is **not** behavioral compliance.
+**Introspection under unattended:** tools matching `/^fpp_/` (e.g. `fpp_trust_status`) classify as `fpp.governance` and **allow with audit**. OpenClaw may surface the same tools as `openclawfpp_*` (no separator); the classifier normalizes that form to `fpp_*` before matching. Default `knownCustomTools` seeds `memory_search` (exact name only). Random unknown tools still abstain. Allowing these tools is **not** behavioral compliance.
+
+If trust/status tools still abstain as `unknown.unclassified` after installing enforcement **≥1.1.9**, inspect `fpp-plugin-audit.jsonl` for the live `toolName` string and confirm it is either `fpp_*` or `openclawfpp_*`. Also check that `knownCustomTools` is not explicitly set to `[]` in `.openclaw/openclaw.json` (an empty array overrides the seeded default).
 
 ### Quorum mandates (peer / steward) — not ratification
 
@@ -219,9 +221,24 @@ When no human is present, peers or stewards can open a quorum proposal via the t
 | Finalize fails with threshold error | Too few aye ballots vs `quorumPeerThreshold` / `quorumStewardThreshold` | Add eligible voters or lower local threshold (operator policy) |
 | Ballot rejected (revoked / ineligible) | Voter not in `quorumPeerEligibleIds` / `quorumStewardEligibleIds`, or key revoked | Update eligible IDs; rotate/recover keys via key-lifecycle |
 | Finalize rejects consent scopes | Proposal classifications include `affected-party-consent` / `data-subject-consent` | Quorum cannot mint nonparticipant consent — obtain a real consent artifact or use emergency/staged paths |
-| Unattended still abstains after finalize | Mandate store path mismatch, expired mandate, or budget exhausted | Align trust `mandateStorePath` with enforcement plugin; check `quorum-status` / remaining budget |
+| Unattended still abstains after finalize | Mandate store path mismatch, expired mandate, budget exhausted, or signature/ledger integrity failure | Align trust `mandateStorePath` with enforcement plugin; check `quorum-status` / ledger remaining; see budget-signature section below |
+| Open proposal fails finalize after upgrade | Proposal `mandateDigest` was computed with old rules (included `remainingActions`) | Re-propose the session after upgrading cores/plugins; in-flight proposals under the old digest will not match |
 
 Inspect with `openclaw fpp-trust quorum-status`. Revoke with `openclaw fpp-trust quorum-revoke-mandate <id> --reason "..."`. Keep `steward-override` separate — it records scoped trust assessments and does not mint peer-signed mandates.
+
+### Mandate budget ledger vs signature (Issue #5)
+
+**Symptom:** Unattended allows a tool call under a budgeted mandate, then the **same** mandate abstains on the next call. Audit may show two entries for related `toolCallId`s — first `allowed`, then abstain with “no mandate”.
+
+**Cause (fixed in protocol/enforcement/trust cores ≥1.0.1 + enforcement plugin ≥1.1.10):** Older stores kept `budgets.remainingActions` (and revoke) inside the Ed25519-signed grant. The first `debit()` mutated the signed blob and invalidated the signature; `findCoverage` then skipped the mandate as if it were absent.
+
+**Current behavior:**
+
+- Signed grant omits mutable fields (`remainingActions`, `revoked`).
+- Runtime budget/revoke live in the unsigned `ledgers` map in `fpp-mandates.json` (keyed by `mandateId`).
+- Legacy undebited signatures still verify (dual-verify). Already-debited broken files with `maxActions` set **auto-migrate** on reload: restore signed `remainingActions` to `maxActions`, seed ledger from the prior decremented value, and emit `FPP AUDIT-GAP` plus an audit entry with classification `fpp.mandate.integrity`.
+- Mandates without `maxActions` that are already broken cannot auto-migrate — **re-issue** the mandate.
+- Revoke sets `ledgers[id].revoked = true` and does not rewrite the signed blob.
 
 ## 11. "Plugin approval required (gateway unavailable)" on every gated tool call
 

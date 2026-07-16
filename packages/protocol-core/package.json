@@ -1,6 +1,6 @@
 {
   "name": "@ovrsr/fpp-protocol-core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Shared versioned schemas and cryptographic contracts for the Freedom Preserving Protocol",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

@@ -17,10 +17,13 @@ import {
   computeQuorumEvidenceDigest,
   digest,
   DIGEST_DOMAINS,
+  mandateSigningFields,
   parseQuorumBallot,
   parseQuorumProposal,
   parseStandingMandate,
   validateBallotAgainstProposal,
+  type MandateLedgerEntry,
+  type MandateStoreFile,
   type QuorumBallotV1,
   type QuorumEvidencePackageV1,
   type QuorumProposalV1,
@@ -82,10 +85,8 @@ export type QuorumStateFile = {
   sessions: Record<string, QuorumSessionRecord>;
 };
 
-export type MandateStoreFile = {
-  schemaVersion: 1;
-  mandates: StandingMandateV1[];
-};
+/** Re-export shared store shape — prefer protocol-core definition. */
+export type { MandateLedgerEntry, MandateStoreFile };
 
 export type QuorumSessionManagerOptions = {
   policy: QuorumPolicyConfig;
@@ -139,12 +140,16 @@ function verifySignedPayload(
 export function computeIntendedMandateDigest(
   body: IntendedMandateBody,
 ): string {
+  const signingBudgets: Record<string, unknown> = {};
+  if (body.budgets.maxActions !== undefined) {
+    signingBudgets.maxActions = body.budgets.maxActions;
+  }
   return digest({
     version: 2,
     domain: DIGEST_DOMAINS.mandate,
     value: {
       scope: body.scope,
-      budgets: body.budgets,
+      budgets: signingBudgets,
       mandateValidFrom: body.mandateValidFrom,
       mandateValidTo: body.mandateValidTo,
     },
@@ -421,13 +426,15 @@ export class QuorumSessionManager {
       quorumRef: proposalId,
     };
 
-    // MandateStore verifies canonicalizeV2({...fields, publicKey}) — publicKey
-    // is part of the signed payload; only signature is stripped.
-    const toSign: Omit<StandingMandateV1, "signature"> = {
+    // Sign grant terms only — remainingActions / revoked live in the unsigned ledger.
+    const toSign: StandingMandateV1 = {
       ...unsignedBody,
       publicKey: issuer.publicKeyHex,
     };
-    const message = Buffer.from(canonicalizeV2(toSign), "utf8");
+    const message = Buffer.from(
+      canonicalizeV2(mandateSigningFields(toSign)),
+      "utf8",
+    );
     const signature = Buffer.from(issuer.sign(message)).toString("hex");
     const mandate: StandingMandateV1 = {
       ...toSign,
@@ -455,7 +462,7 @@ export class QuorumSessionManager {
     };
   }
 
-  /** Mark a quorum-issued mandate revoked in the store + session. */
+  /** Mark a quorum-issued mandate revoked via the unsigned ledger. */
   revokeMandate(
     mandateId: string,
     reason: string,
@@ -469,8 +476,11 @@ export class QuorumSessionManager {
     if (current.revocable !== true) {
       return { ok: false, error: "mandate is not revocable" };
     }
-    store.mandates[idx] = { ...current, revoked: true };
-    this.writeStore(store);
+    const ledgers = { ...(store.ledgers ?? {}) };
+    const entry = { ...(ledgers[mandateId] ?? {}) };
+    entry.revoked = true;
+    ledgers[mandateId] = entry;
+    this.writeStore({ ...store, ledgers });
 
     for (const [id, session] of Object.entries(this.sessions)) {
       if (session.mandateId === mandateId) {
@@ -483,7 +493,7 @@ export class QuorumSessionManager {
 
   private readStore(): MandateStoreFile {
     if (!existsSync(this.mandateStorePath)) {
-      return { schemaVersion: 1, mandates: [] };
+      return { schemaVersion: 1, mandates: [], ledgers: {} };
     }
     const raw = JSON.parse(
       readFileSync(this.mandateStorePath, "utf8"),
@@ -491,7 +501,11 @@ export class QuorumSessionManager {
     if (raw.schemaVersion !== 1 || !Array.isArray(raw.mandates)) {
       throw new Error(`invalid mandate store at ${this.mandateStorePath}`);
     }
-    return raw;
+    return {
+      schemaVersion: 1,
+      mandates: raw.mandates,
+      ledgers: { ...(raw.ledgers ?? {}) },
+    };
   }
 
   private writeStore(store: MandateStoreFile): void {
@@ -511,7 +525,16 @@ export class QuorumSessionManager {
     } else {
       store.mandates.push(mandate);
     }
-    this.writeStore(store);
+    const ledgers = { ...(store.ledgers ?? {}) };
+    const entry: MandateLedgerEntry = { ...(ledgers[mandate.mandateId] ?? {}) };
+    if (mandate.budgets.remainingActions !== undefined) {
+      entry.remainingActions = mandate.budgets.remainingActions;
+    }
+    if (mandate.revoked === true) {
+      entry.revoked = true;
+    }
+    ledgers[mandate.mandateId] = entry;
+    this.writeStore({ ...store, ledgers });
   }
 
   private readMandate(mandateId: string): StandingMandateV1 | null {

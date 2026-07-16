@@ -22,6 +22,7 @@ import {
 import { MandateStore } from "./mandate-store.js";
 import {
   appendEnforcementEntry,
+  appendMandateIntegrityDiagnostic,
   type EnforcementEvent,
   type EnforcementOutcome,
 } from "./audit-log.js";
@@ -254,6 +255,23 @@ export function createEnforcementRuntime(
       mandateStore = new MandateStore(config.mandateStorePath, {
         standingAllowOn: config.standingAllowOn,
         mandateDefaultMaxActions: config.mandateDefaultMaxActions,
+        onDiagnostic: (diag) => {
+          emitAuditGap(
+            `mandate ${diag.kind}: ${diag.mandateId}: ${diag.reason}`,
+          );
+          try {
+            appendMandateIntegrityDiagnostic(config.auditLogPath, {
+              mandateId: diag.mandateId,
+              reason: diag.reason,
+              kind: diag.kind,
+              constitutionHash: config.constitutionHash,
+            });
+          } catch (err) {
+            emitAuditGap(
+              `mandate diagnostic audit append failed: ${(err as Error).message}`,
+            );
+          }
+        },
       });
     }
     return mandateStore;

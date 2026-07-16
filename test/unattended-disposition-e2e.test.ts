@@ -10,6 +10,7 @@ import * as ed from "@noble/ed25519";
 import { sha512 } from "@noble/hashes/sha512";
 import {
   canonicalizeV2,
+  mandateSigningFields,
   signMessage,
   type StandingMandateV1,
 } from "@ovrsr/fpp-protocol-core";
@@ -24,6 +25,20 @@ import { createHookCapture } from "../plugin/src/test-helpers.ts";
 import { MandateStore } from "../plugin/src/mandate-store.ts";
 
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
+
+function signMandate(
+  mandate: Omit<StandingMandateV1, "signature" | "publicKey">,
+  seed: Uint8Array,
+): StandingMandateV1 {
+  const publicKey = Buffer.from(ed.getPublicKey(seed)).toString("hex");
+  const withKey = { ...mandate, publicKey } as StandingMandateV1;
+  const message = Buffer.from(
+    canonicalizeV2(mandateSigningFields(withKey)),
+    "utf8",
+  );
+  const signature = Buffer.from(signMessage(message, seed)).toString("hex");
+  return { ...withKey, signature };
+}
 
 describe("unattended disposition e2e", () => {
   const dir = mkdtempSync(join(tmpdir(), "fpp-unattended-e2e-"));
@@ -91,24 +106,23 @@ describe("unattended disposition e2e", () => {
   it("unattended allows when a signed mandate covers the classification", async () => {
     const mandatePath = join(dir, "mandates-allow.json");
     const seed = ed.utils.randomPrivateKey();
-    const publicKey = Buffer.from(ed.getPublicKey(seed)).toString("hex");
-    const unsigned: Omit<StandingMandateV1, "signature"> = {
-      schemaVersion: 1,
-      mandateId: "e2e-mandate",
-      issuerClass: "operator",
-      issuerId: "operator:e2e",
-      scope: { classifications: ["pkg.install"] },
-      budgets: { maxActions: 3, remainingActions: 3 },
-      validFrom: "2020-01-01T00:00:00.000Z",
-      validTo: "2099-01-01T00:00:00.000Z",
-      revocable: true,
-      evidenceRef: "evidence:e2e",
-      publicKey,
-    };
-    const message = Buffer.from(canonicalizeV2(unsigned), "utf8");
-    const signature = Buffer.from(signMessage(message, seed)).toString("hex");
+    const mandate = signMandate(
+      {
+        schemaVersion: 1,
+        mandateId: "e2e-mandate",
+        issuerClass: "operator",
+        issuerId: "operator:e2e",
+        scope: { classifications: ["pkg.install"] },
+        budgets: { maxActions: 3, remainingActions: 3 },
+        validFrom: "2020-01-01T00:00:00.000Z",
+        validTo: "2099-01-01T00:00:00.000Z",
+        revocable: true,
+        evidenceRef: "evidence:e2e",
+      },
+      seed,
+    );
     const store = new MandateStore(mandatePath);
-    store.put({ ...unsigned, signature });
+    store.put(mandate);
 
     const before = setup({
       dispositionMode: "unattended",
@@ -124,5 +138,53 @@ describe("unattended disposition e2e", () => {
     assert.equal(result, undefined);
     const reloaded = new MandateStore(mandatePath);
     assert.equal(reloaded.getRemaining("e2e-mandate"), 2);
+  });
+
+  it("Issue #5: budgeted mandate allows multiple unattended tool calls without post-debit abstain", async () => {
+    const mandatePath = join(dir, "mandates-multidebit.json");
+    const seed = ed.utils.randomPrivateKey();
+    const mandate = signMandate(
+      {
+        schemaVersion: 1,
+        mandateId: "e2e-multidebit",
+        issuerClass: "operator",
+        issuerId: "operator:e2e",
+        scope: { classifications: ["pkg.install"] },
+        budgets: { maxActions: 3, remainingActions: 3 },
+        validFrom: "2020-01-01T00:00:00.000Z",
+        validTo: "2099-01-01T00:00:00.000Z",
+        revocable: true,
+        evidenceRef: "evidence:multidebit",
+      },
+      seed,
+    );
+    new MandateStore(mandatePath).put(mandate);
+
+    const before = setup({
+      dispositionMode: "unattended",
+      mandateStorePath: mandatePath,
+    });
+
+    for (const callId of ["call-md-1", "call-md-2"]) {
+      const result = await before(
+        {
+          toolName: "shell_exec",
+          params: { command: "npm install lodash" },
+        },
+        { ...ctx, toolCallId: callId },
+      );
+      assert.equal(
+        result,
+        undefined,
+        `expected allow (undefined) for ${callId}, got ${JSON.stringify(result)}`,
+      );
+    }
+
+    const reloaded = new MandateStore(mandatePath);
+    assert.equal(reloaded.getRemaining("e2e-multidebit"), 1);
+    assert.ok(
+      reloaded.findCoverage("pkg.install", { nowMs: Date.now() }),
+      "mandate must still cover after two debits",
+    );
   });
 });

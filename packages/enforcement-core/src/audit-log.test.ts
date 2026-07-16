@@ -2,7 +2,7 @@ import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { appendEnforcementEntry, type EnforcementEvent } from "./audit-log.js";
+import { appendEnforcementEntry, appendMandateIntegrityDiagnostic, type EnforcementEvent } from "./audit-log.js";
 import { createTempWorkspace } from "./test-helpers.js";
 
 describe("appendEnforcementEntry", () => {
@@ -109,5 +109,30 @@ describe("appendEnforcementEntry", () => {
       () => appendEnforcementEntry(badHashPath, baseEvent, "blocked"),
       /corrupt/i,
     );
+  });
+
+  it("appendMandateIntegrityDiagnostic writes chainable fpp.mandate.integrity entry", () => {
+    const path = join(ws.path, "mandate-integrity.jsonl");
+    const first = appendMandateIntegrityDiagnostic(path, {
+      mandateId: "m-1",
+      reason: "signature verification failed",
+      kind: "integrity",
+      constitutionHash: "abc",
+    });
+    assert.match(first.hash, /^[0-9a-f]{64}$/);
+    const second = appendMandateIntegrityDiagnostic(path, {
+      mandateId: "m-2",
+      reason: "auto-migrated",
+      kind: "migration",
+      constitutionHash: "abc",
+    });
+    assert.equal(second.previousHash, first.hash);
+    const lines = readFileSync(path, "utf8").trim().split("\n");
+    assert.equal(lines.length, 2);
+    const entry = JSON.parse(lines[0]!);
+    assert.equal(entry.kind, "enforcement");
+    assert.equal(entry.classification, "fpp.mandate.integrity");
+    assert.match(entry.reason, /m-1/);
+    assert.match(entry.reason, /signature/i);
   });
 });

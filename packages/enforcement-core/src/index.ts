@@ -4,11 +4,12 @@
  */
 
 export const PACKAGE_NAME = "@ovrsr/fpp-enforcement-core" as const;
-export const PACKAGE_VERSION = "1.0.0" as const;
+export const PACKAGE_VERSION = "1.0.1" as const;
 
 export {
   CLASSIFICATION_IDS,
   classifyToolCall,
+  normalizeOpenClawToolName,
   type ClassificationId,
   type ClassificationResult,
   type Decision,
@@ -41,11 +42,19 @@ export {
   type ResolveDispositionInput,
 } from "./disposition-engine.js";
 
-export { MandateStore, type MandateStoreOptions } from "./mandate-store.js";
+export {
+  MandateStore,
+  type MandateDiagnostic,
+  type MandateLedgerEntry,
+  type MandateStoreFile,
+  type MandateStoreOptions,
+} from "./mandate-store.js";
 
 export {
   appendEnforcementEntry,
+  appendMandateIntegrityDiagnostic,
   AuditCorruptionError,
+  MANDATE_INTEGRITY_CLASSIFICATION,
   type EnforcementEvent,
   type EnforcementOutcome,
 } from "./audit-log.js";

@@ -5,6 +5,8 @@
 
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { canonicalizeV2 } from "./canonical-json.js";
+import { verifySignature } from "./identity.js";
 
 export const MANDATE_ISSUER_CLASSES = [
   "operator",
@@ -55,6 +57,22 @@ export const StandingMandateV1Schema = Type.Object(
 );
 
 export type StandingMandateV1 = Static<typeof StandingMandateV1Schema>;
+
+/** Mutable runtime counters — never part of the signed grant payload. */
+export type MandateLedgerEntry = {
+  remainingActions?: number;
+  revoked?: boolean;
+};
+
+/**
+ * Shared on-disk mandate store shape (enforcement-core + trust-core).
+ * `ledgers` is additive; absent keys mean unlimited budget / not revoked.
+ */
+export type MandateStoreFile = {
+  schemaVersion: 1;
+  mandates: StandingMandateV1[];
+  ledgers?: Record<string, MandateLedgerEntry>;
+};
 
 export type MandateParseResult =
   | { ok: true; mandate: StandingMandateV1 }
@@ -110,4 +128,74 @@ export function validateMandateValidity(
     return { valid: false, reason: "mandate expired" };
   }
   return { valid: true, reason: "ok" };
+}
+
+/**
+ * Canonical unsigned payload for new mandate signatures.
+ * Excludes `signature`, `revoked`, and `budgets.remainingActions` so debit/revoke
+ * can mutate an unsigned ledger without invalidating the grant.
+ */
+export function mandateSigningFields(
+  mandate: StandingMandateV1,
+): Record<string, unknown> {
+  const {
+    signature: _signature,
+    revoked: _revoked,
+    budgets,
+    ...rest
+  } = mandate;
+  void _signature;
+  void _revoked;
+  const signingBudgets: Record<string, unknown> = {};
+  if (budgets.maxActions !== undefined) {
+    signingBudgets.maxActions = budgets.maxActions;
+  }
+  return {
+    ...rest,
+    budgets: signingBudgets,
+  };
+}
+
+function legacySigningFields(
+  mandate: StandingMandateV1,
+): Record<string, unknown> {
+  const { signature: _signature, ...unsigned } = mandate;
+  void _signature;
+  return unsigned as Record<string, unknown>;
+}
+
+function tryVerifyMandatePayload(
+  mandate: StandingMandateV1,
+  payload: Record<string, unknown>,
+): boolean {
+  if (!mandate.publicKey || !mandate.signature) {
+    return false;
+  }
+  const message = Buffer.from(canonicalizeV2(payload), "utf8");
+  const sigBytes = Buffer.from(mandate.signature, "hex");
+  const pubBytes = Buffer.from(mandate.publicKey, "hex");
+  if (sigBytes.length !== 64 || pubBytes.length !== 32) {
+    return false;
+  }
+  return verifySignature(message, sigBytes, pubBytes);
+}
+
+/**
+ * Dual-verify mandate signatures:
+ * 1. New payload (`mandateSigningFields`) — preferred for newly issued grants.
+ * 2. Legacy payload (full object minus `signature`) — undebited historical files.
+ *
+ * Standing-allowlist mandates are unsigned by design.
+ */
+export function verifyMandateSignature(mandate: StandingMandateV1): boolean {
+  if (mandate.issuerClass === "standing-allowlist") {
+    return true;
+  }
+  if (!mandate.publicKey || !mandate.signature) {
+    return false;
+  }
+  if (tryVerifyMandatePayload(mandate, mandateSigningFields(mandate))) {
+    return true;
+  }
+  return tryVerifyMandatePayload(mandate, legacySigningFields(mandate));
 }

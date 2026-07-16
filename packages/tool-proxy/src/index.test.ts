@@ -15,6 +15,7 @@ import {
 } from "@ovrsr/fpp-enforcement-core";
 import {
   canonicalizeV2,
+  mandateSigningFields,
   signMessage,
   type StandingMandateV1,
 } from "@ovrsr/fpp-protocol-core";
@@ -27,10 +28,13 @@ function signMandate(
   seed: Uint8Array,
 ): StandingMandateV1 {
   const publicKey = Buffer.from(ed.getPublicKey(seed)).toString("hex");
-  const unsigned = { ...mandate, publicKey };
-  const message = Buffer.from(canonicalizeV2(unsigned), "utf8");
+  const withKey = { ...mandate, publicKey } as StandingMandateV1;
+  const message = Buffer.from(
+    canonicalizeV2(mandateSigningFields(withKey)),
+    "utf8",
+  );
   const signature = Buffer.from(signMessage(message, seed)).toString("hex");
-  return { ...unsigned, signature };
+  return { ...withKey, signature };
 }
 
 describe("createToolProxy", () => {

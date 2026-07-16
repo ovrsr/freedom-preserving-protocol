@@ -104,3 +104,32 @@ export function appendEnforcementEntry(
   appendFileSync(resolved, JSON.stringify(entry) + "\n");
   return { hash: entry.hash as string, previousHash };
 }
+
+/** Synthetic classification for mandate signature / migration diagnostics. */
+export const MANDATE_INTEGRITY_CLASSIFICATION = "fpp.mandate.integrity" as const;
+
+/**
+ * Append a chainable enforcement-shaped diagnostic for mandate integrity events.
+ * Uses kind "enforcement" so existing verifiers accept the entry.
+ */
+export function appendMandateIntegrityDiagnostic(
+  logPath: string,
+  input: {
+    mandateId: string;
+    reason: string;
+    kind: "integrity" | "migration";
+    constitutionHash: string;
+  },
+): { hash: string; previousHash: string } {
+  return appendEnforcementEntry(
+    logPath,
+    {
+      toolName: "fpp.mandate",
+      classification: MANDATE_INTEGRITY_CLASSIFICATION,
+      decision: "allow",
+      reason: `${input.kind}:${input.mandateId}: ${input.reason}`,
+      constitutionHash: input.constitutionHash,
+    },
+    "allowed",
+  );
+}

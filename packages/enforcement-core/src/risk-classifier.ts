@@ -412,20 +412,33 @@ function classifyMessage(
   };
 }
 
+/**
+ * OpenClaw PreToolUse may surface plugin tools as `openclawfpp_*` instead of
+ * `fpp_*` (no separator between the runtime prefix and the tool id). Strip that
+ * prefix only when the remainder is an `fpp_*` name.
+ */
+export function normalizeOpenClawToolName(toolName: string): string {
+  if (/^openclawfpp_/i.test(toolName)) {
+    return toolName.replace(/^openclaw/i, "");
+  }
+  return toolName;
+}
+
 export function classifyToolCall(
   toolName: string,
   params: Record<string, unknown>,
   options?: ClassifyOptions | undefined,
 ): ClassificationResult {
+  const name = normalizeOpenClawToolName(toolName);
   const safeParams =
     params && typeof params === "object" && !Array.isArray(params)
       ? params
       : {};
   const results: (ClassificationResult | null)[] = [
-    classifyFilesystem(toolName, safeParams),
-    classifyExec(toolName, safeParams),
-    classifyHttp(toolName, safeParams),
-    classifyMessage(toolName, safeParams),
+    classifyFilesystem(name, safeParams),
+    classifyExec(name, safeParams),
+    classifyHttp(name, safeParams),
+    classifyMessage(name, safeParams),
   ];
   for (const r of results) {
     if (r) return r;
@@ -433,21 +446,23 @@ export function classifyToolCall(
 
   // Fallthrough-only: fpp_* governance tools allow with audit.
   // Must not run before specific classifiers (fpp_shell_exec still hits exec).
-  if (/^fpp_/.test(toolName)) {
+  if (/^fpp_/.test(name)) {
+    const matchedPatterns = ["/^fpp_/"];
+    if (name !== toolName) matchedPatterns.push("normalizeOpenClawToolName");
     return {
       classification: "fpp.governance",
       decision: "allow",
-      reason: `tool ${toolName} is an FPP governance/introspection tool (fpp.governance); allowing with audit.`,
-      matchedPatterns: ["/^fpp_/"],
+      reason: `tool ${name} is an FPP governance/introspection tool (fpp.governance); allowing with audit.`,
+      matchedPatterns,
     };
   }
 
   const allowlist = options?.knownCustomTools ?? [];
-  if (allowlist.includes(toolName)) {
+  if (allowlist.includes(name)) {
     return {
       classification: "unknown.unclassified",
       decision: "allow",
-      reason: `tool ${toolName} is on the operator known-custom-tool allowlist; allowing with audit.`,
+      reason: `tool ${name} is on the operator known-custom-tool allowlist; allowing with audit.`,
       matchedPatterns: ["knownCustomTools"],
     };
   }
@@ -455,7 +470,7 @@ export function classifyToolCall(
   return {
     classification: "unknown.unclassified",
     decision: "approval",
-    reason: `tool ${toolName} did not match any known risk pattern; degraded classification — approval required (not fail-open).`,
+    reason: `tool ${name} did not match any known risk pattern; degraded classification — approval required (not fail-open).`,
     matchedPatterns: [],
   };
 }

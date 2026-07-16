@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   parseStandingMandate,
+  verifyMandateSignature,
   type StandingMandateV1,
 } from "@ovrsr/fpp-protocol-core";
 import { createTempWorkspace, createFakeClock } from "./test-helpers.js";
@@ -342,5 +343,186 @@ describe("quorum-session", () => {
       fin.ok === false ? fin.error : "",
       /affected-party|data-subject|nonparticipant|consent/i,
     );
+  });
+
+  it("computeIntendedMandateDigest ignores remainingActions differences", () => {
+    const from = "2026-07-10T12:00:00.000Z";
+    const to = "2026-07-11T12:00:00.000Z";
+    const a = computeIntendedMandateDigest({
+      scope,
+      budgets: { maxActions: 5, remainingActions: 5 },
+      mandateValidFrom: from,
+      mandateValidTo: to,
+    });
+    const b = computeIntendedMandateDigest({
+      scope,
+      budgets: { maxActions: 5, remainingActions: 1 },
+      mandateValidFrom: from,
+      mandateValidTo: to,
+    });
+    const c = computeIntendedMandateDigest({
+      scope,
+      budgets: { maxActions: 5 },
+      mandateValidFrom: from,
+      mandateValidTo: to,
+    });
+    assert.equal(a, b);
+    assert.equal(a, c);
+    const differentMax = computeIntendedMandateDigest({
+      scope,
+      budgets: { maxActions: 4, remainingActions: 4 },
+      mandateValidFrom: from,
+      mandateValidTo: to,
+    });
+    assert.notEqual(a, differentMax);
+  });
+
+  it("finalize signs with mandateSigningFields (mutable fields excluded)", () => {
+    const { proposer, voterA, voterB, mgr, clock } = setup();
+    const mandateDigest = computeIntendedMandateDigest({
+      scope,
+      budgets,
+      mandateValidFrom: "2026-07-10T12:00:00.000Z",
+      mandateValidTo: "2026-07-11T12:00:00.000Z",
+    });
+    assert.equal(
+      mgr.propose(
+        signQuorumProposal(
+          {
+            schemaVersion: 1,
+            proposalId: "prop-sign-fields",
+            quorumClass: "peer-quorum",
+            proposerId: proposer.agentId,
+            mandateDigest,
+            scope,
+            budgets,
+            mandateValidFrom: "2026-07-10T12:00:00.000Z",
+            mandateValidTo: "2026-07-11T12:00:00.000Z",
+            proposedAt: clock.iso(),
+            expiresAt: new Date(clock.now() + 3_600_000).toISOString(),
+          },
+          proposer,
+        ),
+      ).ok,
+      true,
+    );
+    for (const [id, voter] of [
+      ["b-sf-a", voterA],
+      ["b-sf-b", voterB],
+    ] as const) {
+      assert.equal(
+        mgr.second(
+          signQuorumBallot(
+            {
+              schemaVersion: 1,
+              ballotId: id,
+              proposalId: "prop-sign-fields",
+              voterId: voter.agentId,
+              vote: "aye",
+              mandateDigest,
+              castAt: clock.iso(),
+            },
+            voter,
+          ),
+        ).ok,
+        true,
+      );
+    }
+    const fin = mgr.finalize("prop-sign-fields", proposer);
+    assert.equal(fin.ok, true);
+    if (!fin.ok) return;
+    assert.equal(verifyMandateSignature(fin.mandate), true);
+    // Mutating remainingActions must not invalidate a new-shaped signature.
+    const mutated: StandingMandateV1 = {
+      ...fin.mandate,
+      budgets: {
+        ...fin.mandate.budgets,
+        remainingActions: 0,
+      },
+    };
+    assert.equal(verifyMandateSignature(mutated), true);
+    assert.equal(fin.mandate.budgets.remainingActions, budgets.remainingActions);
+  });
+
+  it("finalize seeds ledger remainingActions; revoke is ledger-only", () => {
+    const { proposer, voterA, voterB, mgr, mandateStorePath, clock } = setup();
+    const mandateDigest = computeIntendedMandateDigest({
+      scope,
+      budgets,
+      mandateValidFrom: "2026-07-10T12:00:00.000Z",
+      mandateValidTo: "2026-07-11T12:00:00.000Z",
+    });
+    assert.equal(
+      mgr.propose(
+        signQuorumProposal(
+          {
+            schemaVersion: 1,
+            proposalId: "prop-ledger",
+            quorumClass: "peer-quorum",
+            proposerId: proposer.agentId,
+            mandateDigest,
+            scope,
+            budgets,
+            mandateValidFrom: "2026-07-10T12:00:00.000Z",
+            mandateValidTo: "2026-07-11T12:00:00.000Z",
+            proposedAt: clock.iso(),
+            expiresAt: new Date(clock.now() + 3_600_000).toISOString(),
+          },
+          proposer,
+        ),
+      ).ok,
+      true,
+    );
+    for (const [id, voter] of [
+      ["b-led-a", voterA],
+      ["b-led-b", voterB],
+    ] as const) {
+      assert.equal(
+        mgr.second(
+          signQuorumBallot(
+            {
+              schemaVersion: 1,
+              ballotId: id,
+              proposalId: "prop-ledger",
+              voterId: voter.agentId,
+              vote: "aye",
+              mandateDigest,
+              castAt: clock.iso(),
+            },
+            voter,
+          ),
+        ).ok,
+        true,
+      );
+    }
+    const fin = mgr.finalize("prop-ledger", proposer);
+    assert.equal(fin.ok, true);
+    if (!fin.ok) return;
+
+    const afterFinalize = JSON.parse(
+      readFileSync(mandateStorePath, "utf8"),
+    ) as {
+      mandates: StandingMandateV1[];
+      ledgers?: Record<string, { remainingActions?: number; revoked?: boolean }>;
+    };
+    const mandateId = fin.mandate.mandateId;
+    assert.equal(
+      afterFinalize.ledgers?.[mandateId]?.remainingActions,
+      budgets.remainingActions,
+    );
+    assert.equal(verifyMandateSignature(fin.mandate), true);
+
+    const revoked = mgr.revokeMandate(mandateId, "test revoke");
+    assert.equal(revoked.ok, true);
+
+    const afterRevoke = JSON.parse(readFileSync(mandateStorePath, "utf8")) as {
+      mandates: StandingMandateV1[];
+      ledgers?: Record<string, { remainingActions?: number; revoked?: boolean }>;
+    };
+    const frozen = afterRevoke.mandates.find((m) => m.mandateId === mandateId);
+    assert.ok(frozen);
+    assert.notEqual(frozen!.revoked, true);
+    assert.equal(afterRevoke.ledgers?.[mandateId]?.revoked, true);
+    assert.equal(verifyMandateSignature(frozen!), true);
   });
 });

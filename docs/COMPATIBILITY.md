@@ -211,7 +211,7 @@ The plugin reads its configuration from your OpenClaw config:
 
 If you do not set these, sensible defaults apply (see `plugin/src/config.ts` and `plugin-trust/openclaw.plugin.json`). Manifest path defaults may remain relative (`.openclaw/workspace/...`) for readability; runtime and scripts absolutize them under `<homedir>/.openclaw/workspace` (or `FPP_WORKSPACE` when set — use this when OpenClaw `workspaceDir` is non-default). The trust plugin uses `fallbackAuditLogPath` when `constitution-audit.jsonl` has no entries yet, so handshakes can bootstrap from enforcement audit activity before the first heartbeat. Set `fallbackAuditLogPath` to `null` if you run trust without the enforcement plugin.
 
-Default `knownCustomTools` seeds `memory_search`. Tools matching `/^fpp_/` classify as `fpp.governance` and allow with audit in unattended mode. **Neither proves behavioral compliance** — only configuration/event evidence.
+Default `knownCustomTools` seeds `memory_search`. Tools matching `/^fpp_/` (including OpenClaw's live `openclawfpp_*` mangling, normalized before classify) classify as `fpp.governance` and allow with audit in unattended mode. **Neither proves behavioral compliance** — only configuration/event evidence.
 
 ## Claim-format migration terminology
 

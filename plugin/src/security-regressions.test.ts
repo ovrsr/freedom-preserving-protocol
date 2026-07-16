@@ -169,6 +169,34 @@ describe("security regressions (enforcement)", () => {
     assert.equal(line.classification, "fpp.governance");
   });
 
+  it("E2E: unattended openclawfpp_trust_status allows (live OpenClaw mangled name)", async () => {
+    resetStrictModeCache();
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "unattended-openclawfpp-trust-audit.jsonl"),
+      respectTrustStrictMode: false,
+      dispositionMode: "unattended",
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = await handler(
+      { toolName: "openclawfpp_trust_status", params: {} },
+      ctx,
+    );
+    assert.equal(
+      result,
+      undefined,
+      "openclawfpp_trust_status must allow after OpenClaw name normalize",
+    );
+    const line = JSON.parse(
+      readFileSync(
+        join(ws.path, "unattended-openclawfpp-trust-audit.jsonl"),
+        "utf8",
+      ).trim(),
+    );
+    assert.equal(line.outcome, "allowed");
+    assert.equal(line.classification, "fpp.governance");
+  });
+
   it("E2E: unattended memory_search allows via seeded knownCustomTools", async () => {
     resetStrictModeCache();
     const capture = createHookCapture({

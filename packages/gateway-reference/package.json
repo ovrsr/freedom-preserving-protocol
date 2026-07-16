@@ -13,15 +13,19 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist/", "src/", "README.md"],
+  "files": [
+    "dist/",
+    "src/",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit --declaration false --declarationMap false",
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
-    "@ovrsr/fpp-enforcement-core": "1.0.0",
-    "@ovrsr/fpp-protocol-core": "1.0.0"
+    "@ovrsr/fpp-enforcement-core": "1.0.1",
+    "@ovrsr/fpp-protocol-core": "1.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
