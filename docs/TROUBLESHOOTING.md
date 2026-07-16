@@ -83,7 +83,7 @@ VirusTotal historically reports the skill clean; treat capability findings as pa
 
 ## 0d. Local rebuild provenance (intentional version drift — Q7-B)
 
-**Policy:** This remediation ships **local** plugin/skill rebuilds. ClawHub registry republish is **out of scope**. Runtime versions (e.g. enforcement `1.1.13`, trust `1.2.8`) may be ahead of install-metadata / ClawHub (historically `1.1.4` / `1.2.1`). `plugin.version-drift` WARN is **expected** until a deliberate republish.
+**Policy:** This remediation ships **local** plugin/skill rebuilds. ClawHub registry republish is **out of scope**. Runtime versions (e.g. enforcement `1.1.14`, trust `1.2.9`) may be ahead of install-metadata / ClawHub (historically `1.1.4` / `1.2.1`). `plugin.version-drift` WARN is **expected** until a deliberate republish.
 
 **Record provenance on the host:**
 
