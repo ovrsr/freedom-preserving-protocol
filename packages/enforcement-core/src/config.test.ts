@@ -140,9 +140,9 @@ describe("mergeConfig", () => {
     assert.equal(cfg.stagedUndoWindowMs, 60_000);
   });
 
-  it("defaults knownCustomTools to seeded introspection list", () => {
-    assert.deepEqual(DEFAULT_CONFIG.knownCustomTools, ["memory_search"]);
-    assert.deepEqual(mergeConfig({}).knownCustomTools, ["memory_search"]);
+  it("defaults knownCustomTools to empty operator extras list", () => {
+    assert.deepEqual(DEFAULT_CONFIG.knownCustomTools, []);
+    assert.deepEqual(mergeConfig({}).knownCustomTools, []);
   });
 
   it("absolutizes relative .openclaw/workspace path fields from manifest-style config", () => {

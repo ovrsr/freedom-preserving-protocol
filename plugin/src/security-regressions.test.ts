@@ -197,13 +197,33 @@ describe("security regressions (enforcement)", () => {
     assert.equal(line.classification, "fpp.governance");
   });
 
-  it("E2E: unattended memory_search allows via seeded knownCustomTools", async () => {
+  it("E2E: unattended openclawheartbeat_respond allows (internal.heartbeat)", async () => {
+    resetStrictModeCache();
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "unattended-heartbeat-audit.jsonl"),
+      respectTrustStrictMode: false,
+      dispositionMode: "unattended",
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = await handler(
+      { toolName: "openclawheartbeat_respond", params: {} },
+      ctx,
+    );
+    assert.equal(result, undefined, "heartbeat must allow under unattended");
+    const line = JSON.parse(
+      readFileSync(join(ws.path, "unattended-heartbeat-audit.jsonl"), "utf8").trim(),
+    );
+    assert.equal(line.outcome, "allowed");
+    assert.equal(line.classification, "internal.heartbeat");
+  });
+
+  it("E2E: unattended memory_search allows via internal.read", async () => {
     resetStrictModeCache();
     const capture = createHookCapture({
       auditLogPath: join(ws.path, "unattended-memory-search-audit.jsonl"),
       respectTrustStrictMode: false,
       dispositionMode: "unattended",
-      knownCustomTools: DEFAULT_CONFIG.knownCustomTools,
     });
     registerEnforcement(capture.api);
     const handler = capture.hooks[0]!.handler;
@@ -211,7 +231,7 @@ describe("security regressions (enforcement)", () => {
       { toolName: "memory_search", params: { query: "adoption" } },
       ctx,
     );
-    assert.equal(result, undefined, "memory_search must allow under default seed");
+    assert.equal(result, undefined, "memory_search must allow via internal.read");
     const line = JSON.parse(
       readFileSync(
         join(ws.path, "unattended-memory-search-audit.jsonl"),
@@ -219,15 +239,15 @@ describe("security regressions (enforcement)", () => {
       ).trim(),
     );
     assert.equal(line.outcome, "allowed");
+    assert.equal(line.classification, "internal.read");
   });
 
-  it("E2E: unattended openclaw.memory_search allows after normalize + seed", async () => {
+  it("E2E: unattended openclaw.memory_search allows via internal.read", async () => {
     resetStrictModeCache();
     const capture = createHookCapture({
       auditLogPath: join(ws.path, "unattended-openclaw-memory-search-audit.jsonl"),
       respectTrustStrictMode: false,
       dispositionMode: "unattended",
-      knownCustomTools: DEFAULT_CONFIG.knownCustomTools,
     });
     registerEnforcement(capture.api);
     const handler = capture.hooks[0]!.handler;
@@ -238,8 +258,39 @@ describe("security regressions (enforcement)", () => {
     assert.equal(
       result,
       undefined,
-      "openclaw.memory_search must allow after normalize + seed",
+      "openclaw.memory_search must allow via internal.read",
     );
+    const line = JSON.parse(
+      readFileSync(
+        join(ws.path, "unattended-openclaw-memory-search-audit.jsonl"),
+        "utf8",
+      ).trim(),
+    );
+    assert.equal(line.classification, "internal.read");
+  });
+
+  it("E2E: unattended openclawgateway inspect allows (gateway.inspect)", async () => {
+    resetStrictModeCache();
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "unattended-gateway-inspect-audit.jsonl"),
+      respectTrustStrictMode: false,
+      dispositionMode: "unattended",
+    });
+    registerEnforcement(capture.api);
+    const handler = capture.hooks[0]!.handler;
+    const result = await handler(
+      { toolName: "openclawgateway", params: { action: "status" } },
+      ctx,
+    );
+    assert.equal(result, undefined, "gateway inspect must allow under unattended");
+    const line = JSON.parse(
+      readFileSync(
+        join(ws.path, "unattended-gateway-inspect-audit.jsonl"),
+        "utf8",
+      ).trim(),
+    );
+    assert.equal(line.outcome, "allowed");
+    assert.equal(line.classification, "gateway.inspect");
   });
 
   it("E2E: bare apply_patch requires approval (code.patch, not allowlist)", async () => {
@@ -248,7 +299,6 @@ describe("security regressions (enforcement)", () => {
       auditLogPath: join(ws.path, "apply-patch-audit.jsonl"),
       respectTrustStrictMode: false,
       dispositionMode: "operator-present",
-      knownCustomTools: DEFAULT_CONFIG.knownCustomTools,
     });
     registerEnforcement(capture.api);
     const handler = capture.hooks[0]!.handler;
@@ -268,7 +318,6 @@ describe("security regressions (enforcement)", () => {
       auditLogPath: join(ws.path, "unattended-random-unknown-audit.jsonl"),
       respectTrustStrictMode: false,
       dispositionMode: "unattended",
-      knownCustomTools: DEFAULT_CONFIG.knownCustomTools,
     });
     registerEnforcement(capture.api);
     const handler = capture.hooks[0]!.handler;

@@ -11,8 +11,10 @@ const REVERSIBLE: ReadonlySet<ClassificationId> = new Set([
   "fs.read.benign",
   "http.read",
   "http.public-read",
-  "exec.benign",
   "fpp.governance",
+  "internal.heartbeat",
+  "internal.read",
+  "gateway.inspect",
 ]);
 
 export function isReversibleClassification(id: ClassificationId): boolean {

@@ -333,9 +333,24 @@ Quorum unreachable warns are trust-local and **not** gated on enforcement `dispo
 
 Both plugins require OpenClaw `>=2026.3.28` (`minGatewayVersion` / `peerDependencies.openclaw`). Builds in `<=2026.3.24` (including `2026.3.24-beta.2`) are GHSA-affected and intentionally rejected. See `docs/COMPATIBILITY.md`.
 
-**Introspection under unattended:** tools matching `/^fpp_/` (e.g. `fpp_trust_status`) classify as `fpp.governance` and **allow with audit**. OpenClaw may surface the same tools as `openclawfpp_*` (no separator); the classifier normalizes that form to `fpp_*` before matching. Default `knownCustomTools` seeds `memory_search` (exact name only). Random unknown tools still abstain. Allowing these tools is **not** behavioral compliance.
+**Introspection under unattended:** Named low-risk classes allow with audit (not opaque `unknown.unclassified`):
 
-If trust/status tools still abstain as `unknown.unclassified` after installing enforcement **≥1.1.9**, inspect `fpp-plugin-audit.jsonl` for the live `toolName` string and confirm it is either `fpp_*` or `openclawfpp_*`. Also check that `knownCustomTools` is not explicitly set to `[]` in `.openclaw/openclaw.json` (an empty array overrides the seeded default).
+| Live / normalized name | Classification | Decision |
+|---|---|---|
+| `heartbeat_respond`, `openclawheartbeat_respond` | `internal.heartbeat` | allow |
+| `memory_search`, `get_goal`, `update_plan`, `read_mcp_resource`, `sessions_list`, `wiki_apply`, `subagents` (+ `openclaw*` / `openclaw.*` forms) | `internal.read` | allow |
+| `gateway` / `openclawgateway` with inspect/status/get/list action | `gateway.inspect` | allow |
+| `gateway` / `openclawgateway` with restart/stop/kill | `gateway.restart` | block |
+| `gateway` / `openclawgateway` with config/plugins-install shape | `gateway.config-change` | approval |
+| `/^fpp_/` and `openclawfpp_*` (e.g. `fpp_trust_status`, `openclawfpp_mandate_propose`) | `fpp.governance` | allow |
+| Operator extras in `knownCustomTools` | `unknown.unclassified` | allow (escape hatch only) |
+| Random unknown tools | `unknown.unclassified` | abstain (unattended) / approval (operator-present) |
+
+Default `knownCustomTools` is **empty** — curated OpenClaw internals use the named classes above, not the opaque seed. Allowing these tools is **not** behavioral compliance.
+
+If trust/status tools still abstain as `unknown.unclassified`, inspect `fpp-plugin-audit.jsonl` for the live `toolName` and confirm it matches a documented form (`fpp_*`, `openclawfpp_*`, or a curated `internal.*` name).
+
+**`exec.benign` staging:** Benign shell inspection (`exec.benign`) is classifier-allow → direct `allow`. It no longer writes `fpp-staged-actions.jsonl` rows (not reversible for undo-window staging). High-risk exec classes and reversible workspace writes are unchanged.
 
 ### Quorum mandates (peer / steward) — not ratification
 
@@ -528,7 +543,7 @@ If the persisted trust graph (`fpp-trust-graph.json`) is malformed or a **v2 sna
 | `npx tsx scripts/skill-self-check.ts --root <skill>` after `npm install` | `deps.noble` ok |
 | `npm run audit:bootstrap -- --soul <adopted SOUL>` | creates/appends chain-valid log |
 | `npm run audit:verify` | exit 0 |
-| `npm test -w @ovrsr/fpp-enforcement-core` | `openclaw.memory_search` allow; `apply_patch` → `code.patch` |
+| `npm test -w @ovrsr/fpp-enforcement-core` | `internal.read` / `internal.heartbeat` / `gateway.inspect` allow; `apply_patch` → `code.patch` |
 | `npx tsx --test packages/trust-core/src/create-trust-stack.path.test.ts` | relative paths absolutize |
 | `npx tsx --test plugin-trust/src/resolve-adopted-at.test.ts` | SOUL/adoption-state `adoptedAt` |
 

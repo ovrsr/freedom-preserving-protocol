@@ -224,6 +224,22 @@
       "params": { "path": "/home/user/.ssh/authorized_keys" },
       "expected": "block",
       "notes": "renamed nested delete of protected path still classified"
+    },
+    {
+      "id": "gateway-tool-restart-block",
+      "category": "gateway",
+      "toolName": "openclawgateway",
+      "params": { "action": "restart" },
+      "expected": "block",
+      "notes": "gateway tool restart must not classify as inspect"
+    },
+    {
+      "id": "code-patch-approval",
+      "category": "code",
+      "toolName": "apply_patch",
+      "params": {},
+      "expected": "approval",
+      "notes": "apply_patch never default-allowlisted"
     }
   ]
 }

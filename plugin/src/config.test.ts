@@ -35,8 +35,8 @@ describe("manifest / runtime default parity", () => {
     assert.equal(DEFAULT_CONFIG.dispositionMode, "unattended");
   });
 
-  it("DEFAULT_CONFIG seeds memory_search and runtime includes fpp.governance id", async () => {
-    assert.deepEqual(DEFAULT_CONFIG.knownCustomTools, ["memory_search"]);
+  it("DEFAULT_CONFIG knownCustomTools is empty; runtime includes fpp.governance id", async () => {
+    assert.deepEqual(DEFAULT_CONFIG.knownCustomTools, []);
     const { CLASSIFICATION_IDS } = await import("@ovrsr/fpp-enforcement-core");
     assert.ok(CLASSIFICATION_IDS.includes("fpp.governance"));
   });

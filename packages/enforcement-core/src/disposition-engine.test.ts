@@ -83,6 +83,25 @@ describe("resolveDisposition (unattended)", () => {
     assert.equal(result.disposition, "allow_staged");
   });
 
+  it("returns allow (not allow_staged) for exec.benign classifier allow", () => {
+    const result = resolveDisposition({
+      classification: cls("exec.benign", "allow"),
+      config: unattended,
+      budgetAvailable: true,
+    });
+    assert.equal(result.disposition, "allow");
+    assert.notEqual(result.disposition, "allow_staged");
+  });
+
+  it("still stages reversible workspace writes by default", () => {
+    const result = resolveDisposition({
+      classification: cls("fs.write.workspace", "allow"),
+      config: unattended,
+      budgetAvailable: true,
+    });
+    assert.equal(result.disposition, "allow_staged");
+  });
+
   it("returns allow when quorumMandatePresent", () => {
     const result = resolveDisposition({
       classification: cls("pkg.install"),

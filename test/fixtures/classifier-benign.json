@@ -160,6 +160,38 @@
       "params": { "method": "POST", "url": "http://192.168.1.100:8080/api" },
       "expected": "allow",
       "notes": "POST to private network is local"
+    },
+    {
+      "id": "benign-internal-heartbeat",
+      "category": "benign",
+      "toolName": "openclawheartbeat_respond",
+      "params": {},
+      "expected": "allow",
+      "notes": "heartbeat obligation — internal.heartbeat"
+    },
+    {
+      "id": "benign-internal-read-memory",
+      "category": "benign",
+      "toolName": "memory_search",
+      "params": { "query": "adoption" },
+      "expected": "allow",
+      "notes": "curated internal.read"
+    },
+    {
+      "id": "benign-gateway-inspect",
+      "category": "benign",
+      "toolName": "openclawgateway",
+      "params": { "action": "status" },
+      "expected": "allow",
+      "notes": "gateway.inspect allow"
+    },
+    {
+      "id": "benign-gateway-inspect-negative-unknown",
+      "category": "benign",
+      "toolName": "openclawgateway",
+      "params": {},
+      "expected": "approval",
+      "notes": "ambiguous gateway tool must not fail-open to inspect"
     }
   ]
 }

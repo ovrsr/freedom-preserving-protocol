@@ -121,6 +121,41 @@ const FIXTURES: Fixture[] = [
     params: { command: "unlink ~/.env" },
     expected: "block",
   },
+  {
+    id: "internal.heartbeat",
+    description: "OpenClaw heartbeat responder (always allow)",
+    toolName: "openclawheartbeat_respond",
+    params: {},
+    expected: "allow",
+  },
+  {
+    id: "internal.read",
+    description: "Curated memory_search introspection",
+    toolName: "memory_search",
+    params: { query: "adoption" },
+    expected: "allow",
+  },
+  {
+    id: "gateway.inspect",
+    description: "Gateway status inspect (allow)",
+    toolName: "openclawgateway",
+    params: { action: "status" },
+    expected: "allow",
+  },
+  {
+    id: "gateway.inspect.negative",
+    description: "Gateway restart via tool (block — not inspect)",
+    toolName: "openclawgateway",
+    params: { action: "restart" },
+    expected: "block",
+  },
+  {
+    id: "code.patch",
+    description: "apply_patch requires approval",
+    toolName: "apply_patch",
+    params: {},
+    expected: "approval",
+  },
 ];
 
 type FixtureResult = {

@@ -1,6 +1,6 @@
 # Internal Tool Classifier Named Classes
 
-**Status:** PENDING
+**Status:** VERIFIED
 **Created:** 2026-07-17
 **Depends on:** Plan 2026-07-16 axiom-ops / openclaw-tool-name-normalize / meta-eval (`fpp.governance`, `knownCustomTools` seed, `code.patch`)
 **Scope:**
@@ -84,17 +84,17 @@ Not a wholesale migration. Mapping of underclassified live surfaces → tasks:
 
 ## Progress Tracking
 
-- [ ] Task 1: Add `internal.heartbeat`, `internal.read`, `gateway.inspect` to taxonomy + defaults
-- [ ] Task 2: Heartbeat classifier (always allow)
-- [ ] Task 3: `internal.read` curated tool matcher
-- [ ] Task 4: Demote `memory_search` from default `knownCustomTools`
-- [ ] Task 5: Normalize / `fpp.governance` / `apply_patch` regressions
-- [ ] Task 6: Param-aware `openclawgateway` inspect vs mutate
-- [ ] Task 7: Stop staging `exec.benign`
-- [ ] Task 8: Plugin e2e + self-test / corpus fixtures
-- [ ] Task 9: Docs (CAPABILITY / TROUBLESHOOTING / COMPATIBILITY / plugin README + schema copy)
+- [x] Task 1: Add `internal.heartbeat`, `internal.read`, `gateway.inspect` to taxonomy + defaults
+- [x] Task 2: Heartbeat classifier (always allow)
+- [x] Task 3: `internal.read` curated tool matcher
+- [x] Task 4: Demote `memory_search` from default `knownCustomTools`
+- [x] Task 5: Normalize / `fpp.governance` / `apply_patch` regressions
+- [x] Task 6: Param-aware `openclawgateway` inspect vs mutate
+- [x] Task 7: Stop staging `exec.benign`
+- [x] Task 8: Plugin e2e + self-test / corpus fixtures
+- [x] Task 9: Docs (CAPABILITY / TROUBLESHOOTING / COMPATIBILITY / plugin README + schema copy)
 
-**Total Tasks:** 9 | **Completed:** 0 | **Remaining:** 9
+**Total Tasks:** 9 | **Completed:** 9 | **Remaining:** 0
 
 ## Implementation Tasks
 
@@ -117,10 +117,10 @@ Not a wholesale migration. Mapping of underclassified live surfaces → tasks:
 4. Typecheck / lint touched files.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] No new type errors
-- [ ] No new linter errors
-- [ ] New ids absent from default `blockOn` / `approvalOn`
+- [x] Target tests pass
+- [x] No new type errors
+- [x] No new linter errors
+- [x] New ids absent from default `blockOn` / `approvalOn`
 
 ### Task 2: Heartbeat classifier (always allow)
 
@@ -138,10 +138,10 @@ Not a wholesale migration. Mapping of underclassified live surfaces → tasks:
 4. Typecheck / lint.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] No new type errors
-- [ ] No new linter errors
-- [ ] Heartbeat never lands in `unknown.unclassified` for documented name forms
+- [x] Target tests pass
+- [x] No new type errors
+- [x] No new linter errors
+- [x] Heartbeat never lands in `unknown.unclassified` for documented name forms
 
 ### Task 3: `internal.read` curated tool matcher
 
@@ -161,10 +161,10 @@ Not a wholesale migration. Mapping of underclassified live surfaces → tasks:
 4. Typecheck / lint.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] No new type errors
-- [ ] No new linter errors
-- [ ] Curated set documented in code comment + later docs task
+- [x] Target tests pass
+- [x] No new type errors
+- [x] No new linter errors
+- [x] Curated set documented in code comment + later docs task
 
 ### Task 4: Demote `memory_search` from default `knownCustomTools`
 
@@ -185,10 +185,10 @@ Not a wholesale migration. Mapping of underclassified live surfaces → tasks:
 4. Typecheck / lint.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] No new type errors
-- [ ] No new linter errors
-- [ ] Plugin schema default matches runtime default
+- [x] Target tests pass
+- [x] No new type errors
+- [x] No new linter errors
+- [x] Plugin schema default matches runtime default
 
 ### Task 5: Normalize / `fpp.governance` / `apply_patch` regressions
 
@@ -205,10 +205,10 @@ Not a wholesale migration. Mapping of underclassified live surfaces → tasks:
 3. Typecheck / lint.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] No new type errors
-- [ ] No new linter errors
-- [ ] Dependent docs updated (if applicable) — deferred to Task 9 if only docs
+- [x] Target tests pass
+- [x] No new type errors
+- [x] No new linter errors
+- [x] Dependent docs updated (if applicable) — deferred to Task 9 if only docs
 
 ### Task 6: Param-aware `openclawgateway` inspect vs mutate
 
@@ -225,10 +225,10 @@ Not a wholesale migration. Mapping of underclassified live surfaces → tasks:
 4. Typecheck / lint.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] No new type errors
-- [ ] No new linter errors
-- [ ] Ambiguous mutate-shaped calls do not fail-open
+- [x] Target tests pass
+- [x] No new type errors
+- [x] No new linter errors
+- [x] Ambiguous mutate-shaped calls do not fail-open
 
 ### Task 7: Stop staging `exec.benign`
 
@@ -247,10 +247,10 @@ Not a wholesale migration. Mapping of underclassified live surfaces → tasks:
 4. Typecheck / lint.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] No new type errors
-- [ ] No new linter errors
-- [ ] Approval/block exec classes unchanged
+- [x] Target tests pass
+- [x] No new type errors
+- [x] No new linter errors
+- [x] Approval/block exec classes unchanged
 
 ### Task 8: Plugin e2e + self-test / corpus fixtures
 
@@ -268,10 +268,10 @@ Not a wholesale migration. Mapping of underclassified live surfaces → tasks:
 4. Typecheck / lint.
 
 **Definition of Done:**
-- [ ] Target tests pass
-- [ ] No new type errors
-- [ ] No new linter errors
-- [ ] Corpus/self-test updated when fixtures exist
+- [x] Target tests pass
+- [x] No new type errors
+- [x] No new linter errors
+- [x] Corpus/self-test updated when fixtures exist
 
 ### Task 9: Docs (CAPABILITY / TROUBLESHOOTING / COMPATIBILITY / plugin README + schema copy)
 
@@ -291,9 +291,9 @@ Not a wholesale migration. Mapping of underclassified live surfaces → tasks:
 4. No production code in this task.
 
 **Definition of Done:**
-- [ ] Docs match shipped classifier behavior
-- [ ] No contradictory seed/`unknown.unclassified` claims for memory_search
-- [ ] TROUBLESHOOTING names the live OpenClaw forms
+- [x] Docs match shipped classifier behavior
+- [x] No contradictory seed/`unknown.unclassified` claims for memory_search
+- [x] TROUBLESHOOTING names the live OpenClaw forms
 
 ## Testing Strategy
 

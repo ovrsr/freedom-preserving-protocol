@@ -39,6 +39,9 @@ export type ClassificationId =
   | "message.external"
   | "code.patch"
   | "fpp.governance"
+  | "internal.heartbeat"
+  | "internal.read"
+  | "gateway.inspect"
   | "unknown.unclassified";
 
 /** Stable ordered list of all classification ids (for ruleset hashing). */
@@ -59,10 +62,13 @@ export const CLASSIFICATION_IDS: readonly ClassificationId[] = [
   "http.read",
   "gateway.restart",
   "gateway.config-change",
+  "gateway.inspect",
   "credential.exposure",
   "message.external",
   "code.patch",
   "fpp.governance",
+  "internal.heartbeat",
+  "internal.read",
   "unknown.unclassified",
 ] as const;
 
@@ -436,13 +442,143 @@ function classifyCodePatch(
 }
 
 /**
+ * Always-allow heartbeat responder (Q2-A). Matches bare and OpenClaw-prefixed
+ * live names via /heartbeat_respond$/i so knownCustomTools seed is not required.
+ */
+function classifyInternalHeartbeat(
+  toolName: string,
+  params: Record<string, unknown>,
+): ClassificationResult | null {
+  void params;
+  if (!/heartbeat_respond$/i.test(toolName)) return null;
+  return {
+    classification: "internal.heartbeat",
+    decision: "allow",
+    reason:
+      "heartbeat_respond fulfills an OpenClaw heartbeat obligation (internal.heartbeat); allowing with audit.",
+    matchedPatterns: ["/heartbeat_respond$/i"],
+  };
+}
+
+/**
+ * Curated OpenClaw introspection/coordination tools (Q6-A).
+ * Named allow-with-audit under internal.read — not opaque knownCustomTools.
+ * wiki_apply / subagents: keep named id; escalate clearly externalizing shapes
+ * to approval if discovered (do not silently broaden fail-open).
+ */
+const INTERNAL_READ_TOOLS: ReadonlySet<string> = new Set([
+  "memory_search",
+  "get_goal",
+  "update_plan",
+  "read_mcp_resource",
+  "sessions_list",
+  "wiki_apply",
+  "subagents",
+]);
+
+function classifyInternalRead(
+  toolName: string,
+  params: Record<string, unknown>,
+): ClassificationResult | null {
+  void params;
+  if (!INTERNAL_READ_TOOLS.has(toolName)) return null;
+  return {
+    classification: "internal.read",
+    decision: "allow",
+    reason: `tool ${toolName} is a curated OpenClaw introspection/coordination tool (internal.read); allowing with audit.`,
+    matchedPatterns: ["INTERNAL_READ_TOOLS"],
+  };
+}
+
+/**
+ * Param-aware OpenClaw gateway tool split (Q3-A).
+ * Action tokens are derived from common live fields: `action`, `command`,
+ * `method`, and argv-like `argv`/`args` (joined). Shell `GATEWAY_*` patterns
+ * in classifyExec remain the source of truth for CLI-shaped mutate.
+ * Ambiguous / unknown mutate-shaped calls must not fail-open to inspect.
+ */
+const GATEWAY_INSPECT_ACTIONS = /\b(inspect|status|get|list|info|health)\b/i;
+const GATEWAY_RESTART_ACTIONS = /\b(restart|stop|kill)\b/i;
+const GATEWAY_CONFIG_ACTIONS =
+  /\b(config|plugins?\s+(install|uninstall|disable)|skills?\s+(install|uninstall)|config\.set)\b/i;
+
+function extractGatewayActionToken(params: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const key of ["action", "command", "method"] as const) {
+    const v = params[key];
+    if (typeof v === "string" && v.trim()) parts.push(v);
+  }
+  const argv = params.argv ?? params.args;
+  if (Array.isArray(argv)) {
+    parts.push(argv.map(String).join(" "));
+  } else if (typeof argv === "string" && argv.trim()) {
+    parts.push(argv);
+  }
+  return parts.join(" ").trim();
+}
+
+function classifyGatewayTool(
+  toolName: string,
+  params: Record<string, unknown>,
+): ClassificationResult | null {
+  // Live OpenClaw form is often `openclawgateway`; normalized form is `gateway`.
+  if (!/^(openclaw)?gateway$/i.test(toolName)) return null;
+
+  const token = extractGatewayActionToken(params);
+  if (!token) {
+    return {
+      classification: "unknown.unclassified",
+      decision: "approval",
+      reason:
+        "gateway tool call missing action/command/method; degraded classification — not fail-open to gateway.inspect.",
+      matchedPatterns: ["gateway-tool-ambiguous"],
+    };
+  }
+
+  if (GATEWAY_RESTART_ACTIONS.test(token)) {
+    return {
+      classification: "gateway.restart",
+      decision: "block",
+      reason:
+        "gateway tool would restart/stop/kill the OpenClaw gateway, severing corrigibility (Law 2).",
+      matchedPatterns: [GATEWAY_RESTART_ACTIONS.source],
+    };
+  }
+  if (GATEWAY_CONFIG_ACTIONS.test(token)) {
+    return {
+      classification: "gateway.config-change",
+      decision: "approval",
+      reason:
+        "gateway tool would change OpenClaw gateway configuration; needs steward approval (Law 2).",
+      matchedPatterns: [GATEWAY_CONFIG_ACTIONS.source],
+    };
+  }
+  if (GATEWAY_INSPECT_ACTIONS.test(token)) {
+    return {
+      classification: "gateway.inspect",
+      decision: "allow",
+      reason:
+        "gateway tool is inspect/status/get/list-shaped (gateway.inspect); allowing with audit.",
+      matchedPatterns: [GATEWAY_INSPECT_ACTIONS.source],
+    };
+  }
+
+  return {
+    classification: "unknown.unclassified",
+    decision: "approval",
+    reason: `gateway tool action "${token}" is not a known inspect shape; degraded classification — not fail-open.`,
+    matchedPatterns: ["gateway-tool-unknown-action"],
+  };
+}
+
+/**
  * Normalize OpenClaw-prefixed live tool names before classify / allowlist.
  *
  * | Live form | After normalize |
  * |-----------|-----------------|
  * | `openclawfpp_*` | `fpp_*` |
  * | `openclaw.<name>` | `<name>` |
- * | `openclaw` + remainder when remainder is `fpp_*` or seeded | `<remainder>` |
+ * | `openclaw` + remainder when remainder is `fpp_*`, curated internal.read, or seeded | `<remainder>` |
  *
  * Unrelated `openclaw*` names are left unchanged (no over-broad strip).
  */
@@ -458,7 +594,12 @@ export function normalizeOpenClawToolName(
   }
   if (/^openclaw/i.test(toolName)) {
     const remainder = toolName.replace(/^openclaw/i, "");
-    if (/^fpp_/.test(remainder) || seededNames.includes(remainder)) {
+    if (
+      /^fpp_/.test(remainder) ||
+      remainder === "gateway" ||
+      INTERNAL_READ_TOOLS.has(remainder) ||
+      seededNames.includes(remainder)
+    ) {
       return remainder;
     }
   }
@@ -482,6 +623,10 @@ export function classifyToolCall(
     classifyHttp(name, safeParams),
     classifyMessage(name, safeParams),
     classifyCodePatch(name, safeParams),
+    // Matches bare + OpenClaw-mangled forms via /heartbeat_respond$/i
+    classifyInternalHeartbeat(name, safeParams),
+    classifyInternalRead(name, safeParams),
+    classifyGatewayTool(name, safeParams),
   ];
   for (const r of results) {
     if (r) return r;

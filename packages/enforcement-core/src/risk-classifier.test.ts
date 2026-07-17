@@ -11,9 +11,31 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { classifyToolCall, normalizeOpenClawToolName } from "./risk-classifier.js";
+import {
+  CLASSIFICATION_IDS,
+  classifyToolCall,
+  normalizeOpenClawToolName,
+  type ClassificationId,
+} from "./risk-classifier.js";
 import { DEFAULT_CONFIG } from "./config.js";
 import { createTempWorkspace } from "./test-helpers.js";
+
+test("CLASSIFICATION_IDS includes internal.heartbeat, internal.read, gateway.inspect", () => {
+  const required: ClassificationId[] = [
+    "internal.heartbeat",
+    "internal.read",
+    "gateway.inspect",
+  ];
+  for (const id of required) {
+    assert.ok(CLASSIFICATION_IDS.includes(id), id);
+  }
+  assert.equal(DEFAULT_CONFIG.blockOn.includes("internal.heartbeat"), false);
+  assert.equal(DEFAULT_CONFIG.blockOn.includes("internal.read"), false);
+  assert.equal(DEFAULT_CONFIG.blockOn.includes("gateway.inspect"), false);
+  assert.equal(DEFAULT_CONFIG.approvalOn.includes("internal.heartbeat"), false);
+  assert.equal(DEFAULT_CONFIG.approvalOn.includes("internal.read"), false);
+  assert.equal(DEFAULT_CONFIG.approvalOn.includes("gateway.inspect"), false);
+});
 
 test("test helper workspace is isolated from .openclaw", () => {
   const ws = createTempWorkspace("fpp-classifier-");
@@ -148,37 +170,81 @@ test("non-fpp unknown tools still unknown.unclassified", () => {
   assert.equal(r.decision, "approval");
 });
 
-test("default knownCustomTools seeds memory_search → allow", () => {
-  assert.ok(DEFAULT_CONFIG.knownCustomTools.includes("memory_search"));
-  const r = classifyToolCall("memory_search", { query: "adoption" }, {
-    knownCustomTools: DEFAULT_CONFIG.knownCustomTools,
-  });
+test("heartbeat_respond classifies as internal.heartbeat -> allow", () => {
+  const r = classifyToolCall("heartbeat_respond", {});
+  assert.equal(r.classification, "internal.heartbeat");
   assert.equal(r.decision, "allow");
-  assert.ok(r.matchedPatterns.includes("knownCustomTools"));
 });
 
-test("openclaw.memory_search normalizes then allows via seed", () => {
-  const r = classifyToolCall(
-    "openclaw.memory_search",
-    { query: "adoption" },
-    { knownCustomTools: DEFAULT_CONFIG.knownCustomTools },
-  );
+test("openclawheartbeat_respond classifies as internal.heartbeat -> allow", () => {
+  const r = classifyToolCall("openclawheartbeat_respond", {});
+  assert.equal(r.classification, "internal.heartbeat");
   assert.equal(r.decision, "allow");
-  assert.ok(r.matchedPatterns.includes("knownCustomTools"));
+});
+
+test("unrelated tools are not classified as internal.heartbeat", () => {
+  const r = classifyToolCall("some_custom_tool_xyz", {});
+  assert.notEqual(r.classification, "internal.heartbeat");
+});
+
+const INTERNAL_READ_TOOLS = [
+  "memory_search",
+  "get_goal",
+  "update_plan",
+  "read_mcp_resource",
+  "sessions_list",
+  "wiki_apply",
+  "subagents",
+] as const;
+
+for (const tool of INTERNAL_READ_TOOLS) {
+  test(`${tool} classifies as internal.read -> allow`, () => {
+    const r = classifyToolCall(tool, {});
+    assert.equal(r.classification, "internal.read");
+    assert.equal(r.decision, "allow");
+  });
+
+  test(`openclaw${tool} classifies as internal.read -> allow`, () => {
+    const r = classifyToolCall(`openclaw${tool}`, {});
+    assert.equal(r.classification, "internal.read");
+    assert.equal(r.decision, "allow");
+  });
+}
+
+test("openclaw.memory_search classifies as internal.read -> allow", () => {
+  const r = classifyToolCall("openclaw.memory_search", { query: "adoption" });
+  assert.equal(r.classification, "internal.read");
+  assert.equal(r.decision, "allow");
+});
+
+test("random unknown still unknown.unclassified -> approval", () => {
+  const r = classifyToolCall("totally_unknown_xyz_tool", {});
+  assert.equal(r.classification, "unknown.unclassified");
+  assert.equal(r.decision, "approval");
+});
+
+test("default knownCustomTools is empty (memory_search via internal.read)", () => {
+  assert.deepEqual(DEFAULT_CONFIG.knownCustomTools, []);
+  const r = classifyToolCall("memory_search", { query: "adoption" });
+  assert.equal(r.decision, "allow");
+  assert.equal(r.classification, "internal.read");
+});
+
+test("openclaw.memory_search normalizes then allows via internal.read", () => {
+  const r = classifyToolCall("openclaw.memory_search", { query: "adoption" });
+  assert.equal(r.decision, "allow");
+  assert.equal(r.classification, "internal.read");
   assert.equal(normalizeOpenClawToolName("openclaw.memory_search"), "memory_search");
 });
 
-test("openclawmemory_search strips prefix when remainder is seeded", () => {
+test("openclawmemory_search strips prefix when remainder is curated", () => {
   assert.equal(
-    normalizeOpenClawToolName("openclawmemory_search", ["memory_search"]),
+    normalizeOpenClawToolName("openclawmemory_search"),
     "memory_search",
   );
-  const r = classifyToolCall(
-    "openclawmemory_search",
-    { query: "x" },
-    { knownCustomTools: DEFAULT_CONFIG.knownCustomTools },
-  );
+  const r = classifyToolCall("openclawmemory_search", { query: "x" });
   assert.equal(r.decision, "allow");
+  assert.equal(r.classification, "internal.read");
 });
 
 test("openclaw.foo_bar stays unknown (not seeded) after normalize", () => {
@@ -214,6 +280,88 @@ test("openclaw.apply_patch classifies as code.patch after normalize", () => {
   const r = classifyToolCall("openclaw.apply_patch", { patch: "..." });
   assert.equal(r.classification, "code.patch");
   assert.equal(r.decision, "approval");
+});
+
+test("openclaw.apply_patch and bare apply_patch stay code.patch (never unknown)", () => {
+  for (const name of ["apply_patch", "openclaw.apply_patch"] as const) {
+    const r = classifyToolCall(name, {});
+    assert.equal(r.classification, "code.patch", name);
+    assert.equal(r.decision, "approval", name);
+    assert.notEqual(r.classification, "unknown.unclassified", name);
+  }
+});
+
+test("openclawfpp_mandate_propose classifies as fpp.governance -> allow", () => {
+  const r = classifyToolCall("openclawfpp_mandate_propose", {
+    purpose: "test",
+  });
+  assert.equal(r.classification, "fpp.governance");
+  assert.equal(r.decision, "allow");
+});
+
+test("openclawfpp_mandate_second classifies as fpp.governance -> allow", () => {
+  const r = classifyToolCall("openclawfpp_mandate_second", { mandateId: "m1" });
+  assert.equal(r.classification, "fpp.governance");
+  assert.equal(r.decision, "allow");
+});
+
+test("openclawfpp_trust_status regression stays fpp.governance -> allow", () => {
+  const r = classifyToolCall("openclawfpp_trust_status", {});
+  assert.equal(r.classification, "fpp.governance");
+  assert.equal(r.decision, "allow");
+});
+
+test("gateway inspect/status/get/list → gateway.inspect allow", () => {
+  for (const action of ["inspect", "status", "get", "list"] as const) {
+    for (const tool of ["gateway", "openclawgateway"] as const) {
+      const r = classifyToolCall(tool, { action });
+      assert.equal(r.classification, "gateway.inspect", `${tool} action=${action}`);
+      assert.equal(r.decision, "allow", `${tool} action=${action}`);
+    }
+  }
+});
+
+test("gateway restart/stop/kill → gateway.restart block", () => {
+  for (const action of ["restart", "stop", "kill"] as const) {
+    const r = classifyToolCall("openclawgateway", { action });
+    assert.equal(r.classification, "gateway.restart", action);
+    assert.equal(r.decision, "block", action);
+  }
+});
+
+test("gateway config/plugins install → gateway.config-change approval", () => {
+  const cases = [
+    { action: "config" },
+    { action: "config.set" },
+    { command: "plugins install foo" },
+    { method: "config" },
+  ];
+  for (const params of cases) {
+    const r = classifyToolCall("gateway", params);
+    assert.equal(r.classification, "gateway.config-change", JSON.stringify(params));
+    assert.equal(r.decision, "approval", JSON.stringify(params));
+  }
+});
+
+test("gateway ambiguous params do not fail-open to inspect", () => {
+  const r = classifyToolCall("openclawgateway", {});
+  assert.notEqual(r.classification, "gateway.inspect");
+  assert.notEqual(r.decision, "allow");
+  const mutateShaped = classifyToolCall("openclawgateway", { action: "mutate" });
+  assert.notEqual(mutateShaped.classification, "gateway.inspect");
+});
+
+test("shell GATEWAY_* patterns still classify via exec (not weakened)", () => {
+  const restart = classifyToolCall("shell_exec", {
+    command: "openclaw gateway restart",
+  });
+  assert.equal(restart.classification, "gateway.restart");
+  assert.equal(restart.decision, "block");
+  const config = classifyToolCall("shell_exec", {
+    command: "openclaw config set foo bar",
+  });
+  assert.equal(config.classification, "gateway.config-change");
+  assert.equal(config.decision, "approval");
 });
 
 test("seeded allowlist remains scoped — totally_unknown_xyz still approval", () => {

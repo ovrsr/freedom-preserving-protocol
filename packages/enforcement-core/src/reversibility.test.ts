@@ -11,11 +11,17 @@ describe("isReversibleClassification", () => {
       "fs.read.benign",
       "http.read",
       "http.public-read",
-      "exec.benign",
+      "internal.heartbeat",
+      "internal.read",
+      "gateway.inspect",
     ];
     for (const id of reversible) {
       assert.equal(isReversibleClassification(id), true, id);
     }
+  });
+
+  it("treats exec.benign as irreversible for staging (direct allow)", () => {
+    assert.equal(isReversibleClassification("exec.benign"), false);
   });
 
   it("treats hard-floor and high-impact classes as irreversible", () => {
@@ -23,6 +29,7 @@ describe("isReversibleClassification", () => {
       "fs.delete.protected",
       "fs.write.protected",
       "exec.cred-exfil",
+      "exec.benign",
       "gateway.restart",
       "credential.exposure",
       "pkg.install",
