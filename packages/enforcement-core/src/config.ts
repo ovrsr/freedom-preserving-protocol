@@ -203,6 +203,25 @@ export function diagnoseConfigSafety(
   return diagnostics;
 }
 
+function unattendedApprovalWithoutStandingAllow(
+  dispositionMode: DispositionMode,
+  approvalOn: ClassificationId[],
+  standingAllowOn: ClassificationId[],
+): ConfigDiagnostic | null {
+  if (dispositionMode !== "unattended") return null;
+  const uncovered = approvalOn.filter((id) => !standingAllowOn.includes(id));
+  if (uncovered.length === 0) return null;
+  return {
+    code: "UNATTENDED_APPROVAL_WITHOUT_STANDING_ALLOW",
+    severity: "warn",
+    detail:
+      `dispositionMode=unattended leaves approvalOn class(es) without standingAllowOn coverage: ` +
+      `${uncovered.join(", ")}. ` +
+      `This check is config-shape only and does not account for live mandates — ` +
+      `see fpp-mandates.json / fpp_mandate_* tools for runtime mandate coverage.`,
+  };
+}
+
 function resolveDispositionMode(
   input: unknown,
   partial: Partial<FppPluginConfig>,
@@ -311,6 +330,15 @@ export function mergeConfigWithDiagnostics(input: unknown): MergeConfigResult {
     stagedUndoWindowMs:
       partial.stagedUndoWindowMs ?? DEFAULT_CONFIG.stagedUndoWindowMs,
   };
+
+  const unattendedDiag = unattendedApprovalWithoutStandingAllow(
+    config.dispositionMode,
+    config.approvalOn,
+    config.standingAllowOn,
+  );
+  if (unattendedDiag) {
+    diagnostics.push(unattendedDiag);
+  }
 
   return { config, diagnostics };
 }

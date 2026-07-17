@@ -101,7 +101,22 @@ export {
 } from "./mandates.js";
 
 export {
+  SignedEmergencyOverrideV1Schema,
+  emergencyOverrideSigningFields,
+  parseSignedEmergencyOverride,
+  validateEmergencyOverrideValidity,
+  verifyEmergencyOverrideSignature,
+  type EmergencyOverrideLedgerEntry,
+  type EmergencyOverrideParseResult,
+  type EmergencyOverrideStoreFile,
+  type EmergencyOverrideValidity,
+  type EmergencyOverrideValidityPolicy,
+  type SignedEmergencyOverrideV1,
+} from "./emergency-override.js";
+
+export {
   AUTHORIZATION_CLASSES,
+  AUTHZ,
   DISPOSITION_DECISIONS,
   isAuthorizationClass,
   isDispositionDecision,

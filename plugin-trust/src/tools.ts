@@ -8,12 +8,19 @@
  */
 
 import { Type, type Static } from "@sinclair/typebox";
+import { dirname, join } from "node:path";
 import {
   parseClaim,
   parseFreshnessEnvelope,
+  parseSignedEmergencyOverride,
   type FreshnessEnvelope,
   type QuorumBallotV1,
+  type SignedEmergencyOverrideV1,
 } from "@ovrsr/fpp-protocol-core";
+import {
+  EmergencyOverrideStore,
+  type AdmitResult,
+} from "@ovrsr/fpp-enforcement-core";
 import type { AgentIdentity } from "@ovrsr/fpp-trust-core";
 import { signClaim } from "@ovrsr/fpp-trust-core";
 import type { ConstitutionalClaim, HandshakeResult } from "@ovrsr/fpp-trust-core";
@@ -1009,3 +1016,99 @@ export function executeMandateFinalize(
     },
   );
 }
+
+// ── Emergency override submit ───────────────────────────────────────
+// Stewards only for v1: agent-to-agent escalation without steward
+// involvement is a materially larger trust decision; not an oversight.
+// Submit-only: this tool NEVER signs — the steward signs out-of-band.
+
+/**
+ * Dependencies for emergency override submit.
+ * Stewards only — `stewardEligibleIds` is the sole issuer allowlist for v1.
+ */
+export type EmergencyOverrideSubmitDependencies = {
+  identity: AgentIdentity;
+  stewardEligibleIds: string[];
+  /** Absolute or workspace-relative path to fpp-emergency-overrides.json. */
+  emergencyOverrideStorePath: string;
+};
+
+export const EmergencyOverrideSubmitParams = Type.Object({
+  /** Already-signed override as a JSON string (preferred agent path). */
+  signedJson: Type.Optional(Type.String({ minLength: 1 })),
+  /** Already-signed override as a structured object. */
+  override: Type.Optional(Type.Unknown()),
+});
+
+/**
+ * Admit a steward-signed emergency override. Never calls identity.sign.
+ */
+export function executeEmergencyOverrideSubmit(
+  params: Static<typeof EmergencyOverrideSubmitParams>,
+  deps: EmergencyOverrideSubmitDependencies,
+) {
+  let raw: unknown;
+  if (params.signedJson !== undefined) {
+    try {
+      raw = JSON.parse(params.signedJson);
+    } catch {
+      return textResult("signedJson is not valid JSON", {
+        ok: false,
+        reason: "signature-invalid",
+        error: "signedJson is not valid JSON",
+      });
+    }
+  } else if (params.override !== undefined) {
+    raw = params.override;
+  } else {
+    return textResult("submit requires signedJson or override", {
+      ok: false,
+      reason: "signature-invalid",
+      error: "submit requires signedJson or override",
+    });
+  }
+
+  const parsed = parseSignedEmergencyOverride(raw);
+  if (!parsed.ok) {
+    return textResult(`Invalid emergency override: ${parsed.error}`, {
+      ok: false,
+      reason: "signature-invalid",
+      error: parsed.error,
+    });
+  }
+
+  const store = new EmergencyOverrideStore(deps.emergencyOverrideStorePath);
+  const admitted: AdmitResult = store.admit(parsed.override, {
+    stewardEligibleIds: deps.stewardEligibleIds,
+    localPublicKeyHex: deps.identity.publicKeyHex,
+  });
+
+  if (!admitted.ok) {
+    return textResult(
+      `Emergency override submit rejected: ${admitted.reason}` +
+        (admitted.error ? ` (${admitted.error})` : ""),
+      {
+        ok: false,
+        reason: admitted.reason,
+        ...(admitted.error !== undefined ? { error: admitted.error } : {}),
+      },
+    );
+  }
+
+  return textResult(
+    `Emergency override ${admitted.overrideId} admitted. ` +
+      `Steward-signed only; this tool never signs. ` +
+      `Peers are excluded by design for v1.`,
+    {
+      ok: true,
+      overrideId: admitted.overrideId,
+    },
+  );
+}
+
+/** Resolve default emergency store path sibling to the mandate store. */
+export function emergencyOverrideStoreSibling(mandateStorePath: string): string {
+  return join(dirname(mandateStorePath), "fpp-emergency-overrides.json");
+}
+
+export type { SignedEmergencyOverrideV1 };

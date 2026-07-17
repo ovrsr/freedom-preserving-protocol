@@ -54,8 +54,8 @@ The OpenClaw plugins use the OpenClaw Plugin SDK and remain the richest dispatch
 
 | Component | Required version | Source |
 |-----------|------------------|--------|
-| OpenClaw Gateway | `>=2026.3.24-beta.2` | `plugin/package.json` → `openclaw.compat.minGatewayVersion` (same in `plugin-trust/package.json`) |
-| Plugin API (`openclaw/plugin-sdk`) | `>=2026.3.24-beta.2` | `plugin/package.json` → `openclaw.compat.pluginApi` |
+| OpenClaw Gateway | `>=2026.3.28` | `plugin/package.json` → `openclaw.compat.minGatewayVersion` (same in `plugin-trust/package.json`) |
+| Plugin API (`openclaw/plugin-sdk`) | `>=2026.3.28` | `plugin/package.json` → `openclaw.compat.pluginApi` |
 | Node.js (both plugins) | `>=22.19` | `plugin/package.json` and `plugin-trust/package.json` → `engines.node` |
 | Node.js (skill scripts + `verify:all`) | `>=22.19` | root `package.json` → `engines.node`; `.node-version` |
 | Package manager | `npm` or `pnpm`; `pnpm` required for in-repo bundled builds | repo build convention |
@@ -66,13 +66,13 @@ The plugin's `package.json` declares:
 "openclaw": {
   "extensions": ["./dist/index.js"],
   "compat": {
-    "pluginApi": ">=2026.3.24-beta.2",
-    "minGatewayVersion": "2026.3.24-beta.2"
+    "pluginApi": ">=2026.3.28",
+    "minGatewayVersion": "2026.3.28"
   }
 }
 ```
 
-If your OpenClaw version is older than `2026.3.24-beta.2`, the plugin will refuse to load and you will see a `pluginApi` mismatch in `openclaw plugins inspect`. In that case, install only the prompt-layer skill.
+OpenClaw builds in the known-vulnerable range `<=2026.3.24` (including `2026.3.24-beta.2` and `2026.3.25`) are intentionally rejected — several Mar-2026 gateway GHSAs land in that window; `2026.3.28` is the first release that patches the later set. If your OpenClaw version is older than `2026.3.28`, the plugin will refuse to load and you will see a `pluginApi` mismatch in `openclaw plugins inspect`. In that case, upgrade the gateway or install only the prompt-layer skill.
 
 ## Install commands (canonical)
 

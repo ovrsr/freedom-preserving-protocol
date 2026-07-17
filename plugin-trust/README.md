@@ -34,6 +34,7 @@ Tools registered in `src/index.ts` and declared in `openclaw.plugin.json` (`cont
 | `fpp_mandate_propose` | Open a peer/steward quorum proposal for a scoped StandingMandateV1 (local policy — not ratification) |
 | `fpp_mandate_second` | Cast or accept a signed quorum ballot |
 | `fpp_mandate_finalize` | Finalize at threshold into a signed mandate written to the shared mandate store |
+| `fpp_emergency_override_submit` | Admit a steward-signed emergency override (submit-only; never signs; peers excluded for v1) |
 
 ## CLI
 

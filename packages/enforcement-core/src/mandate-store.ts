@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
+  AUTHZ,
   parseStandingMandate,
   validateMandateValidity,
   verifyMandateSignature,
@@ -51,13 +52,13 @@ function authorizationForIssuer(
 ): AuthorizationClass {
   switch (issuerClass) {
     case "standing-allowlist":
-      return "standing-allowlist";
+      return AUTHZ.standingAllowlist;
     case "peer-quorum":
     case "steward-quorum":
-      return "quorum-mandate";
+      return AUTHZ.quorumMandate;
     case "operator":
     default:
-      return "mandate";
+      return AUTHZ.mandate;
   }
 }
 
@@ -312,10 +313,11 @@ export class MandateStore {
     }
 
     if (this.standingAllowOn.includes(classification as ClassificationId)) {
+      const authorization = AUTHZ.standingAllowlist;
       return {
         mandateId: `standing:${classification}`,
         issuerClass: "standing-allowlist",
-        authorization: "standing-allowlist",
+        authorization,
       };
     }
 

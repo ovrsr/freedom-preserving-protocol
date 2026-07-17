@@ -21,19 +21,20 @@
   ],
   "bundledDependencies": [
     "@ovrsr/fpp-protocol-core",
-    "@ovrsr/fpp-trust-core"
+    "@ovrsr/fpp-trust-core",
+    "@ovrsr/fpp-enforcement-core"
   ],
   "openclaw": {
     "extensions": [
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.3.24-beta.2",
-      "minGatewayVersion": "2026.3.24-beta.2"
+      "pluginApi": ">=2026.3.28",
+      "minGatewayVersion": "2026.3.28"
     },
     "build": {
-      "openclawVersion": "2026.3.24-beta.2",
-      "pluginSdkVersion": "2026.3.24-beta.2"
+      "openclawVersion": "2026.3.28",
+      "pluginSdkVersion": "2026.3.28"
     }
   },
   "scripts": {
@@ -47,12 +48,13 @@
   "dependencies": {
     "@noble/ed25519": "^2.1.0",
     "@noble/hashes": "^1.4.0",
+    "@ovrsr/fpp-enforcement-core": "1.0.2",
     "@ovrsr/fpp-protocol-core": "1.0.2",
     "@sinclair/typebox": "^0.34.0",
     "@ovrsr/fpp-trust-core": "1.0.2"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.3.24-beta.2"
+    "openclaw": ">=2026.3.28"
   },
   "peerDependenciesMeta": {
     "openclaw": {

@@ -111,6 +111,67 @@ export function mergeTrustConfig(
 
   const path = (p: string) => absolutizeWorkspacePath(p);
 
+  const quorumPeerThreshold =
+    typeof cfg.quorumPeerThreshold === "number" ? cfg.quorumPeerThreshold : 2;
+  const quorumStewardThreshold =
+    typeof cfg.quorumStewardThreshold === "number"
+      ? cfg.quorumStewardThreshold
+      : 2;
+  const quorumPeerEligibleIds = Array.isArray(cfg.quorumPeerEligibleIds)
+    ? (cfg.quorumPeerEligibleIds as string[])
+    : [];
+  const quorumStewardEligibleIds = Array.isArray(cfg.quorumStewardEligibleIds)
+    ? (cfg.quorumStewardEligibleIds as string[])
+    : [];
+
+  // Unconditional quorum unreachable diagnostics (independent of enforcement
+  // dispositionMode — trust-local only).
+  if (quorumStewardEligibleIds.length === 0) {
+    const diag: TrustConfigDiagnostic = {
+      code: "QUORUM_STEWARD_UNREACHABLE",
+      severity: "warn",
+      detail:
+        "quorumStewardEligibleIds is empty — steward quorum cannot form. " +
+        "A housekeeping reinstall may have restored bare defaults.",
+    };
+    migrationDiagnostics.push(diag);
+    console.warn(`[fpp-trust] FPP CONFIG ${diag.code}: ${diag.detail}`);
+  } else if (quorumStewardThreshold > quorumStewardEligibleIds.length) {
+    const diag: TrustConfigDiagnostic = {
+      code: "QUORUM_STEWARD_THRESHOLD_EXCEEDS_ELIGIBLE",
+      severity: "warn",
+      detail:
+        `quorumStewardThreshold (${quorumStewardThreshold}) exceeds ` +
+        `quorumStewardEligibleIds.length (${quorumStewardEligibleIds.length}) — ` +
+        `steward quorum is unreachable.`,
+    };
+    migrationDiagnostics.push(diag);
+    console.warn(`[fpp-trust] FPP CONFIG ${diag.code}: ${diag.detail}`);
+  }
+
+  if (quorumPeerEligibleIds.length === 0) {
+    const diag: TrustConfigDiagnostic = {
+      code: "QUORUM_PEER_UNREACHABLE",
+      severity: "warn",
+      detail:
+        "quorumPeerEligibleIds is empty — peer quorum cannot form. " +
+        "A housekeeping reinstall may have restored bare defaults.",
+    };
+    migrationDiagnostics.push(diag);
+    console.warn(`[fpp-trust] FPP CONFIG ${diag.code}: ${diag.detail}`);
+  } else if (quorumPeerThreshold > quorumPeerEligibleIds.length) {
+    const diag: TrustConfigDiagnostic = {
+      code: "QUORUM_PEER_THRESHOLD_EXCEEDS_ELIGIBLE",
+      severity: "warn",
+      detail:
+        `quorumPeerThreshold (${quorumPeerThreshold}) exceeds ` +
+        `quorumPeerEligibleIds.length (${quorumPeerEligibleIds.length}) — ` +
+        `peer quorum is unreachable.`,
+    };
+    migrationDiagnostics.push(diag);
+    console.warn(`[fpp-trust] FPP CONFIG ${diag.code}: ${diag.detail}`);
+  }
+
   return {
     constitutionHash:
       typeof cfg.constitutionHash === "string"
@@ -194,20 +255,10 @@ export function mergeTrustConfig(
       ? cfg.strictModeAddApprovalOn
       : [...CONSERVATIVE_STRICT_APPROVAL_ON],
     acknowledgeDangerousOverrides: ack,
-    quorumPeerThreshold:
-      typeof cfg.quorumPeerThreshold === "number"
-        ? cfg.quorumPeerThreshold
-        : 2,
-    quorumStewardThreshold:
-      typeof cfg.quorumStewardThreshold === "number"
-        ? cfg.quorumStewardThreshold
-        : 2,
-    quorumPeerEligibleIds: Array.isArray(cfg.quorumPeerEligibleIds)
-      ? (cfg.quorumPeerEligibleIds as string[])
-      : [],
-    quorumStewardEligibleIds: Array.isArray(cfg.quorumStewardEligibleIds)
-      ? (cfg.quorumStewardEligibleIds as string[])
-      : [],
+    quorumPeerThreshold,
+    quorumStewardThreshold,
+    quorumPeerEligibleIds,
+    quorumStewardEligibleIds,
     ...(typeof cfg.quorumMinStandingLevel === "number"
       ? { quorumMinStandingLevel: cfg.quorumMinStandingLevel }
       : {}),

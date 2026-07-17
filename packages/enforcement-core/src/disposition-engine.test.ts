@@ -130,6 +130,49 @@ describe("resolveDisposition (unattended)", () => {
     assert.equal(result.authorization, "emergency");
   });
 
+  it("abstains with distinguishable reason when emergency override rejected", () => {
+    const result = resolveDisposition({
+      classification: cls("exec.system-modify"),
+      config: unattended,
+      emergencyCriteriaMet: false,
+      emergencyOverrideRejected: "expired",
+    });
+    assert.equal(result.disposition, "abstain");
+    assert.equal(result.authorization, "abstain");
+    assert.match(result.reason, /emergency override rejected \(expired\)/);
+  });
+
+  it("keeps generic abstain reason when no emergency override rejection", () => {
+    const result = resolveDisposition({
+      classification: cls("unknown.unclassified", "approval"),
+      config: unattended,
+    });
+    assert.equal(result.disposition, "abstain");
+    assert.match(
+      result.reason,
+      /abstain: no mandate\/staged\/emergency path for unknown\.unclassified/,
+    );
+    assert.doesNotMatch(result.reason, /emergency override rejected/);
+  });
+
+  it("hard-floor deny wins even when emergency criteria or rejection set", () => {
+    const withCriteria = resolveDisposition({
+      classification: cls("fs.delete.protected", "block"),
+      config: unattended,
+      emergencyCriteriaMet: true,
+    });
+    assert.equal(withCriteria.disposition, "deny");
+    assert.equal(withCriteria.authorization, "policy-block");
+
+    const withRejection = resolveDisposition({
+      classification: cls("fs.delete.protected", "block"),
+      config: unattended,
+      emergencyOverrideRejected: "budget-exhausted",
+    });
+    assert.equal(withRejection.disposition, "deny");
+    assert.equal(withRejection.authorization, "policy-block");
+  });
+
   it("abstains instead of require_approval in unattended mode", () => {
     const result = resolveDisposition({
       classification: cls("unknown.unclassified", "approval"),

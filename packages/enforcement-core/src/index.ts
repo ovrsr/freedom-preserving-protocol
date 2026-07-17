@@ -51,6 +51,18 @@ export {
 } from "./mandate-store.js";
 
 export {
+  EmergencyOverrideStore,
+  type AdmitOptions,
+  type AdmitResult,
+  type EmergencyCoverageResult,
+  type EmergencyOverrideLedgerEntry,
+  type EmergencyOverrideRejectReason,
+  type EmergencyOverrideStoreFile,
+  type EmergencyOverrideStoreOptions,
+  type FindEmergencyCoverageOptions,
+} from "./emergency-override-store.js";
+
+export {
   appendEnforcementEntry,
   appendMandateIntegrityDiagnostic,
   AuditCorruptionError,

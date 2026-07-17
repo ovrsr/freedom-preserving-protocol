@@ -20,6 +20,7 @@ import {
   type DispositionResult,
 } from "./disposition-engine.js";
 import { MandateStore } from "./mandate-store.js";
+import { EmergencyOverrideStore } from "./emergency-override-store.js";
 import {
   appendEnforcementEntry,
   appendMandateIntegrityDiagnostic,
@@ -46,6 +47,10 @@ import { isReversibleClassification } from "./reversibility.js";
 import { StagedActionLedger } from "./staged-actions.js";
 import { EmergencyReviewLedger } from "./emergency-review.js";
 import type { DispositionDecision } from "@ovrsr/fpp-protocol-core";
+import * as ed from "@noble/ed25519";
+import { sha512 } from "@noble/hashes/sha512";
+
+ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 
 export type FppWorkspacePaths = {
   workspaceRoot: string;
@@ -182,6 +187,18 @@ function workspaceSibling(configPath: string, filename: string): string {
   return join(dirname(configPath), filename);
 }
 
+/**
+ * Load the local agent public key from the identity seed file.
+ * Used for emergency-override self-key rejection (defense-in-depth).
+ */
+function loadLocalPublicKeyHex(keyPath: string): string | undefined {
+  const resolved = resolve(keyPath);
+  if (!existsSync(resolved)) return undefined;
+  const raw = readFileSync(resolved);
+  if (raw.length !== 32) return undefined;
+  return Buffer.from(ed.getPublicKey(new Uint8Array(raw))).toString("hex");
+}
+
 interface StrictSessionEntry {
   strict: boolean;
   addedApprovalOn: string[];
@@ -224,6 +241,7 @@ export function createEnforcementRuntime(
   let receiptStore: ReceiptStore | null = null;
   let receiptSigner: ReceiptSigner | null = null;
   let mandateStore: MandateStore | null = null;
+  let emergencyOverrideStore: EmergencyOverrideStore | null = null;
   let stagedLedger: StagedActionLedger | null = null;
   let emergencyLedger: EmergencyReviewLedger | null = null;
   let strictModeCache: { result: StrictReadResult; readAt: number } | null =
@@ -275,6 +293,15 @@ export function createEnforcementRuntime(
       });
     }
     return mandateStore;
+  }
+
+  function getEmergencyOverrideStore(): EmergencyOverrideStore {
+    if (!emergencyOverrideStore) {
+      emergencyOverrideStore = new EmergencyOverrideStore(
+        workspaceSibling(config.mandateStorePath, "fpp-emergency-overrides.json"),
+      );
+    }
+    return emergencyOverrideStore;
   }
 
   function getStagedLedger(): StagedActionLedger {
@@ -485,6 +512,32 @@ export function createEnforcementRuntime(
     const liveMandate = mandates.findCoverage(classification.classification, {
       nowMs: Date.now(),
     });
+
+    let emergencyCriteriaMet = false;
+    let emergencyOverrideRejected: string | undefined;
+    let emergencyOverrideId: string | undefined;
+    const localPublicKeyHex =
+      loadLocalPublicKeyHex(config.identityKeyPath) ??
+      (() => {
+        const signer = getReceiptSigner();
+        return signer.mode === "signed" ? signer.publicKeyHex : undefined;
+      })();
+    if (localPublicKeyHex) {
+      const emergencyCoverage = getEmergencyOverrideStore().findCoverage(
+        classification.classification,
+        {
+          nowMs: Date.now(),
+          localPublicKeyHex,
+        },
+      );
+      if (emergencyCoverage.ok) {
+        emergencyCriteriaMet = true;
+        emergencyOverrideId = emergencyCoverage.overrideId;
+      } else if (emergencyCoverage.reason !== "none") {
+        emergencyOverrideRejected = emergencyCoverage.reason;
+      }
+    }
+
     const dispositionResult = resolveDisposition({
       classification,
       config,
@@ -492,6 +545,8 @@ export function createEnforcementRuntime(
       budgetAvailable: true,
       reversible: isReversibleClassification(classification.classification),
       quorumMandatePresent: liveMandate?.authorization === "quorum-mandate",
+      emergencyCriteriaMet,
+      emergencyOverrideRejected,
       strictOverrides,
     });
     const decision = legacyDecisionFromDisposition(
@@ -644,6 +699,9 @@ export function createEnforcementRuntime(
       });
     }
     if (dispositionResult.disposition === "allow_minimal" && toolCallId) {
+      if (emergencyOverrideId) {
+        getEmergencyOverrideStore().debit(emergencyOverrideId);
+      }
       getEmergencyLedger().requireReview({
         toolCallId,
         classification: classification.classification,
@@ -765,6 +823,7 @@ export function createEnforcementRuntime(
       receiptStore = null;
       receiptSigner = null;
       mandateStore = null;
+      emergencyOverrideStore = null;
       stagedLedger = null;
       emergencyLedger = null;
       strictModeCache = null;

@@ -156,4 +156,14 @@ describe("verification policy defaults", () => {
       [...CONSERVATIVE_STRICT_APPROVAL_ON],
     );
   });
+
+  it("contracts.tools registers fpp_emergency_override_submit", () => {
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as {
+      contracts: { tools: string[] };
+    };
+    assert.ok(
+      manifest.contracts.tools.includes("fpp_emergency_override_submit"),
+      `expected fpp_emergency_override_submit in ${manifest.contracts.tools.join(",")}`,
+    );
+  });
 });

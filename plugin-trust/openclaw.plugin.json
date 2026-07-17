@@ -16,7 +16,8 @@
       "fpp_capsule_offer",
       "fpp_mandate_propose",
       "fpp_mandate_second",
-      "fpp_mandate_finalize"
+      "fpp_mandate_finalize",
+      "fpp_emergency_override_submit"
     ]
   },
   "activation": {

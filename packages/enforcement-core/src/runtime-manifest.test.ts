@@ -76,12 +76,12 @@ describe("runtime manifest binding", () => {
     const a = computePackageBuildHash({
       name: "@ovrsr/openclaw-fpp-plugin",
       version: "1.1.4",
-      pluginApi: ">=2026.3.24-beta.2",
+      pluginApi: ">=2026.3.28",
     });
     const b = computePackageBuildHash({
       name: "@ovrsr/openclaw-fpp-plugin",
       version: "1.1.5",
-      pluginApi: ">=2026.3.24-beta.2",
+      pluginApi: ">=2026.3.28",
     });
     assert.notEqual(a, b);
   });

@@ -44,9 +44,12 @@ import {
   MandateProposeParams,
   MandateSecondParams,
   MandateFinalizeParams,
+  EmergencyOverrideSubmitParams,
   executeMandatePropose,
   executeMandateSecond,
   executeMandateFinalize,
+  executeEmergencyOverrideSubmit,
+  emergencyOverrideStoreSibling,
 } from "./tools.js";
 
 // ── Re-exports (library API via trust-core) ────────────────────────
@@ -313,6 +316,14 @@ function initStack(api: OpenClawPluginApi): {
     risk: "medium",
     tags: ["fpp", "trust", "quorum", "mandate"],
   });
+  api.registerToolMetadata({
+    toolName: "fpp_emergency_override_submit",
+    displayName: "FPP Emergency Override Submit",
+    description:
+      "Admit a steward-signed emergency override (submit-only; never signs). Peers excluded by design for v1.",
+    risk: "high",
+    tags: ["fpp", "trust", "emergency", "override"],
+  });
 
   const deps: ToolDependencies = {
     identity,
@@ -526,6 +537,25 @@ export default defineToolPlugin({
         return executeMandateFinalize(params, {
           identity: stack.identity,
           quorum: stack.quorum,
+        });
+      },
+    }),
+
+    tool({
+      name: "fpp_emergency_override_submit",
+      label: "FPP Emergency Override Submit",
+      description:
+        "Admit an already-signed steward emergency override. Submit-only — never signs. " +
+        "Stewards only for v1; peer escalation is intentionally out of scope.",
+      parameters: EmergencyOverrideSubmitParams,
+      execute(params, _config, ctx) {
+        const { stack } = initStack(ctx.api);
+        return executeEmergencyOverrideSubmit(params, {
+          identity: stack.identity,
+          stewardEligibleIds: stack.config.quorumStewardEligibleIds,
+          emergencyOverrideStorePath: emergencyOverrideStoreSibling(
+            stack.config.mandateStorePath,
+          ),
         });
       },
     }),

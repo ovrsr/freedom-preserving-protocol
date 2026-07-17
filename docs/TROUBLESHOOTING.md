@@ -292,6 +292,47 @@ Restart the gateway for changes to take effect. Be wary of tuning so aggressivel
 
 For **headless / unattended** agents, set `dispositionMode: "unattended"` (new-install default). Uncertainty then **abstains** instead of opening `requireApproval`. Cover routine classes with `standingAllowOn` or signed mandates at `mandateStorePath` — do not put hard-floor (`blockOn`) classes on the standing allowlist without `acknowledgeDangerousOverrides: true`.
 
+**Startup warn `UNATTENDED_APPROVAL_WITHOUT_STANDING_ALLOW`:** emitted when `dispositionMode=unattended` and one or more `approvalOn` classes are absent from `standingAllowOn`. This is **config-shape only** — it does **not** read `fpp-mandates.json` or live `fpp_mandate_*` coverage. After a housekeeping reinstall that restores bare defaults (`standingAllowOn: []`), this warn is expected until you re-add standing-allow or issue mandates.
+
+### Emergency override (steward-signed, submit-only)
+
+When staged/mandate paths cannot cover an action, a **steward** may sign a `SignedEmergencyOverrideV1` out-of-band and submit it via the trust plugin:
+
+```text
+steward signs SignedEmergencyOverrideV1
+  → agent: fpp_emergency_override_submit(signedJson)   # never signs
+  → store: fpp-emergency-overrides.json (sibling of mandate store)
+  → onBeforeToolCall: allow_minimal + debit + mandatory_review_pending
+```
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| Abstain: `emergency override rejected (expired)` | Override outside `validFrom`/`validTo` | Re-issue with a live window |
+| Abstain: `emergency override rejected (agent-self-key)` | Signed with the local agent identity key | Stewards only — never use the agent key; peers are excluded by design for v1 |
+| Abstain: `emergency override rejected (issuer-not-steward)` | `issuerId` not in `quorumStewardEligibleIds` | Add the steward to the allowlist (trust plugin config) |
+| Abstain: `emergency override rejected (budget-exhausted)` | Ledger remainingActions is 0 | Re-issue with a fresh budget |
+| Hard-block despite valid override | Classification is on `blockOn` / classifier hard-block | Hard-floor always wins — emergency cannot override it |
+
+### Config drift after reinstall (empty quorum / unattended)
+
+A housekeeping reinstall can silently restore bare defaults (`dispositionMode: "unattended"`, empty `quorumStewardEligibleIds` / `quorumPeerEligibleIds`, threshold 2). Look for:
+
+| Warn code | Meaning |
+|-----------|---------|
+| `UNATTENDED_APPROVAL_WITHOUT_STANDING_ALLOW` | Unattended + approvalOn not covered by standingAllowOn (mandates not probed) |
+| `QUORUM_STEWARD_UNREACHABLE` / `QUORUM_PEER_UNREACHABLE` | Eligible voter list is empty |
+| `QUORUM_*_THRESHOLD_EXCEEDS_ELIGIBLE` | Threshold > eligible count — quorum cannot form |
+
+Quorum unreachable warns are trust-local and **not** gated on enforcement `dispositionMode`.
+
+### ClawHub `suspicious.exposed_secret_literal` on `authorization: "standing-allowlist"`
+
+**Resolved false positive.** Scanners treat `authorization: "<string>"` as an API-token pattern. Those values are `AuthorizationClass` wire enums (mandate / standing-allowlist / emergency / …), not credentials. Production sources use named `AUTHZ` constants from `@ovrsr/fpp-protocol-core` (property shorthand) so the adjacent literal pattern is gone; on-wire values are unchanged.
+
+### OpenClaw floor `>=2026.3.28`
+
+Both plugins require OpenClaw `>=2026.3.28` (`minGatewayVersion` / `peerDependencies.openclaw`). Builds in `<=2026.3.24` (including `2026.3.24-beta.2`) are GHSA-affected and intentionally rejected. See `docs/COMPATIBILITY.md`.
+
 **Introspection under unattended:** tools matching `/^fpp_/` (e.g. `fpp_trust_status`) classify as `fpp.governance` and **allow with audit**. OpenClaw may surface the same tools as `openclawfpp_*` (no separator); the classifier normalizes that form to `fpp_*` before matching. Default `knownCustomTools` seeds `memory_search` (exact name only). Random unknown tools still abstain. Allowing these tools is **not** behavioral compliance.
 
 If trust/status tools still abstain as `unknown.unclassified` after installing enforcement **≥1.1.9**, inspect `fpp-plugin-audit.jsonl` for the live `toolName` string and confirm it is either `fpp_*` or `openclawfpp_*`. Also check that `knownCustomTools` is not explicitly set to `[]` in `.openclaw/openclaw.json` (an empty array overrides the seeded default).

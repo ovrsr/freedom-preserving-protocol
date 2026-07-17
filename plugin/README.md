@@ -30,7 +30,7 @@ Expected `inspect` output (abbreviated):
   "status": "active",
   "hooks": ["before_tool_call"],
   "activation": { "onStartup": true },
-  "compat": { "pluginApi": ">=2026.3.24-beta.2" }
+  "compat": { "pluginApi": ">=2026.3.28" }
 }
 ```
 

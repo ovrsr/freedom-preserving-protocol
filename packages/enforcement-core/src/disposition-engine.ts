@@ -7,10 +7,11 @@
  * (staged/emergency/abstain are unattended-only).
  */
 
-import type {
-  AuthorizationClass,
-  DispositionDecision,
-  MandateIssuerClass,
+import {
+  AUTHZ,
+  type AuthorizationClass,
+  type DispositionDecision,
+  type MandateIssuerClass,
 } from "@ovrsr/fpp-protocol-core";
 import type { DispositionMode, FppPluginConfig } from "./config.js";
 import type { ClassificationResult } from "./risk-classifier.js";
@@ -36,6 +37,11 @@ export type ResolveDispositionInput = {
   /** Plan 9 seam: true when a valid quorum-issued mandate covers this action. */
   quorumMandatePresent?: boolean | undefined;
   emergencyCriteriaMet?: boolean | undefined;
+  /**
+   * When an emergency override was considered but rejected, the typed reject
+   * kind (e.g. "expired") for a distinguishable abstain audit reason.
+   */
+  emergencyOverrideRejected?: string | undefined;
   strictOverrides?: string[] | undefined;
 };
 
@@ -70,6 +76,7 @@ export function resolveDisposition(
     budgetAvailable = true,
     quorumMandatePresent = false,
     emergencyCriteriaMet = false,
+    emergencyOverrideRejected,
     strictOverrides = [],
   } = input;
 
@@ -77,17 +84,19 @@ export function resolveDisposition(
     input.reversible ?? isReversibleClassification(classification.classification);
 
   if (isHardFloor(classification, config.blockOn)) {
+    const authorization = AUTHZ.policyBlock;
     return {
       disposition: "deny",
-      authorization: "policy-block",
+      authorization,
       reason: `hard-floor: ${classification.classification}`,
     };
   }
 
   if (liveMandate && budgetAvailable) {
+    const authorization = liveMandate.authorization;
     return {
       disposition: "allow",
-      authorization: liveMandate.authorization,
+      authorization,
       reason: `mandate ${liveMandate.mandateId} (${liveMandate.issuerClass})`,
       mandateId: liveMandate.mandateId,
     };
@@ -97,9 +106,10 @@ export function resolveDisposition(
     config.standingAllowOn.includes(classification.classification) &&
     budgetAvailable
   ) {
+    const authorization = AUTHZ.standingAllowlist;
     return {
       disposition: "allow",
-      authorization: "standing-allowlist",
+      authorization,
       reason: `standing allowlist covers ${classification.classification}`,
     };
   }
@@ -112,30 +122,34 @@ export function resolveDisposition(
       strictOverrides.includes(classification.classification) ||
       classification.decision === "approval"
     ) {
+      const authorization = AUTHZ.approved;
       return {
         disposition: "require_approval",
-        authorization: "approved",
+        authorization,
         reason: `operator-present approval gate: ${classification.classification}`,
       };
     }
     if (classification.decision === "allow") {
+      const authorization = AUTHZ.approved;
       return {
         disposition: "allow",
-        authorization: "approved",
+        authorization,
         reason: "classifier allow",
       };
     }
+    const authorization = AUTHZ.approved;
     return {
       disposition: "require_approval",
-      authorization: "approved",
+      authorization,
       reason: `operator-present fail-safe approval: ${classification.classification}`,
     };
   }
 
   if (reversible && budgetAvailable) {
+    const authorization = AUTHZ.mandate;
     return {
       disposition: "allow_staged",
-      authorization: "mandate",
+      authorization,
       reason: `staged-allow: reversible ${classification.classification}`,
     };
   }
@@ -144,9 +158,10 @@ export function resolveDisposition(
   // Without this, allowlisted unknown tools would abstain in unattended mode
   // because unknown.unclassified is not in the reversible set.
   if (classification.decision === "allow") {
+    const authorization = AUTHZ.approved;
     return {
       disposition: "allow",
-      authorization: "approved",
+      authorization,
       reason: `classifier allow: ${classification.classification}`,
     };
   }
@@ -154,25 +169,38 @@ export function resolveDisposition(
   // Quorum path: Plan 9 issues signed mandates; this plan only consumes the flag
   // / live mandate with quorum authorization. Prefer liveMandate above when set.
   if (quorumMandatePresent && budgetAvailable) {
+    const authorization = AUTHZ.quorumMandate;
     return {
       disposition: "allow",
-      authorization: "quorum-mandate",
+      authorization,
       reason: "quorum mandate present",
     };
   }
 
   if (emergencyCriteriaMet) {
+    const authorization = AUTHZ.emergency;
     return {
       disposition: "allow_minimal",
-      authorization: "emergency",
+      authorization,
       reason: `emergency allow-minimal: ${classification.classification}`,
     };
   }
 
   // Unattended default: abstain (no requireApproval hang).
-  return {
-    disposition: "abstain",
-    authorization: "abstain",
-    reason: `abstain: no mandate/staged/emergency path for ${classification.classification}`,
-  };
+  if (emergencyOverrideRejected) {
+    const authorization = AUTHZ.abstain;
+    return {
+      disposition: "abstain",
+      authorization,
+      reason: `abstain: emergency override rejected (${emergencyOverrideRejected})`,
+    };
+  }
+  {
+    const authorization = AUTHZ.abstain;
+    return {
+      disposition: "abstain",
+      authorization,
+      reason: `abstain: no mandate/staged/emergency path for ${classification.classification}`,
+    };
+  }
 }

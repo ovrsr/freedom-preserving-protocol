@@ -214,4 +214,43 @@ describe("config safety diagnostics", () => {
     assert.ok(diags.some((d) => d.code === "DANGEROUS_TIMEOUT_ALLOW"));
     assert.ok(diags.some((d) => d.code === "DANGEROUS_BLOCK_DOWNGRADE"));
   });
+
+  it("warns when unattended approvalOn lacks standingAllow coverage", () => {
+    const { diagnostics } = mergeConfigWithDiagnostics({
+      dispositionMode: "unattended",
+      standingAllowOn: [],
+    });
+    const diag = diagnostics.find(
+      (d) => d.code === "UNATTENDED_APPROVAL_WITHOUT_STANDING_ALLOW",
+    );
+    assert.ok(diag, `expected UNATTENDED_APPROVAL_WITHOUT_STANDING_ALLOW, got ${JSON.stringify(diagnostics)}`);
+    assert.equal(diag!.severity, "warn");
+    assert.match(diag!.detail, /fpp-mandates\.json|fpp_mandate_/i);
+    assert.match(diag!.detail, /mandate/i);
+  });
+
+  it("skips unattended standing-allow warn when approvalOn is covered", () => {
+    const { diagnostics } = mergeConfigWithDiagnostics({
+      dispositionMode: "unattended",
+      approvalOn: ["pkg.install"],
+      standingAllowOn: ["pkg.install"],
+    });
+    assert.ok(
+      !diagnostics.some(
+        (d) => d.code === "UNATTENDED_APPROVAL_WITHOUT_STANDING_ALLOW",
+      ),
+    );
+  });
+
+  it("skips unattended standing-allow warn in operator-present mode", () => {
+    const { diagnostics } = mergeConfigWithDiagnostics({
+      dispositionMode: "operator-present",
+      standingAllowOn: [],
+    });
+    assert.ok(
+      !diagnostics.some(
+        (d) => d.code === "UNATTENDED_APPROVAL_WITHOUT_STANDING_ALLOW",
+      ),
+    );
+  });
 });

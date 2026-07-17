@@ -28,12 +28,12 @@
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.3.24-beta.2",
-      "minGatewayVersion": "2026.3.24-beta.2"
+      "pluginApi": ">=2026.3.28",
+      "minGatewayVersion": "2026.3.28"
     },
     "build": {
-      "openclawVersion": "2026.3.24-beta.2",
-      "pluginSdkVersion": "2026.3.24-beta.2"
+      "openclawVersion": "2026.3.28",
+      "pluginSdkVersion": "2026.3.28"
     }
   },
   "scripts": {
@@ -52,7 +52,7 @@
     "@sinclair/typebox": "^0.34.0"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.3.24-beta.2"
+    "openclaw": ">=2026.3.28"
   },
   "peerDependenciesMeta": {
     "openclaw": {
