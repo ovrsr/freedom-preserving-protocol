@@ -313,6 +313,18 @@ steward signs SignedEmergencyOverrideV1
 | Abstain: `emergency override rejected (budget-exhausted)` | Ledger remainingActions is 0 | Re-issue with a fresh budget |
 | Hard-block despite valid override | Classification is on `blockOn` / classifier hard-block | Hard-floor always wins — emergency cannot override it |
 
+### OpenPGP steward operator authorization
+
+Human-signed operator grants live in `fpp-steward-authorization-ledger.jsonl` (config: `stewardAuthorizationLedgerPath`). See `docs/architecture/steward-operator-authorization.md`.
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| No operator coverage / still requireApproval or abstain | Ledger absent, wrong audience, or grant not admitted | Run trust CLI `steward init` → key-admit (with `--accept-tofu` once) → authorization-admit; confirm instance audience matches |
+| `ledger unavailable: lock held` | Crash left `*.jsonl.lock/` | **Do not** auto-delete in automation. Confirm no other process holds the lock, then remove the lock directory only as explicit operator recovery after backup |
+| Hash / sequence / malformed tail errors | Manual JSONL edits or truncated write | Restore from backup; never hand-edit the live chain |
+| Grant admitted but action still denied | Scope mismatch, ambiguous `apply_patch` paths, exhausted uses, revoked key, or hard-floor | Exact classifications/tools/paths; ensure all patch targets are workspace-relative and listed; hard floors cannot be overridden |
+| Second identical `apply_patch` denied after one allow | One-shot / maxUses consumed | Expected — issue a new authorization |
+
 ### Config drift after reinstall (empty quorum / unattended)
 
 A housekeeping reinstall can silently restore bare defaults (`dispositionMode: "unattended"`, empty `quorumStewardEligibleIds` / `quorumPeerEligibleIds`, threshold 2). Look for:

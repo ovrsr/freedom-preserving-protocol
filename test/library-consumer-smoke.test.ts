@@ -78,8 +78,12 @@ describe("library consumer smoke (no OpenClaw peer)", () => {
     assertNoOpenclawDependency(
       join(REPO_ROOT, "packages/trust-core/package.json"),
     );
+    assertNoOpenclawDependency(
+      join(REPO_ROOT, "packages/steward-auth-core/package.json"),
+    );
     assertNoOpenclawImport(join(REPO_ROOT, "packages/enforcement-core/src"));
     assertNoOpenclawImport(join(REPO_ROOT, "packages/trust-core/src"));
+    assertNoOpenclawImport(join(REPO_ROOT, "packages/steward-auth-core/src"));
     assert.equal(ENFORCEMENT_NAME, "@ovrsr/fpp-enforcement-core");
     assert.equal(TRUST_NAME, "@ovrsr/fpp-trust-core");
   });

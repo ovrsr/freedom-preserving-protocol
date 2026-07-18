@@ -96,6 +96,11 @@ export type FppPluginConfig = {
   mandateDefaultMaxActions: number;
   /** Undo/review window for allow-staged decisions (ms). */
   stagedUndoWindowMs: number;
+  /**
+   * Hash-chained steward authorization ledger path. Absence means no
+   * OpenPGP operator coverage is available.
+   */
+  stewardAuthorizationLedgerPath: string;
 };
 
 export type MergeConfigResult = {
@@ -138,6 +143,9 @@ export const DEFAULT_CONFIG: FppPluginConfig = {
   mandateStorePath: workspaceFile("fpp-mandates.json"),
   mandateDefaultMaxActions: 10,
   stagedUndoWindowMs: 60_000,
+  stewardAuthorizationLedgerPath: workspaceFile(
+    "fpp-steward-authorization-ledger.jsonl",
+  ),
 };
 
 function isBlockDowngrade(blockOn: ClassificationId[]): boolean {
@@ -329,6 +337,10 @@ export function mergeConfigWithDiagnostics(input: unknown): MergeConfigResult {
       partial.mandateDefaultMaxActions ?? DEFAULT_CONFIG.mandateDefaultMaxActions,
     stagedUndoWindowMs:
       partial.stagedUndoWindowMs ?? DEFAULT_CONFIG.stagedUndoWindowMs,
+    stewardAuthorizationLedgerPath: absolutizeWorkspacePath(
+      partial.stewardAuthorizationLedgerPath ??
+        DEFAULT_CONFIG.stewardAuthorizationLedgerPath,
+    ),
   };
 
   const unattendedDiag = unattendedApprovalWithoutStandingAllow(

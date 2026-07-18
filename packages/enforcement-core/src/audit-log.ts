@@ -64,6 +64,11 @@ export type EnforcementEvent = {
   decision: "block" | "approval" | "allow";
   reason: string;
   constitutionHash: string;
+  /** Optional steward operator-authorization evidence (backward compatible). */
+  stewardId?: string | undefined;
+  authorizationId?: string | undefined;
+  signingKeyRef?: string | undefined;
+  stewardLedgerEventHash?: string | undefined;
 };
 
 export type EnforcementOutcome =
@@ -99,6 +104,16 @@ export function appendEnforcementEntry(
     reason: event.reason.slice(0, 280),
     constitutionHash: event.constitutionHash,
   };
+  if (event.stewardId !== undefined) entry.stewardId = event.stewardId;
+  if (event.authorizationId !== undefined) {
+    entry.authorizationId = event.authorizationId;
+  }
+  if (event.signingKeyRef !== undefined) {
+    entry.signingKeyRef = event.signingKeyRef;
+  }
+  if (event.stewardLedgerEventHash !== undefined) {
+    entry.stewardLedgerEventHash = event.stewardLedgerEventHash;
+  }
   entry.hash = hashEntry(entry);
 
   appendFileSync(resolved, JSON.stringify(entry) + "\n");

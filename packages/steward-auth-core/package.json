@@ -1,10 +1,15 @@
 {
-  "name": "@ovrsr/fpp-adapter-claude-code",
+  "name": "@ovrsr/fpp-steward-auth-core",
   "version": "0.1.0",
-  "description": "Claude Code FppRuntimeAdapter for the Freedom Preserving Protocol",
+  "description": "Harness-neutral steward identity and OpenPGP operator authorization for the Freedom Preserving Protocol",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
-  "private": true,
+  "author": "ovrsr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ovrsr/freedom-preserving-protocol",
+    "directory": "packages/steward-auth-core"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -16,28 +21,18 @@
   "files": [
     "dist/",
     "src/",
-    "hooks/",
-    "README.md"
-  ],
-  "bundledDependencies": [
-    "@ovrsr/fpp-protocol-core",
-    "@ovrsr/fpp-enforcement-core",
-    "@ovrsr/fpp-tool-proxy"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "bundle:deps": "npx tsx ../../scripts/bundle-workspace-deps.ts --package adapters/claude-code",
-    "prepack": "npm run build && npm run bundle:deps",
+    "prepack": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit --declaration false --declarationMap false",
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
-    "@noble/ed25519": "^2.1.0",
-    "@noble/hashes": "^1.4.0",
-    "@ovrsr/fpp-enforcement-core": "1.0.2",
     "@ovrsr/fpp-protocol-core": "1.0.2",
-    "@ovrsr/fpp-tool-proxy": "0.1.0",
-    "@sinclair/typebox": "^0.34.0"
+    "openpgp": "^6.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

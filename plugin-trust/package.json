@@ -1,6 +1,6 @@
 {
   "name": "@ovrsr/openclaw-fpp-trust",
-  "version": "1.2.10",
+  "version": "1.2.11",
   "description": "OpenClaw plugin: agent-to-agent trust graph and constitutional handshake for the Freedom Preserving Protocol",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -22,7 +22,8 @@
   "bundledDependencies": [
     "@ovrsr/fpp-protocol-core",
     "@ovrsr/fpp-trust-core",
-    "@ovrsr/fpp-enforcement-core"
+    "@ovrsr/fpp-enforcement-core",
+    "@ovrsr/fpp-steward-auth-core"
   ],
   "openclaw": {
     "extensions": [
@@ -50,8 +51,10 @@
     "@noble/hashes": "^1.4.0",
     "@ovrsr/fpp-enforcement-core": "1.0.2",
     "@ovrsr/fpp-protocol-core": "1.0.2",
+    "@ovrsr/fpp-steward-auth-core": "0.1.0",
+    "@ovrsr/fpp-trust-core": "1.0.2",
     "@sinclair/typebox": "^0.34.0",
-    "@ovrsr/fpp-trust-core": "1.0.2"
+    "openpgp": "^6.2.0"
   },
   "peerDependencies": {
     "openclaw": ">=2026.3.28"

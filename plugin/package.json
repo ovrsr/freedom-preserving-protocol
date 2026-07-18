@@ -1,6 +1,6 @@
 {
   "name": "@ovrsr/openclaw-fpp-plugin",
-  "version": "1.1.15",
+  "version": "1.1.16",
   "description": "OpenClaw plugin: dispatcher-level enforcement of the Freedom Preserving Protocol via before_tool_call hook",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -21,7 +21,8 @@
   ],
   "bundledDependencies": [
     "@ovrsr/fpp-protocol-core",
-    "@ovrsr/fpp-enforcement-core"
+    "@ovrsr/fpp-enforcement-core",
+    "@ovrsr/fpp-steward-auth-core"
   ],
   "openclaw": {
     "extensions": [
@@ -49,7 +50,9 @@
     "@noble/hashes": "^1.4.0",
     "@ovrsr/fpp-enforcement-core": "1.0.2",
     "@ovrsr/fpp-protocol-core": "1.0.2",
-    "@sinclair/typebox": "^0.34.0"
+    "@ovrsr/fpp-steward-auth-core": "0.1.0",
+    "@sinclair/typebox": "^0.34.0",
+    "openpgp": "^6.2.0"
   },
   "peerDependencies": {
     "openclaw": ">=2026.3.28"

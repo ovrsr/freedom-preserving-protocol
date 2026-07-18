@@ -13,6 +13,7 @@
 | **Constitution-root** | Sign normative seed / foundational constitutional artifacts | Catastrophic normative impersonation |
 | **Release** | Sign release manifests, package provenance | Supply-chain imposture |
 | **Agent-identity** | Agent Ed25519 identity for claims/handshakes | Peer spoofing for that agent |
+| **Steward-operator** | Human steward OpenPGP bindings (`fpp:steward:v1:…`) for signed operator authorizations | Local operator impersonation for gated tools; does **not** replace agent identity |
 | **Runtime-attestation** | Attest runtime/build measurements | False runtime trust |
 | **Amendment** | Sign amendment proposals/decisions/lineage activations | Fake ratification / lineage |
 

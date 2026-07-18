@@ -32,6 +32,7 @@ import type { StrictModeManager } from "@ovrsr/fpp-trust-core";
 import type { ReplayCache } from "@ovrsr/fpp-trust-core";
 import type { QuorumSessionManager } from "@ovrsr/fpp-trust-core";
 import { resolveAdoptedAt } from "./resolve-adopted-at.js";
+import { registerStewardCli } from "./steward-cli.js";
 
 export interface CliDependencies {
   identity: AgentIdentity;
@@ -45,6 +46,8 @@ export interface CliDependencies {
   quorum?: QuorumSessionManager | undefined;
   soulPath?: string | undefined;
   adoptionStatePath?: string | undefined;
+  stewardLedgerPath?: string | undefined;
+  stewardInstanceAudience?: string | undefined;
 }
 
 interface CliCommand {
@@ -620,6 +623,15 @@ export function registerFppTrustCli(
           `does not mint peer-signed mandates.`,
       );
     });
+
+  registerStewardCli(fppTrust, {
+    ...(deps.stewardLedgerPath !== undefined
+      ? { ledgerPath: deps.stewardLedgerPath }
+      : {}),
+    ...(deps.stewardInstanceAudience !== undefined
+      ? { instanceAudience: deps.stewardInstanceAudience }
+      : {}),
+  });
 }
 
 export const FPP_TRUST_CLI_DESCRIPTORS = [

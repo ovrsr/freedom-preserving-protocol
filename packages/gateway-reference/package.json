@@ -24,8 +24,8 @@
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
-    "@ovrsr/fpp-enforcement-core": "1.0.1",
-    "@ovrsr/fpp-protocol-core": "1.0.1"
+    "@ovrsr/fpp-enforcement-core": "1.0.2",
+    "@ovrsr/fpp-protocol-core": "1.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

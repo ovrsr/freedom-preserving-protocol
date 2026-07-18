@@ -150,6 +150,11 @@
         "maximum": 86400000,
         "default": 60000,
         "description": "Undo/review window for allow-staged decisions (milliseconds)."
+      },
+      "stewardAuthorizationLedgerPath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-steward-authorization-ledger.jsonl",
+        "description": "Path to the hash-chained steward authorization ledger. Absent file means no OpenPGP operator coverage."
       }
     }
   }

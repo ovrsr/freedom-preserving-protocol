@@ -207,6 +207,11 @@
         "default": ".openclaw/workspace/fpp-mandates.json",
         "description": "Shared path for StandingMandateV1 records issued by quorum finalize (consumed by the enforcement plugin)."
       },
+      "stewardAuthorizationLedgerPath": {
+        "type": "string",
+        "default": ".openclaw/workspace/fpp-steward-authorization-ledger.jsonl",
+        "description": "Hash-chained OpenPGP steward authorization ledger (human CLI admit only; never agent-signed)."
+      },
       "quorumStatePath": {
         "type": "string",
         "default": ".openclaw/workspace/fpp-quorum-sessions.json",

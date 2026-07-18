@@ -33,6 +33,12 @@ import {
   PACKAGE_NAME as TRUST_PACKAGE_NAME,
   createTrustStack,
 } from "@ovrsr/fpp-trust-core";
+import {
+  mintStewardIdV1,
+  parseStewardIdV1,
+  isStewardIdV1,
+} from "@ovrsr/fpp-protocol-core";
+import { PACKAGE_NAME as STEWARD_PACKAGE_NAME } from "@ovrsr/fpp-steward-auth-core";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -95,9 +101,11 @@ describe("enforcement-core + trust-core interoperability", () => {
   it("cores declare package names and pin protocol-core without openclaw", () => {
     assert.equal(ENFORCEMENT_PACKAGE_NAME, "@ovrsr/fpp-enforcement-core");
     assert.equal(TRUST_PACKAGE_NAME, "@ovrsr/fpp-trust-core");
+    assert.equal(STEWARD_PACKAGE_NAME, "@ovrsr/fpp-steward-auth-core");
     for (const rel of [
       "packages/enforcement-core/package.json",
       "packages/trust-core/package.json",
+      "packages/steward-auth-core/package.json",
     ]) {
       const pkg = JSON.parse(
         readFileSync(join(REPO_ROOT, rel), "utf8"),
@@ -105,7 +113,7 @@ describe("enforcement-core + trust-core interoperability", () => {
         dependencies?: Record<string, string>;
         peerDependencies?: Record<string, string>;
       };
-      assert.equal(pkg.dependencies?.["@ovrsr/fpp-protocol-core"], "1.0.0");
+      assert.equal(pkg.dependencies?.["@ovrsr/fpp-protocol-core"], "1.0.2");
       assert.equal(pkg.dependencies?.openclaw, undefined);
       assert.equal(pkg.peerDependencies?.openclaw, undefined);
     }
@@ -144,5 +152,12 @@ describe("enforcement-core + trust-core interoperability", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("steward identity contracts remain consumable independently of OpenClaw", () => {
+    assert.equal(STEWARD_PACKAGE_NAME, "@ovrsr/fpp-steward-auth-core");
+    const id = mintStewardIdV1();
+    assert.equal(isStewardIdV1(id), true);
+    assert.equal(parseStewardIdV1(id).ok, true);
   });
 });

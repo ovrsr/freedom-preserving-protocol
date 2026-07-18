@@ -15,6 +15,22 @@ export {
   type Decision,
 } from "./risk-classifier.js";
 
+export {
+  buildActionDescriptor,
+  extractApplyPatchTargets,
+  type EnforcementActionDescriptor,
+  type ToolCallLike,
+} from "./action-descriptor.js";
+
+export {
+  consumeStewardOperatorCoverage,
+  isOperatorMandateId,
+  lookupStewardOperatorCoverage,
+  operatorAuthorizationIdFromMandateId,
+  type StewardCoverageEvidence,
+  type StewardCoverageLookup,
+} from "./steward-coverage.js";
+
 export { isReversibleClassification } from "./reversibility.js";
 
 export {

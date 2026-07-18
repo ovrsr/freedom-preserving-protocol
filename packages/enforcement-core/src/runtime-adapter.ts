@@ -47,6 +47,13 @@ import { isReversibleClassification } from "./reversibility.js";
 import { StagedActionLedger } from "./staged-actions.js";
 import { EmergencyReviewLedger } from "./emergency-review.js";
 import type { DispositionDecision } from "@ovrsr/fpp-protocol-core";
+import {
+  consumeStewardOperatorCoverage,
+  isOperatorMandateId,
+  lookupStewardOperatorCoverage,
+  operatorAuthorizationIdFromMandateId,
+  type StewardCoverageEvidence,
+} from "./steward-coverage.js";
 import * as ed from "@noble/ed25519";
 import { sha512 } from "@noble/hashes/sha512";
 
@@ -509,9 +516,23 @@ export function createEnforcementRuntime(
       ? getStrictApprovalOverrides(config.strictModeStatePath, ctx.sessionKey)
       : [];
     const mandates = getMandateStore();
-    const liveMandate = mandates.findCoverage(classification.classification, {
+    let liveMandate = mandates.findCoverage(classification.classification, {
       nowMs: Date.now(),
     });
+
+    const workspaceRoot = adapter.getWorkspacePaths().workspaceRoot;
+    let stewardEvidence: StewardCoverageEvidence | null = null;
+    let stewardAction = lookupStewardOperatorCoverage({
+      ledgerPath: config.stewardAuthorizationLedgerPath,
+      event: { toolName: event.toolName, params: event.params },
+      classification: classification.classification,
+      workspaceRoot,
+      knownCustomTools: config.knownCustomTools,
+    });
+    if (!liveMandate && stewardAction.liveMandate) {
+      liveMandate = stewardAction.liveMandate;
+      stewardEvidence = stewardAction.evidence;
+    }
 
     let emergencyCriteriaMet = false;
     let emergencyOverrideRejected: string | undefined;
@@ -538,7 +559,7 @@ export function createEnforcementRuntime(
       }
     }
 
-    const dispositionResult = resolveDisposition({
+    let dispositionResult = resolveDisposition({
       classification,
       config,
       liveMandate,
@@ -549,6 +570,47 @@ export function createEnforcementRuntime(
       emergencyOverrideRejected,
       strictOverrides,
     });
+
+    // Operator steward grants must be atomically consumed before allow.
+    if (
+      dispositionResult.disposition === "allow" &&
+      isOperatorMandateId(dispositionResult.mandateId)
+    ) {
+      const authId = operatorAuthorizationIdFromMandateId(
+        dispositionResult.mandateId!,
+      );
+      const consumed = consumeStewardOperatorCoverage({
+        ledgerPath: config.stewardAuthorizationLedgerPath,
+        authorizationId: authId,
+        action: stewardAction.action,
+      });
+      if (!consumed.ok) {
+        // Fail closed on this coverage — recompute without operator grant.
+        liveMandate = mandates.findCoverage(classification.classification, {
+          nowMs: Date.now(),
+        });
+        stewardEvidence = null;
+        dispositionResult = resolveDisposition({
+          classification,
+          config,
+          liveMandate,
+          budgetAvailable: true,
+          reversible: isReversibleClassification(classification.classification),
+          quorumMandatePresent: liveMandate?.authorization === "quorum-mandate",
+          emergencyCriteriaMet,
+          emergencyOverrideRejected,
+          strictOverrides,
+        });
+      } else {
+        stewardEvidence = {
+          stewardId: consumed.stewardId,
+          authorizationId: consumed.authorizationId,
+          signingKeyRef: consumed.signingKeyRef,
+          stewardLedgerEventHash: consumed.eventHash,
+        };
+      }
+    }
+
     const decision = legacyDecisionFromDisposition(
       dispositionResult.disposition,
     );
@@ -556,7 +618,8 @@ export function createEnforcementRuntime(
     if (
       dispositionResult.disposition === "allow" &&
       dispositionResult.mandateId &&
-      !dispositionResult.mandateId.startsWith("standing:")
+      !dispositionResult.mandateId.startsWith("standing:") &&
+      !isOperatorMandateId(dispositionResult.mandateId)
     ) {
       mandates.debit(dispositionResult.mandateId);
     }
@@ -571,6 +634,14 @@ export function createEnforcementRuntime(
       decision,
       reason: dispositionResult.reason || classification.reason,
       constitutionHash: config.constitutionHash,
+      ...(stewardEvidence
+        ? {
+            stewardId: stewardEvidence.stewardId,
+            authorizationId: stewardEvidence.authorizationId,
+            signingKeyRef: stewardEvidence.signingKeyRef,
+            stewardLedgerEventHash: stewardEvidence.stewardLedgerEventHash,
+          }
+        : {}),
     };
 
     const toolCallId = ctx.toolCallId ?? event.toolCallId;
