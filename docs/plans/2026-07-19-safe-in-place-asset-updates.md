@@ -1,6 +1,6 @@
 # Safe In-Place Asset Updates
 
-**Status:** COMPLETE
+**Status:** VERIFIED
 **Created:** 2026-07-19
 **Scope:** Make PR #8's updater preserve all non-owned destination files, restore reliable clean-install CI, and document the resulting ownership and rollback behavior. Out: changing release publishing, adoption/revocation semantics, or existing host hook configuration.
 
