@@ -1,7 +1,7 @@
 # Steward / Operator Signed Authorization
 
 **Status:** PARTIAL (local OpenClaw path + library core + repository-proven `apply_patch` descriptor coverage; live-gateway consumption of a published artifact is a separate post-release check)
-**Plan:** `docs/plans/2026-07-18-steward-operator-authorization.md` (COMPLETE); live payload/path coverage `docs/plans/2026-07-18-apply-patch-live-coverage.md`
+**Plan:** `docs/plans/2026-07-18-steward-operator-authorization.md` (COMPLETE); live payload/path coverage `docs/plans/2026-07-18-apply-patch-live-coverage.md`; required-only consumption `docs/plans/2026-07-19-operator-authorization-required-consumption.md`
 **Packages:** `@ovrsr/fpp-protocol-core` (contracts), `@ovrsr/fpp-steward-auth-core` (OpenPGP + ledger), `@ovrsr/fpp-enforcement-core` (coverage seam), `@ovrsr/openclaw-fpp-trust` (CLI), `@ovrsr/openclaw-fpp-plugin` (OpenClaw adapter)
 
 ## What this is
@@ -15,15 +15,27 @@ A parallel **human steward** identity and signed **operator authorization** path
 - Coverage: normalized to `issuerClass: "operator"` / `AUTHZ.mandate` as `mandateId: "operator:<authorizationId>"`
 - Hard floors still win. Operator grants never become `approved`, `emergency`, or god mode.
 
+## Admission vs required-only consumption
+
+**Admission** (`steward authorization-admit`) records a verified grant in the steward ledger. It does **not** debit `remainingUses`.
+
+**Consumption** happens later, at the tool boundary, and only when the grant is **required** to permit execution:
+
+1. Enforcement resolves the ordinary disposition first (non-operator mandates, `standingAllowOn`, classifier allow, staged/reversible allow, hard floors, emergency, etc.).
+2. If that baseline already maps to an allow-capable execution decision (`allow`, `allow_staged`, or `allow_minimal` via `legacyDecisionFromDisposition`), the steward grant is **not** inspected and **not** consumed — even when its scope would match.
+3. If the baseline would block or require approval, enforcement looks up a matching operator grant, re-resolves with it, and — only when the operator mandate supplies the final allow — atomically records `authorization_consumed` under lock before returning allow.
+
+Matching scope alone is therefore insufficient for a debit. Broad standing grants that include classes such as `exec.benign` do not lose uses on routine confirmations that ordinary policy already allows. Hard-floor denies remain unbypassable and leave matching grants unconsumed. Failed atomic consume recomputes without the operator grant (fail closed).
+
 ## Local maintainer sequence
 
 1. Initialize steward + ledger (CLI `steward init`) — records immutable local policy caps.
 2. Emit a canonical key attestation template (`steward key-template`).
 3. Sign the template with maintainer OpenPGP tooling (outside FPP — the plugin never holds private keys).
 4. Admit with explicit TOFU for the first binding (`steward key-admit --accept-tofu`).
-5. Create / sign / verify / admit an authorization (`steward authorization-*`).
-6. Exercise a gated tool (e.g. `apply_patch` under `code.patch`); enforcement consumes one use under lock before allow.
-7. Inspect steward ledger + enforcement audit (`steward inspect`, audit JSONL fields `stewardId` / `authorizationId` / `signingKeyRef` / `stewardLedgerEventHash`).
+5. Create / sign / verify / admit an authorization (`steward authorization-*`) — admission records the grant; uses are unchanged until a required boundary debit.
+6. Exercise a gated tool that ordinary policy would block or hold for approval (e.g. `apply_patch` under `code.patch` without standing allow); enforcement consumes one use under lock only when the operator grant supplies the final allow.
+7. Inspect steward ledger + enforcement audit (`steward inspect`, audit JSONL fields `stewardId` / `authorizationId` / `signingKeyRef` / `stewardLedgerEventHash`). Routine already-allowed calls should leave `remainingUses` unchanged.
 8. Revoke authorization or key via signed lifecycle events when needed.
 
 ## `apply_patch` descriptor boundary

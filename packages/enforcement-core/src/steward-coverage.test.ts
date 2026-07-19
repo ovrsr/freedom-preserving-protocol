@@ -43,6 +43,109 @@ async function signDetached(payload: object, key: openpgp.PrivateKey) {
   return openpgp.sign({ message, signingKeys: key, detached: true });
 }
 
+function countConsumed(ledgerPath: string): number {
+  return readFileSync(ledgerPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line))
+    .filter((event) => event.kind === "authorization_consumed").length;
+}
+
+function remainingUsesFor(
+  ledgerPath: string,
+  authorizationId: string,
+): number | undefined {
+  const ledger = new StewardAuthorizationLedger({ path: ledgerPath });
+  const backends = createDefaultBackendRegistry([createOpenPgpBackend()]);
+  const registry = new StewardRegistry({ ledger, backends });
+  const service = new AuthorizationService({ ledger, backends, registry });
+  return service
+    .listAdmitted()
+    .find((entry) => entry.authorization.authorizationId === authorizationId)
+    ?.remainingUses;
+}
+
+async function admitStandingGrant(input: {
+  ledgerPath: string;
+  audience: string;
+  keyName: string;
+  authorizationId: string;
+  scope: OperatorAuthorizationV1["scope"];
+  maxUses: number;
+  noncePrefix: string;
+}): Promise<{ stewardId: string }> {
+  const ledger = new StewardAuthorizationLedger({ path: input.ledgerPath });
+  assert.equal(
+    ledger.initialize({
+      instanceAudience: input.audience,
+      maxStandingLifetimeMs: 86_400_000,
+      maxStandingUses: 100,
+      maxOneShotLifetimeMs: 3_600_000,
+      allowedClockSkewMs: 300_000,
+    }).ok,
+    true,
+  );
+  const backends = createDefaultBackendRegistry([createOpenPgpBackend()]);
+  const registry = new StewardRegistry({ ledger, backends });
+  const key = await generateKey(input.keyName);
+  const stewardId = mintStewardIdV1();
+  const attestation: StewardKeyAttestationV1 = {
+    schemaVersion: 1,
+    kind: "steward-key-attestation",
+    attestationId: `att-${input.keyName}`,
+    operation: "initial-bind",
+    stewardId,
+    audience: input.audience,
+    subjectKey: {
+      algorithm: "openpgp",
+      keyRef: key.keyRef,
+      publicKeyArmored: key.publicKeyArmored,
+    },
+    issuedAt: new Date().toISOString(),
+    nonce: `${input.noncePrefix}${"a".repeat(31)}`.slice(0, 32),
+    reason: "required-only coverage",
+  };
+  assert.equal(
+    (
+      await registry.admitKeyAttestation({
+        attestation,
+        format: "detached",
+        signaturesArmored: [await signDetached(attestation, key.privateKey)],
+        acceptTofu: true,
+      })
+    ).ok,
+    true,
+  );
+  const service = new AuthorizationService({ ledger, backends, registry });
+  const now = Date.now();
+  const grant: OperatorAuthorizationV1 = {
+    schemaVersion: 1,
+    kind: "operator-authorization",
+    authorizationId: input.authorizationId,
+    stewardId,
+    signingKeyRef: key.keyRef,
+    audience: input.audience,
+    mode: "standing",
+    scope: input.scope,
+    issuedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 3_600_000).toISOString(),
+    nonce: `${input.noncePrefix}${"b".repeat(31)}`.slice(0, 32),
+    maxUses: input.maxUses,
+    reason: "broad standing grant",
+  };
+  assert.equal(
+    (
+      await service.admit({
+        authorization: grant,
+        format: "detached",
+        signaturesArmored: [await signDetached(grant, key.privateKey)],
+      })
+    ).ok,
+    true,
+  );
+  return { stewardId };
+}
+
 describe("steward operator coverage in enforcement runtime", () => {
   const ws = createTempWorkspace("fpp-steward-rt-");
   after(() => ws.cleanup());
@@ -245,6 +348,204 @@ describe("steward operator coverage in enforcement runtime", () => {
       { toolCallId: "tc-hf" },
     );
     assert.equal(result.action, "block");
+    assert.equal(countConsumed(ledgerPath), 0);
+    assert.equal(remainingUsesFor(ledgerPath, "authz-hf"), 1);
+  });
+
+  it("does not consume a broad grant for ordinary exec.benign classifier allow", async () => {
+    const ledgerPath = join(ws.path, "ledger-benign.jsonl");
+    const maxUses = 5;
+    await admitStandingGrant({
+      ledgerPath,
+      audience: "instance:benign",
+      keyName: "benign",
+      authorizationId: "authz-benign",
+      scope: { classifications: ["exec.benign", "code.patch"] },
+      maxUses,
+      noncePrefix: "c",
+    });
+
+    const runtime = createEnforcementRuntime(
+      {
+        auditLogPath: join(ws.path, "audit-benign.jsonl"),
+        stewardAuthorizationLedgerPath: ledgerPath,
+        dispositionMode: "unattended",
+        standingAllowOn: [],
+      },
+      {
+        harnessId: "test",
+        getWorkspacePaths: () => ({ workspaceRoot: ws.path }),
+      },
+    );
+    const result = await runtime.onBeforeToolCall(
+      {
+        toolName: "shell_exec",
+        params: { command: "echo ok" },
+        toolCallId: "tc-benign",
+      },
+      { toolCallId: "tc-benign" },
+    );
+    assert.equal(result.action, "allow");
+    assert.equal(countConsumed(ledgerPath), 0);
+    assert.equal(remainingUsesFor(ledgerPath, "authz-benign"), maxUses);
+  });
+
+  it("does not consume a matching grant when standingAllowOn already allows", async () => {
+    const ledgerPath = join(ws.path, "ledger-standing.jsonl");
+    const maxUses = 4;
+    await admitStandingGrant({
+      ledgerPath,
+      audience: "instance:standing",
+      keyName: "standing",
+      authorizationId: "authz-standing",
+      // Classification-only scope still matches apply_patch and would debit under
+      // eager operator lookup; standingAllowOn must win without consumption.
+      scope: {
+        classifications: ["code.patch"],
+      },
+      maxUses,
+      noncePrefix: "d",
+    });
+
+    const runtime = createEnforcementRuntime(
+      {
+        auditLogPath: join(ws.path, "audit-standing.jsonl"),
+        stewardAuthorizationLedgerPath: ledgerPath,
+        dispositionMode: "unattended",
+        approvalOn: ["code.patch"],
+        standingAllowOn: ["code.patch"],
+      },
+      {
+        harnessId: "test",
+        getWorkspacePaths: () => ({ workspaceRoot: ws.path }),
+      },
+    );
+    const result = await runtime.onBeforeToolCall(
+      {
+        toolName: "apply_patch",
+        params: { patch: "*** Add File: src/a.ts\n+ console.log(1);\n" },
+        toolCallId: "tc-standing",
+      },
+      { toolCallId: "tc-standing" },
+    );
+    assert.equal(result.action, "allow");
+    assert.equal(countConsumed(ledgerPath), 0);
+    assert.equal(remainingUsesFor(ledgerPath, "authz-standing"), maxUses);
+  });
+
+  it("does not consume a matching grant when staged/reversible allow already permits", async () => {
+    const ledgerPath = join(ws.path, "ledger-staged.jsonl");
+    const maxUses = 3;
+    await admitStandingGrant({
+      ledgerPath,
+      audience: "instance:staged",
+      keyName: "staged",
+      authorizationId: "authz-staged",
+      // Descriptor path extraction is apply_patch-only; omit resourcePaths so
+      // classification/tool scope still matches and would debit under eager lookup.
+      scope: {
+        classifications: ["fs.write.workspace"],
+        toolNames: ["write_file"],
+      },
+      maxUses,
+      noncePrefix: "e",
+    });
+
+    const runtime = createEnforcementRuntime(
+      {
+        auditLogPath: join(ws.path, "audit-staged.jsonl"),
+        stewardAuthorizationLedgerPath: ledgerPath,
+        dispositionMode: "unattended",
+        standingAllowOn: [],
+      },
+      {
+        harnessId: "test",
+        getWorkspacePaths: () => ({ workspaceRoot: ws.path }),
+      },
+    );
+    const result = await runtime.onBeforeToolCall(
+      {
+        toolName: "write_file",
+        params: { path: "src/note.txt", content: "hello" },
+        toolCallId: "tc-staged",
+      },
+      { toolCallId: "tc-staged" },
+    );
+    assert.equal(result.action, "allow");
+    assert.equal(countConsumed(ledgerPath), 0);
+    assert.equal(remainingUsesFor(ledgerPath, "authz-staged"), maxUses);
+  });
+
+  it("consumes exactly once when operator-present baseline requires approval", async () => {
+    const ledgerPath = join(ws.path, "ledger-req.jsonl");
+    const maxUses = 2;
+    const { stewardId } = await admitStandingGrant({
+      ledgerPath,
+      audience: "instance:req",
+      keyName: "req",
+      authorizationId: "authz-req",
+      scope: {
+        classifications: ["code.patch"],
+        toolNames: ["apply_patch"],
+        resourcePaths: ["src/b.ts"],
+      },
+      maxUses,
+      noncePrefix: "f",
+    });
+
+    const auditPath = join(ws.path, "audit-req.jsonl");
+    const runtime = createEnforcementRuntime(
+      {
+        auditLogPath: auditPath,
+        stewardAuthorizationLedgerPath: ledgerPath,
+        dispositionMode: "operator-present",
+        approvalOn: ["code.patch"],
+        standingAllowOn: [],
+      },
+      {
+        harnessId: "test",
+        getWorkspacePaths: () => ({ workspaceRoot: ws.path }),
+      },
+    );
+    const first = await runtime.onBeforeToolCall(
+      {
+        toolName: "apply_patch",
+        params: { patch: "*** Add File: src/b.ts\n+ console.log(2);\n" },
+        toolCallId: "tc-req-1",
+      },
+      { toolCallId: "tc-req-1" },
+    );
+    assert.equal(first.action, "allow");
+    assert.equal(countConsumed(ledgerPath), 1);
+    assert.equal(remainingUsesFor(ledgerPath, "authz-req"), maxUses - 1);
+
+    const audit = readFileSync(auditPath, "utf8").trim().split("\n");
+    const last = JSON.parse(audit[audit.length - 1]!);
+    assert.equal(last.authorizationId, "authz-req");
+    assert.equal(last.stewardId, stewardId);
+
+    const second = await runtime.onBeforeToolCall(
+      {
+        toolName: "apply_patch",
+        params: { patch: "*** Add File: src/b.ts\n+ console.log(2);\n" },
+        toolCallId: "tc-req-2",
+      },
+      { toolCallId: "tc-req-2" },
+    );
+    assert.equal(second.action, "allow");
+    assert.equal(countConsumed(ledgerPath), 2);
+    assert.equal(remainingUsesFor(ledgerPath, "authz-req"), 0);
+
+    const third = await runtime.onBeforeToolCall(
+      {
+        toolName: "apply_patch",
+        params: { patch: "*** Add File: src/b.ts\n+ console.log(2);\n" },
+        toolCallId: "tc-req-3",
+      },
+      { toolCallId: "tc-req-3" },
+    );
+    assert.notEqual(third.action, "allow");
+    assert.equal(countConsumed(ledgerPath), 2);
   });
 
   it("allows a live-shaped absolute external apply_patch once via outOfWorkspacePaths", async () => {

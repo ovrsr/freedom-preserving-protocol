@@ -540,18 +540,8 @@ export function createEnforcementRuntime(
 
     const workspaceRoot = adapter.getWorkspacePaths().workspaceRoot;
     let stewardEvidence: StewardCoverageEvidence | null = null;
-    let stewardAction = lookupStewardOperatorCoverage({
-      ledgerPath: config.stewardAuthorizationLedgerPath,
-      event: { toolName: event.toolName, params: event.params },
-      classification: classification.classification,
-      workspaceRoot,
-      knownCustomTools: config.knownCustomTools,
-      outOfWorkspacePaths: config.outOfWorkspacePaths,
-    });
-    if (!liveMandate && stewardAction.liveMandate) {
-      liveMandate = stewardAction.liveMandate;
-      stewardEvidence = stewardAction.evidence;
-    }
+    let stewardAction: ReturnType<typeof lookupStewardOperatorCoverage> | null =
+      null;
 
     let emergencyCriteriaMet = false;
     let emergencyOverrideRejected: string | undefined;
@@ -578,6 +568,9 @@ export function createEnforcementRuntime(
       }
     }
 
+    // Resolve ordinary disposition first. Steward grants are consulted only when
+    // the baseline would block or require approval — not when an allow-capable
+    // path already permits execution (required-only consumption).
     let dispositionResult = resolveDisposition({
       classification,
       config,
@@ -590,10 +583,39 @@ export function createEnforcementRuntime(
       strictOverrides,
     });
 
+    if (
+      legacyDecisionFromDisposition(dispositionResult.disposition) !== "allow"
+    ) {
+      stewardAction = lookupStewardOperatorCoverage({
+        ledgerPath: config.stewardAuthorizationLedgerPath,
+        event: { toolName: event.toolName, params: event.params },
+        classification: classification.classification,
+        workspaceRoot,
+        knownCustomTools: config.knownCustomTools,
+        outOfWorkspacePaths: config.outOfWorkspacePaths,
+      });
+      if (!liveMandate && stewardAction.liveMandate) {
+        liveMandate = stewardAction.liveMandate;
+        stewardEvidence = stewardAction.evidence;
+        dispositionResult = resolveDisposition({
+          classification,
+          config,
+          liveMandate,
+          budgetAvailable: true,
+          reversible: isReversibleClassification(classification.classification),
+          quorumMandatePresent: liveMandate?.authorization === "quorum-mandate",
+          emergencyCriteriaMet,
+          emergencyOverrideRejected,
+          strictOverrides,
+        });
+      }
+    }
+
     // Operator steward grants must be atomically consumed before allow.
     if (
       dispositionResult.disposition === "allow" &&
-      isOperatorMandateId(dispositionResult.mandateId)
+      isOperatorMandateId(dispositionResult.mandateId) &&
+      stewardAction
     ) {
       const authId = operatorAuthorizationIdFromMandateId(
         dispositionResult.mandateId!,
