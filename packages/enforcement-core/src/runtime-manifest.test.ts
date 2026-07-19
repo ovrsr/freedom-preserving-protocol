@@ -27,6 +27,36 @@ describe("runtime manifest binding", () => {
     assert.notEqual(base, next);
   });
 
+  it("binds outOfWorkspacePaths into effective config hash independently of key insertion order", () => {
+    const base = computeEffectiveConfigHash(DEFAULT_CONFIG);
+    const withMapA: FppPluginConfig = {
+      ...DEFAULT_CONFIG,
+      outOfWorkspacePaths: {
+        "/home/op/.openclaw/openclaw.json": "harness/openclaw.json",
+        "/home/op/.openclaw/other.json": "harness/other.json",
+      },
+    };
+    const withMapB: FppPluginConfig = {
+      ...DEFAULT_CONFIG,
+      outOfWorkspacePaths: {
+        "/home/op/.openclaw/other.json": "harness/other.json",
+        "/home/op/.openclaw/openclaw.json": "harness/openclaw.json",
+      },
+    };
+    const hashA = computeEffectiveConfigHash(withMapA);
+    const hashB = computeEffectiveConfigHash(withMapB);
+    assert.notEqual(base, hashA);
+    assert.equal(hashA, hashB);
+    const differentAlias: FppPluginConfig = {
+      ...DEFAULT_CONFIG,
+      outOfWorkspacePaths: {
+        "/home/op/.openclaw/openclaw.json": "harness/renamed.json",
+        "/home/op/.openclaw/other.json": "harness/other.json",
+      },
+    };
+    assert.notEqual(hashA, computeEffectiveConfigHash(differentAlias));
+  });
+
   it("excludes secrets and machine-specific paths from config hash", () => {
     const a = computeEffectiveConfigHash({
       ...DEFAULT_CONFIG,

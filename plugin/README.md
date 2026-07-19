@@ -103,7 +103,31 @@ All fields are optional; the values above are the runtime defaults from `src/con
 > display metadata only; this drift is tracked for correction in a future
 > release.
 
-To tune, edit your OpenClaw config and restart the gateway (`openclaw gateway reload` if your version supports it; otherwise `openclaw gateway restart` — note that restart itself is a `gateway.restart` event the plugin will log).
+To tune, edit your OpenClaw config and restart the gateway (`openclaw gateway restart`). **Manifest schema changes (`openclaw.plugin.json`) require a full process restart** — hot reload does not refresh the cached config schema. Prefer restart over reload after adding fields such as `outOfWorkspacePaths`.
+
+### Out-of-workspace exact path map
+
+OpenClaw's `workspaceRoot` for FPP is `~/.openclaw/workspace`. A top-level harness file such as `~/.openclaw/openclaw.json` is outside that root. To authorize `apply_patch` against such a file, map the absolute path to a resource alias used in the signed grant:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "openclaw-fpp-plugin": {
+        "config": {
+          "outOfWorkspacePaths": {
+            "<absolute-path-to-openclaw-json>": "harness/openclaw.json"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Use the host's real absolute path for the key. Only exact file entries are accepted — not parent-path matching or wildcards. See `docs/architecture/steward-operator-authorization.md`.
+
+`apply_patch` path extraction accepts structured `params.changes[]` (authoritative when present), plus flat V4A text under `patch|input|diff|content|text|command` (live Codex traffic uses `command`).
 
 ## Build from source
 
@@ -124,6 +148,8 @@ The published artifact ships pre-built `dist/`. Source is included in the npm ta
 3. **Audit log integrity depends on filesystem permissions.** The hash chain makes tampering *detectable* but not *preventable*. For tamper-evident archival, pipe the audit log to an append-only external store.
 4. **No cross-agent enforcement.** Sub-agents spawned via `sessions_spawn` inherit your config only if they share the same gateway. Sub-agents on remote hosts must install their own copy.
 5. **The classifier ships with English-language patterns.** Shell commands with non-Latin encoding (e.g., a path with unicode lookalike characters) may evade the protected-path check. The plugin is best-effort, not adversarial-strength, for these edge cases.
+6. **Never add top-level `await` to the plugin entry.** The OpenClaw gateway loader can reject the module and leave `before_tool_call` unregistered, creating a total enforcement bypass until fixed and restarted.
+7. **`packageBuildHash` is metadata-derived.** Receipt fields identify package name/version/API vectors, not a digest of `action-descriptor.js`. Confirm release provenance by inspecting the packed nested `@ovrsr/fpp-enforcement-core` artifact.
 
 ## Relationship to the parent skill
 

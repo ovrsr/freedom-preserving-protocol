@@ -22,6 +22,7 @@
     "verify-install": "npx tsx scripts/verify-install.ts",
     "adopt": "npx tsx scripts/safe-append.ts",
     "revoke": "npx tsx scripts/revoke.ts",
+    "authz:questionnaire": "npx tsx scripts/operator-authorization-questionnaire.ts",
     "audit:append": "npx tsx scripts/audit-append.ts",
     "audit:bootstrap": "npx tsx scripts/audit-bootstrap.ts",
     "audit:verify": "npx tsx scripts/audit-verify.ts",

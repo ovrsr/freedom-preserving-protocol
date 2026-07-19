@@ -51,6 +51,14 @@ export class StagedActionLedger {
       .map((l) => JSON.parse(l) as StagedActionRecord);
   }
 
+  private readLatest(): StagedActionRecord[] {
+    const latest = new Map<string, StagedActionRecord>();
+    for (const record of this.readAll()) {
+      latest.set(record.toolCallId, record);
+    }
+    return [...latest.values()];
+  }
+
   register(input: RegisterStagedInput): StagedActionRecord {
     const record: StagedActionRecord = {
       schemaVersion: 1,
@@ -67,10 +75,9 @@ export class StagedActionLedger {
 
   /** Mark open windows past undoExpiresAt as expired_without_undo (auditable). */
   sweepExpired(nowMs: number): StagedActionRecord[] {
-    const all = this.readAll();
+    const current = this.readLatest();
     const expired: StagedActionRecord[] = [];
-    const rewritten: StagedActionRecord[] = [];
-    for (const record of all) {
+    for (const record of current) {
       if (
         record.status === "open" &&
         Date.parse(record.undoExpiresAt) < nowMs
@@ -80,13 +87,9 @@ export class StagedActionLedger {
           status: "expired_without_undo",
         };
         expired.push(next);
-        rewritten.push(next);
         this.append(next);
-      } else {
-        rewritten.push(record);
       }
     }
-    void rewritten;
     return expired;
   }
 }

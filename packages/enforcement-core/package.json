@@ -1,6 +1,6 @@
 {
   "name": "@ovrsr/fpp-enforcement-core",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Harness-agnostic enforcement engines for the Freedom Preserving Protocol",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

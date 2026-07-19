@@ -72,6 +72,15 @@ export function computeEffectiveConfigHash(config: FppPluginConfig): string {
       approvalTimeoutBehavior: config.approvalTimeoutBehavior,
       respectTrustStrictMode: config.respectTrustStrictMode,
       knownCustomTools: [...config.knownCustomTools].sort(),
+      outOfWorkspacePaths: Object.entries(config.outOfWorkspacePaths)
+        .map(([absolutePath, resourcePathAlias]) => [
+          absolutePath,
+          resourcePathAlias,
+        ])
+        .sort((a, b) => {
+          const keyCmp = a[0]!.localeCompare(b[0]!);
+          return keyCmp !== 0 ? keyCmp : a[1]!.localeCompare(b[1]!);
+        }),
       auditFailureBehavior: config.auditFailureBehavior,
       acknowledgeDangerousOverrides: config.acknowledgeDangerousOverrides,
       receiptMaxPending: config.receiptMaxPending,
@@ -82,7 +91,9 @@ export function computeEffectiveConfigHash(config: FppPluginConfig): string {
       mandateDefaultMaxActions: config.mandateDefaultMaxActions,
       stagedUndoWindowMs: config.stagedUndoWindowMs,
       // intentionally omit: auditLogPath, receiptLogPath, identityKeyPath,
-      // mandateStorePath, strictModeStatePath, constitutionHash (bound separately)
+      // mandateStorePath, strictModeStatePath, stewardAuthorizationLedgerPath,
+      // constitutionHash (bound separately). outOfWorkspacePaths is included
+      // above because it changes authorization matching behavior.
     },
   });
 }

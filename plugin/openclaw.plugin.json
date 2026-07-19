@@ -51,6 +51,12 @@
         "description": "Explicit operator allowlist of known custom tool names that may bypass the unknown.unclassified → approval default. Default is empty — curated OpenClaw internals use named classes (internal.read, internal.heartbeat, gateway.inspect). Scoped — not a global fail-open. Allowing these tools is configuration evidence, not behavioral compliance.",
         "default": []
       },
+      "outOfWorkspacePaths": {
+        "type": "object",
+        "additionalProperties": { "type": "string" },
+        "default": {},
+        "description": "Exact absolute file path keys mapped to resource-path aliases for apply_patch targets outside workspaceRoot (for example a single harness config file). Only exact file entries are accepted — no wildcards and no parent-path matching. Bound into effective authorization policy."
+      },
       "auditFailureBehavior": {
         "type": "string",
         "enum": ["fail-closed", "degraded-allow-low-risk"],

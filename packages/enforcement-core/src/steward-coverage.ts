@@ -61,15 +61,24 @@ export function lookupStewardOperatorCoverage(input: {
   classification: string;
   workspaceRoot: string;
   knownCustomTools?: readonly string[];
+  outOfWorkspacePaths?: Readonly<Record<string, string>>;
   nowMs?: number;
 }): StewardCoverageLookup {
+  const options: {
+    knownCustomTools?: readonly string[];
+    outOfWorkspacePaths?: Readonly<Record<string, string>>;
+  } = {};
+  if (input.knownCustomTools !== undefined) {
+    options.knownCustomTools = input.knownCustomTools;
+  }
+  if (input.outOfWorkspacePaths !== undefined) {
+    options.outOfWorkspacePaths = input.outOfWorkspacePaths;
+  }
   const action = buildActionDescriptor(
     input.event,
     input.classification,
     input.workspaceRoot,
-    input.knownCustomTools !== undefined
-      ? { knownCustomTools: input.knownCustomTools }
-      : undefined,
+    Object.keys(options).length > 0 ? options : undefined,
   );
 
   const services = createServices(input.ledgerPath);

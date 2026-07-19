@@ -322,8 +322,13 @@ Human-signed operator grants live in `fpp-steward-authorization-ledger.jsonl` (c
 | No operator coverage / still requireApproval or abstain | Ledger absent, wrong audience, or grant not admitted | Run trust CLI `steward init` → key-admit (with `--accept-tofu` once) → authorization-admit; confirm instance audience matches |
 | `ledger unavailable: lock held` | Crash left `*.jsonl.lock/` | **Do not** auto-delete in automation. Confirm no other process holds the lock, then remove the lock directory only as explicit operator recovery after backup |
 | Hash / sequence / malformed tail errors | Manual JSONL edits or truncated write | Restore from backup; never hand-edit the live chain |
-| Grant admitted but action still denied | Scope mismatch, ambiguous `apply_patch` paths, exhausted uses, revoked key, or hard-floor | Exact classifications/tools/paths; ensure all patch targets are workspace-relative and listed; hard floors cannot be overridden |
+| Grant admitted but action still denied | Scope mismatch, ambiguous `apply_patch` paths, exhausted uses, revoked key, hard-floor, or missing `outOfWorkspacePaths` alias | Exact classifications/tools/paths; contained absolute paths resolve to workspace-relative targets; files outside `~/.openclaw/workspace` need an exact map entry whose alias matches the grant; hard floors cannot be overridden |
 | Second identical `apply_patch` denied after one allow | One-shot / maxUses consumed | Expected — issue a new authorization |
+| Live Codex `apply_patch` always ambiguous / never consumes | Payload under `params.command` or structured `params.changes[]` not recognized by an old core; absolute external target without map | Upgrade `@ovrsr/fpp-enforcement-core` ≥ `1.0.3` / plugin ≥ `1.1.18`; configure `outOfWorkspacePaths`; **full gateway restart** after manifest schema changes (hot reload will not pick up new config fields) |
+| Enforcement hook missing after a diagnostic edit | Top-level `await` in plugin entry rejected by gateway loader | Remove top-level await; keep entry synchronous; restart gateway |
+| Installed build looks current but live behavior is old | `packageBuildHash` only hashes package metadata | Inspect packed nested `node_modules/@ovrsr/fpp-enforcement-core/dist/action-descriptor.js` for `command` / structured `changes` handling |
+
+Coarse abstain diagnostics (no distinct `candidate.reason` in audit) are a tracked follow-up — see `docs/architecture/steward-operator-authorization.md`.
 
 ### Config drift after reinstall (empty quorum / unattended)
 

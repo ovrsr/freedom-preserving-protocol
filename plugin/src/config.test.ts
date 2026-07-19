@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -39,5 +40,31 @@ describe("manifest / runtime default parity", () => {
     assert.deepEqual(DEFAULT_CONFIG.knownCustomTools, []);
     const { CLASSIFICATION_IDS } = await import("@ovrsr/fpp-enforcement-core");
     assert.ok(CLASSIFICATION_IDS.includes("fpp.governance"));
+  });
+
+  it("declares outOfWorkspacePaths as an exact string-valued map defaulting to {}", () => {
+    assert.deepEqual(DEFAULT_CONFIG.outOfWorkspacePaths, {});
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as {
+      configSchema: {
+        additionalProperties: boolean;
+        properties: Record<
+          string,
+          {
+            type?: string;
+            additionalProperties?: { type?: string } | boolean;
+            default?: unknown;
+            description?: string;
+          }
+        >;
+      };
+    };
+    assert.equal(manifest.configSchema.additionalProperties, false);
+    const prop = manifest.configSchema.properties.outOfWorkspacePaths;
+    assert.ok(prop, "manifest must declare outOfWorkspacePaths");
+    assert.equal(prop.type, "object");
+    assert.deepEqual(prop.default, {});
+    assert.deepEqual(prop.additionalProperties, { type: "string" });
+    assert.match(String(prop.description), /exact/i);
+    assert.doesNotMatch(String(prop.description), /\*|glob|prefix|directory/i);
   });
 });
