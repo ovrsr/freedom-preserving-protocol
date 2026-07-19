@@ -4,13 +4,35 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const publishScript = join(root, "scripts", "clawhub-publish.sh");
 const verifyPack = join(root, "scripts", "verify-pack.sh");
+
+/** PATH without clawhub — dry-run must not require a global CLI install. */
+function envWithoutClawhub(
+  extra: Record<string, string> = {},
+): NodeJS.ProcessEnv {
+  // Use Node's platform delimiter only — splitting on ":" breaks Windows drive paths.
+  const raw = process.env.PATH ?? process.env.Path ?? "";
+  const parts = raw.split(delimiter).filter(Boolean);
+  const filtered = parts.filter(
+    (dir) =>
+      !existsSync(join(dir, "clawhub")) &&
+      !existsSync(join(dir, "clawhub.cmd")) &&
+      !existsSync(join(dir, "clawhub.exe")),
+  );
+  const pathValue = filtered.join(delimiter);
+  return {
+    ...process.env,
+    PATH: pathValue,
+    Path: pathValue,
+    ...extra,
+  };
+}
 
 function readJson(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
@@ -61,11 +83,12 @@ describe("protocol-core release ordering", () => {
       {
         cwd: root,
         encoding: "utf8",
-        env: { ...process.env, FPP_ALLOW_SKIP_TESTS: "1" },
+        env: envWithoutClawhub({ FPP_ALLOW_SKIP_TESTS: "1" }),
       },
     );
     const out = `${result.stdout}\n${result.stderr}`;
     assert.equal(result.status, 0, out);
+    assert.doesNotMatch(out, /clawhub CLI not found/i);
     assert.match(out, /protocol-core|fpp-protocol-core|core before/i);
     const coreIdx = out.search(/protocol-core|fpp-protocol-core|core package/i);
     const pluginIdx = out.search(/openclaw-fpp-plugin|enforcement plugin/i);

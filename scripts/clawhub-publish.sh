@@ -521,7 +521,10 @@ case "$COMMAND" in
   publish)
     [[ -z "$TARGET" ]] && die "No target specified. Use: skill | plugin | trust | all"
     [[ -z "$CHANGELOG" ]] && die "--changelog is required for publish"
-    require_clawhub
+    # Dry-run never invokes the registry CLI; require it only for live publishes.
+    if [[ "$DRY_RUN" != "true" ]]; then
+      require_clawhub
+    fi
     require_clean_tree
     case "$TARGET" in
       skill)  publish_skill ;;
