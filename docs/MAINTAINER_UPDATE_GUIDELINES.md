@@ -34,9 +34,17 @@ The updater must not modify:
 
 Those surfaces encode host-local commitments, evidence, or policy and are not repo artifacts.
 
+Ownership enforcement:
+
+- After each successful sync, write `.fpp-updater-manifest.json` listing only staged relative paths.
+- On later updates, remove only paths present in the prior manifest and absent from the new staged inventory.
+- First update of a legacy target (no manifest) is additive — never infer ownership from arbitrary destination files.
+- Reject absolute paths and `..` segments in manifests before any destination write.
+- Do not reintroduce whole-tree `rsync --delete` or `rm -rf "$dest"` replacement paths.
+
 ### Backup before overwrite
 
-Every target directory must be backed up before sync unless the run is a dry run.
+Every target directory must be backed up in full (including the ownership manifest when present) before sync unless the run is a dry run.
 
 Do not introduce a no-backup fast path unless it is explicit, loudly named, and justified.
 
@@ -96,7 +104,9 @@ bash scripts/verify-adapter-pack.sh
 - Keep the default target set conservative: OpenClaw skill + plugins only.
 - Require explicit destination paths for adapters unless a stable cross-host convention exists.
 - Do not auto-edit Codex/Cursor/Claude hook config from this updater; package refresh and hook-policy changes are separate concerns.
-- Keep rollback obvious: one backup directory per asset, `rsync`-restorable.
+- Keep rollback obvious: one full backup directory per asset, `rsync`-restorable (including `.fpp-updater-manifest.json`).
+- Keep `--dry-run` honest: report planned copies and planned owned-file removals without writing the target or a new manifest.
+- Ownership regression coverage lives in `scripts/update-installed-assets.test.ts`; keep that suite green when changing sync behavior.
 - If you add a new consumer artifact, teach the updater to pack that consumer rather than copying its source tree.
 
 ## Operator-Facing Messaging

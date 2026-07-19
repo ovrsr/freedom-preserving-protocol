@@ -25,21 +25,16 @@ jobs:
         with:
           node-version-file: ".node-version"
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            plugin/package-lock.json
-            plugin-trust/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install root dependencies
+        # Root workspaces already include plugin/ and plugin-trust/. Nested
+        # `npm ci` in those directories rewrites the install tree and drops
+        # workspace packages adapters need (notably @ovrsr/fpp-tool-proxy).
         run: npm ci
 
-      - name: Install enforcement plugin dependencies
-        working-directory: plugin
-        run: npm ci --ignore-scripts
-
-      - name: Install trust plugin dependencies
-        working-directory: plugin-trust
-        run: npm ci --ignore-scripts
+      - name: Assert workspace package links
+        run: npx tsx --test scripts/assert-workspace-links.test.ts
 
       - name: Build library cores
         run: npm run build:core

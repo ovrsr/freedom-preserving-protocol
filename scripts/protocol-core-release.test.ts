@@ -58,7 +58,11 @@ describe("protocol-core release ordering", () => {
         "test",
         "--skip-tests",
       ],
-      { cwd: root, encoding: "utf8" },
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...process.env, FPP_ALLOW_SKIP_TESTS: "1" },
+      },
     );
     const out = `${result.stdout}\n${result.stderr}`;
     assert.equal(result.status, 0, out);

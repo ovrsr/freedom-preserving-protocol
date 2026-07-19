@@ -183,6 +183,8 @@ If you need to refresh already-installed skill/plugin/adapter assets on another 
 bash scripts/update-installed-assets.sh --dry-run
 ```
 
+The updater is ownership-aware: it writes `.fpp-updater-manifest.json` per target, preserves unowned local files, and on later updates removes only stale previously owned paths. First updates of legacy installs are additive. See the runbook for backup and rollback details.
+
 Docs:
 
 - `docs/runbooks/in-place-updates.md`

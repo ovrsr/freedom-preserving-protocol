@@ -49,8 +49,9 @@ This script stages canonical install artifacts first:
   - plugins   -> npm pack output after build + bundledDependencies staging
   - adapters  -> npm pack output after build + bundledDependencies staging
 
-It then rsyncs those staged artifacts into existing install directories, with a
-timestamped backup of every target directory before overwrite.
+It then syncs those staged artifacts into existing install directories using an
+ownership manifest: only previously updater-owned files may be removed, and a
+timestamped backup of every target directory is taken before overwrite.
 
 Usage:
   bash scripts/update-installed-assets.sh [options]
@@ -73,7 +74,7 @@ Target options:
 
 Behavior options:
   --backup-root <dir>     Parent directory for timestamped backups
-  --dry-run               Stage everything, show rsync plan, do not overwrite
+  --dry-run               Stage everything, show planned copy/removals, do not overwrite
   --keep-stage            Keep the temporary staging directory after completion
   -h, --help              Show this help
 
@@ -87,6 +88,9 @@ Examples:
     --codex-dir "$HOME/lib/fpp/adapters/codex"
 
 Safety notes:
+  - First update of a legacy target is additive (no prior ownership manifest).
+  - Later updates remove only stale files listed in .fpp-updater-manifest.json.
+  - Files not listed in the ownership manifest are never deleted.
   - This does not edit SOUL.md, MEMORY.md, FPP workspace logs, or OpenClaw config.
   - This does not republish to ClawHub.
   - This does not rewrite Codex/Cursor/Claude hook config files; it updates only
@@ -98,28 +102,193 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
-sync_trees() {
+OWNED_MANIFEST_NAME=".fpp-updater-manifest.json"
+
+# Non-destructive tree copy used for backups (never deletes destination files).
+copy_trees() {
+  local src="$1"
+  local dest="$2"
+
+  mkdir -p "$dest"
+  if [[ "$SYNC_TOOL" == "rsync" ]]; then
+    rsync -a "$src/" "$dest/"
+  else
+    cp -a "$src/." "$dest/"
+  fi
+}
+
+list_relative_files() {
+  local dir="$1"
+  node -e '
+    const fs = require("fs");
+    const path = require("path");
+    const root = process.argv[1];
+    const skip = process.argv[2];
+    function walk(d, base) {
+      for (const name of fs.readdirSync(d, { withFileTypes: true })) {
+        const full = path.join(d, name.name);
+        const rel = path.relative(base, full).split(path.sep).join("/");
+        if (name.isDirectory()) {
+          walk(full, base);
+        } else if (rel !== skip) {
+          process.stdout.write(rel + "\n");
+        }
+      }
+    }
+    walk(root, root);
+  ' "$dir" "$OWNED_MANIFEST_NAME"
+}
+
+read_prior_owned_list() {
+  local dest="$1"
+  local manifest="$dest/$OWNED_MANIFEST_NAME"
+  [[ -f "$manifest" ]] || return 0
+  node -e '
+    const fs = require("fs");
+    const path = require("path");
+    const manifestPath = process.argv[1];
+    let data;
+    try {
+      data = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    } catch (err) {
+      console.error("ERROR: invalid ownership manifest (not JSON): " + manifestPath);
+      process.exit(2);
+    }
+    if (!data || data.version !== 1 || !Array.isArray(data.files)) {
+      console.error("ERROR: invalid ownership manifest shape: " + manifestPath);
+      process.exit(2);
+    }
+    for (const rel of data.files) {
+      if (typeof rel !== "string" || !rel) {
+        console.error("ERROR: unsafe ownership manifest path: " + String(rel));
+        process.exit(2);
+      }
+      if (path.isAbsolute(rel) || /^[A-Za-z]:[\\\\/]/.test(rel)) {
+        console.error("ERROR: unsafe ownership manifest path (absolute/escape): " + rel);
+        process.exit(2);
+      }
+      const parts = rel.split(/[/\\\\]/);
+      if (parts.some((p) => p === ".." || p === "")) {
+        console.error("ERROR: unsafe ownership manifest path (escape): " + rel);
+        process.exit(2);
+      }
+      process.stdout.write(parts.join("/") + "\n");
+    }
+  ' "$manifest"
+}
+
+remove_owned_rel() {
+  local dest="$1"
+  local rel="$2"
+  node -e '
+    const fs = require("fs");
+    const path = require("path");
+    const dest = process.argv[1];
+    const rel = process.argv[2];
+    const parts = rel.split(/[/\\\\]/);
+    if (!rel || parts.some((p) => p === ".." || p === "")) {
+      console.error("ERROR: unsafe ownership path: " + rel);
+      process.exit(2);
+    }
+    if (path.isAbsolute(rel) || /^[A-Za-z]:[\\\\/]/.test(rel)) {
+      console.error("ERROR: unsafe ownership path: " + rel);
+      process.exit(2);
+    }
+    const full = path.join(dest, ...parts);
+    const resolved = path.resolve(full);
+    const root = path.resolve(dest);
+    const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+    if (resolved !== root && !resolved.startsWith(prefix)) {
+      console.error("ERROR: ownership path escapes target: " + rel);
+      process.exit(2);
+    }
+    if (fs.existsSync(full)) {
+      fs.rmSync(full, { force: true });
+    }
+  ' "$dest" "$rel"
+}
+
+write_owned_manifest() {
+  local dest="$1"
+  local list_file="$2"
+  node -e '
+    const fs = require("fs");
+    const path = require("path");
+    const dest = process.argv[1];
+    const listFile = process.argv[2];
+    const name = process.argv[3];
+    const files = fs.readFileSync(listFile, "utf8")
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .sort();
+    fs.mkdirSync(dest, { recursive: true });
+    fs.writeFileSync(
+      path.join(dest, name),
+      JSON.stringify({ version: 1, files }, null, 2) + "\n",
+    );
+  ' "$dest" "$list_file" "$OWNED_MANIFEST_NAME"
+}
+
+# Ownership-aware sync: copy staged files; remove only previously owned stale paths.
+sync_owned() {
   local src="$1"
   local dest="$2"
   local mode="${3:-apply}"
+  local staged_list prior_list stale_list
+  local rel
 
-  if [[ "$SYNC_TOOL" == "rsync" ]]; then
-    if [[ "$mode" == "dry-run" ]]; then
-      rsync -a --delete --dry-run "$src/" "$dest/"
-    else
-      rsync -a --delete "$src/" "$dest/"
-    fi
-    return
-  fi
+  staged_list="$(mktemp "${TMPDIR:-/tmp}/fpp-owned-staged.XXXXXX")"
+  prior_list="$(mktemp "${TMPDIR:-/tmp}/fpp-owned-prior.XXXXXX")"
+  stale_list="$(mktemp "${TMPDIR:-/tmp}/fpp-owned-stale.XXXXXX")"
+
+  list_relative_files "$src" | sort -u >"$staged_list"
+  read_prior_owned_list "$dest" | sort -u >"$prior_list" || {
+    rm -f "$staged_list" "$prior_list" "$stale_list"
+    die "rejected unsafe or invalid ownership manifest under $dest"
+  }
+
+  # Stale = previously owned but absent from the new staged inventory.
+  comm -23 "$prior_list" "$staged_list" >"$stale_list"
 
   if [[ "$mode" == "dry-run" ]]; then
-    yellow "  dry-run: cp fallback cannot diff; would replace contents in $dest"
-    return
+    yellow "  dry-run: would copy staged files into $dest"
+    if [[ "$SYNC_TOOL" == "rsync" ]]; then
+      rsync -a --dry-run "$src/" "$dest/" || true
+    else
+      while IFS= read -r rel; do
+        [[ -n "$rel" ]] || continue
+        yellow "  dry-run: would copy $rel"
+      done <"$staged_list"
+    fi
+    if [[ -s "$stale_list" ]]; then
+      yellow "  dry-run: planned owned-file removals:"
+      while IFS= read -r rel; do
+        [[ -n "$rel" ]] || continue
+        yellow "    would remove owned file: $rel"
+      done <"$stale_list"
+    else
+      yellow "  dry-run: no planned owned-file removals"
+    fi
+    rm -f "$staged_list" "$prior_list" "$stale_list"
+    return 0
   fi
 
-  rm -rf "$dest"
+  while IFS= read -r rel; do
+    [[ -n "$rel" ]] || continue
+    yellow "  removing stale owned file: $rel"
+    remove_owned_rel "$dest" "$rel"
+  done <"$stale_list"
+
   mkdir -p "$dest"
-  cp -a "$src/." "$dest/"
+  if [[ "$SYNC_TOOL" == "rsync" ]]; then
+    rsync -a "$src/" "$dest/"
+  else
+    cp -a "$src/." "$dest/"
+  fi
+
+  write_owned_manifest "$dest" "$staged_list"
+  rm -f "$staged_list" "$prior_list" "$stale_list"
 }
 
 cleanup() {
@@ -211,10 +380,22 @@ require_cmd npm
 require_cmd tar
 require_cmd mktemp
 
-if command -v rsync >/dev/null 2>&1; then
+if [[ "${FPP_UPDATE_FORCE_CP:-}" == "1" ]]; then
+  SYNC_TOOL="cp"
+elif command -v rsync >/dev/null 2>&1; then
   SYNC_TOOL="rsync"
 else
   SYNC_TOOL="cp"
+fi
+
+# Test seam: when FPP_UPDATE_TEST_STAGE points at a pre-populated stage root
+# (skill/, plugin/, …), skip dependency install, builds, and packaging.
+UPDATE_TEST_MODE=0
+if [[ -n "${FPP_UPDATE_TEST_STAGE:-}" ]]; then
+  [[ -d "$FPP_UPDATE_TEST_STAGE" ]] || die "FPP_UPDATE_TEST_STAGE is not a directory: $FPP_UPDATE_TEST_STAGE"
+  UPDATE_TEST_MODE=1
+  STAGE_ROOT="$FPP_UPDATE_TEST_STAGE"
+  KEEP_STAGE=1
 fi
 
 pkg_version() {
@@ -224,7 +405,7 @@ pkg_version() {
 ensure_root_deps() {
   if [[ ! -x "$REPO_ROOT/node_modules/.bin/tsx" ]]; then
     bold "Installing root repo dependencies..."
-    (cd "$REPO_ROOT" && npm i""nstall)
+    (cd "$REPO_ROOT" && npm install)
   fi
 }
 
@@ -265,7 +446,7 @@ backup_dir() {
 
   mkdir -p "$(dirname "$dest")"
   bold "Backing up $src -> $dest"
-  sync_trees "$src" "$dest" apply
+  copy_trees "$src" "$dest"
 }
 
 sync_dir() {
@@ -284,9 +465,9 @@ sync_dir() {
   yellow "  source: $src"
   yellow "  target: $dest"
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    sync_trees "$src" "$dest" dry-run
+    sync_owned "$src" "$dest" dry-run
   else
-    sync_trees "$src" "$dest" apply
+    sync_owned "$src" "$dest" apply
   fi
 }
 
@@ -297,15 +478,18 @@ summarize_target() {
   printf '%-16s %s (v%s)\n' "$label" "$path" "$(pkg_version "$pkg")"
 }
 
-ensure_root_deps
-
-if [[ "$WANT_PLUGIN" -eq 1 || "$WANT_TRUST" -eq 1 || "$WANT_CURSOR" -eq 1 || "$WANT_CLAUDE" -eq 1 || "$WANT_CODEX" -eq 1 ]]; then
-  bold "Building shared workspace packages..."
-  (cd "$REPO_ROOT" && npm run build:core >/dev/null)
-fi
-
-STAGE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/fpp-update.XXXXXX")"
 BACKUP_ROOT="$BACKUP_BASE/$STAMP"
+
+if [[ "$UPDATE_TEST_MODE" -ne 1 ]]; then
+  ensure_root_deps
+
+  if [[ "$WANT_PLUGIN" -eq 1 || "$WANT_TRUST" -eq 1 || "$WANT_CURSOR" -eq 1 || "$WANT_CLAUDE" -eq 1 || "$WANT_CODEX" -eq 1 ]]; then
+    bold "Building shared workspace packages..."
+    (cd "$REPO_ROOT" && npm run build:core >/dev/null)
+  fi
+
+  STAGE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/fpp-update.XXXXXX")"
+fi
 
 bold "Repo root:   $REPO_ROOT"
 bold "Stage root:  $STAGE_ROOT"
@@ -316,23 +500,25 @@ else
 fi
 printf '\n'
 
-if [[ "$WANT_SKILL" -eq 1 ]]; then
-  stage_skill "$STAGE_ROOT/skill"
-fi
-if [[ "$WANT_PLUGIN" -eq 1 ]]; then
-  pack_asset "plugin" "$STAGE_ROOT/plugin"
-fi
-if [[ "$WANT_TRUST" -eq 1 ]]; then
-  pack_asset "plugin-trust" "$STAGE_ROOT/plugin-trust"
-fi
-if [[ "$WANT_CURSOR" -eq 1 ]]; then
-  pack_asset "adapters/cursor" "$STAGE_ROOT/cursor"
-fi
-if [[ "$WANT_CLAUDE" -eq 1 ]]; then
-  pack_asset "adapters/claude-code" "$STAGE_ROOT/claude-code"
-fi
-if [[ "$WANT_CODEX" -eq 1 ]]; then
-  pack_asset "adapters/codex" "$STAGE_ROOT/codex"
+if [[ "$UPDATE_TEST_MODE" -ne 1 ]]; then
+  if [[ "$WANT_SKILL" -eq 1 ]]; then
+    stage_skill "$STAGE_ROOT/skill"
+  fi
+  if [[ "$WANT_PLUGIN" -eq 1 ]]; then
+    pack_asset "plugin" "$STAGE_ROOT/plugin"
+  fi
+  if [[ "$WANT_TRUST" -eq 1 ]]; then
+    pack_asset "plugin-trust" "$STAGE_ROOT/plugin-trust"
+  fi
+  if [[ "$WANT_CURSOR" -eq 1 ]]; then
+    pack_asset "adapters/cursor" "$STAGE_ROOT/cursor"
+  fi
+  if [[ "$WANT_CLAUDE" -eq 1 ]]; then
+    pack_asset "adapters/claude-code" "$STAGE_ROOT/claude-code"
+  fi
+  if [[ "$WANT_CODEX" -eq 1 ]]; then
+    pack_asset "adapters/codex" "$STAGE_ROOT/codex"
+  fi
 fi
 
 printf '\n'

@@ -68,9 +68,14 @@ describe("bundle-workspace-deps", () => {
   });
 
   it("stages declared packages into consumer/node_modules/@ovrsr/...", async () => {
+    const coreVer = (
+      JSON.parse(
+        readFileSync(join(root, "packages/protocol-core/package.json"), "utf8"),
+      ) as { version: string }
+    ).version;
     const consumer = join(tmp, "stage-ok");
     writeConsumer(consumer, {
-      deps: { "@ovrsr/fpp-protocol-core": "1.0.0" },
+      deps: { "@ovrsr/fpp-protocol-core": coreVer },
       bundled: ["@ovrsr/fpp-protocol-core"],
     });
 
@@ -90,7 +95,7 @@ describe("bundle-workspace-deps", () => {
     assert.ok(existsSync(staged), `expected staged package at ${staged}`);
     const pkg = JSON.parse(readFileSync(staged, "utf8")) as { version: string; name: string };
     assert.equal(pkg.name, "@ovrsr/fpp-protocol-core");
-    assert.equal(pkg.version, "1.0.0");
+    assert.equal(pkg.version, coreVer);
   });
 
   it("refuses version mismatch vs consumer dependencies pin", async () => {

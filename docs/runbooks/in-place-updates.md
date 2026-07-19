@@ -21,11 +21,25 @@ Do not use this runbook to modify adoption state. It does not edit `SOUL.md`, `M
 
 This matters because copying raw monorepo directories into live installs can leave behind unpublished files, missing bundled `@ovrsr/*` dependencies, or a half-built `dist/`.
 
+### Ownership model
+
+After a successful sync, each target directory contains `.fpp-updater-manifest.json`. That file lists only the relative paths the updater delivered from the staged artifact.
+
+| Situation | Behavior |
+|---|---|
+| First update of a legacy target (no manifest yet) | **Additive only.** Staged files are copied/overwritten; nothing else is deleted. |
+| Later update (manifest present) | Staged files are copied; files listed in the prior manifest but absent from the new staged inventory are removed as stale owned files. |
+| Any other file in the target | **Never deleted** by the updater, including operator state and unknown local files. |
+
+Unsafe manifest entries (absolute paths or `..` segments) cause the update to abort before destination writes.
+
+Ownership behavior is covered by `scripts/update-installed-assets.test.ts`.
+
 ## Prerequisites
 
 - Node `>=22.19`
 - `npm`
-- `rsync` (preferred; the updater falls back to `cp -a` when `rsync` is unavailable)
+- `rsync` (preferred; the updater falls back to `cp -a` when `rsync` is unavailable — both paths use the same ownership rules)
 - `tar`
 - a clone of `https://github.com/ovrsr/freedom-preserving-protocol`
 
@@ -44,6 +58,8 @@ Always start with a dry run:
 ```bash
 bash scripts/update-installed-assets.sh --dry-run
 ```
+
+Dry-run stages artifacts (or uses an existing stage in tests), reports planned copies, and lists planned owned-file removals. It does not modify the target directory, write a new ownership manifest, or create backups.
 
 Default targets when none are specified:
 
@@ -93,11 +109,13 @@ bash scripts/update-installed-assets.sh \
 
 ## Backups
 
-Before overwrite, each target directory is copied to:
+Before any non-dry-run write, each existing target directory is copied in full (including `.fpp-updater-manifest.json` when present) to:
 
 ```text
 ~/.fpp/update-backups/<timestamp>/<asset-name>/
 ```
+
+Asset labels match the sync labels: `skill`, `plugin`, `plugin-trust`, `adapter-cursor`, `adapter-claude-code`, `adapter-codex`.
 
 Override the parent backup root with:
 
@@ -151,12 +169,13 @@ Expected direction: the profile should report Codex probe status honestly. Shell
 - `.openclaw/workspace/fpp-trust-graph.json`
 - `openclaw.json` or other host config files
 - `~/.codex/hooks.json`, `~/.cursor/...`, `.claude/...` hook config files
+- any other file in the target that is not listed in `.fpp-updater-manifest.json`
 
-Those are operator-controlled state or local policy surfaces. Update them separately and intentionally.
+Those are operator-controlled state or local policy surfaces. The ownership model plus `scripts/update-installed-assets.test.ts` back this preservation guarantee: the updater never sweeps unowned destination content.
 
 ## Rollback
 
-Restore the backed-up asset directory with `rsync`:
+Restore the backed-up asset directory with `rsync` (or an equivalent full-tree restore). Rollback intentionally replaces the live target with the pre-update snapshot, including the prior ownership manifest:
 
 ```bash
 rsync -a --delete \
@@ -164,4 +183,4 @@ rsync -a --delete \
   "$HOME/.openclaw/extensions/openclaw-fpp-plugin/"
 ```
 
-Apply the same pattern for `skill`, `plugin-trust`, or adapter backups.
+Apply the same pattern for `skill`, `plugin-trust`, or adapter backups (`adapter-cursor`, `adapter-claude-code`, `adapter-codex`).
