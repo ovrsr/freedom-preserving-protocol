@@ -39,8 +39,13 @@ describe("StagedActionLedger", () => {
     const expired = ledger.sweepExpired(Date.parse("2026-07-10T12:00:02.000Z"));
     assert.equal(expired.length, 1);
     assert.equal(expired[0]!.status, "expired_without_undo");
-    const lines = readFileSync(path, "utf8").trim().split("\n");
-    assert.ok(lines.length >= 2);
-    assert.match(lines.at(-1)!, /expired_without_undo/);
+    const linesAfterFirstSweep = readFileSync(path, "utf8").trim().split("\n");
+    assert.equal(linesAfterFirstSweep.length, 2);
+    assert.match(linesAfterFirstSweep.at(-1)!, /expired_without_undo/);
+
+    const repeated = ledger.sweepExpired(Date.parse("2026-07-10T12:00:03.000Z"));
+    assert.equal(repeated.length, 0);
+    const linesAfterSecondSweep = readFileSync(path, "utf8").trim().split("\n");
+    assert.equal(linesAfterSecondSweep.length, 2);
   });
 });

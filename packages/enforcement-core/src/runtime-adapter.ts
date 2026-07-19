@@ -250,6 +250,7 @@ export function createEnforcementRuntime(
   let mandateStore: MandateStore | null = null;
   let emergencyOverrideStore: EmergencyOverrideStore | null = null;
   let stagedLedger: StagedActionLedger | null = null;
+  let lastStagedSweepMs = 0;
   let emergencyLedger: EmergencyReviewLedger | null = null;
   let strictModeCache: { result: StrictReadResult; readAt: number } | null =
     null;
@@ -318,6 +319,22 @@ export function createEnforcementRuntime(
       );
     }
     return stagedLedger;
+  }
+
+  function sweepStagedActions(nowMs: number): void {
+    const intervalMs = Math.max(
+      1_000,
+      Math.min(config.stagedUndoWindowMs, 60_000),
+    );
+    if (nowMs - lastStagedSweepMs < intervalMs) return;
+    lastStagedSweepMs = nowMs;
+    try {
+      getStagedLedger().sweepExpired(nowMs);
+    } catch (err) {
+      emitAuditGap(
+        `staged-action expiry sweep failed: ${(err as Error).message}`,
+      );
+    }
   }
 
   function getEmergencyLedger(): EmergencyReviewLedger {
@@ -508,6 +525,7 @@ export function createEnforcementRuntime(
     event: FppToolCallEvent,
     ctx: FppToolCallContext,
   ): Promise<FppBeforeToolCallResult> {
+    sweepStagedActions(Date.now());
     const store = getReceiptStore();
     const classification = classifyToolCall(event.toolName, event.params ?? {}, {
       knownCustomTools: config.knownCustomTools,
@@ -897,6 +915,7 @@ export function createEnforcementRuntime(
       mandateStore = null;
       emergencyOverrideStore = null;
       stagedLedger = null;
+      lastStagedSweepMs = 0;
       emergencyLedger = null;
       strictModeCache = null;
     },
