@@ -55,6 +55,13 @@ export type FppPluginConfig = {
    */
   knownCustomTools: string[];
   /**
+   * Exact absolute-path → resource-path alias map for files outside
+   * workspaceRoot that may appear in apply_patch targets (e.g. a harness
+   * top-level config). Directory prefixes and globs are not supported.
+   * Bound into effectiveConfigHash as authorization policy.
+   */
+  outOfWorkspacePaths: Record<string, string>;
+  /**
    * Behavior when the enforcement audit log cannot be written (corruption,
    * permissions, etc.). Default `fail-closed` blocks high-risk and unknown
    * calls rather than proceeding without an audit record.
@@ -131,6 +138,7 @@ export const DEFAULT_CONFIG: FppPluginConfig = {
   strictModeStatePath: workspaceFile("fpp-strict-sessions.json"),
   respectTrustStrictMode: true,
   knownCustomTools: [],
+  outOfWorkspacePaths: {},
   auditFailureBehavior: "fail-closed",
   acknowledgeDangerousOverrides: false,
   receiptMaxPending: 256,
@@ -314,6 +322,9 @@ export function mergeConfigWithDiagnostics(input: unknown): MergeConfigResult {
     respectTrustStrictMode:
       partial.respectTrustStrictMode ?? DEFAULT_CONFIG.respectTrustStrictMode,
     knownCustomTools: partial.knownCustomTools ?? DEFAULT_CONFIG.knownCustomTools,
+    outOfWorkspacePaths: {
+      ...(partial.outOfWorkspacePaths ?? DEFAULT_CONFIG.outOfWorkspacePaths),
+    },
     auditFailureBehavior:
       partial.auditFailureBehavior ?? DEFAULT_CONFIG.auditFailureBehavior,
     acknowledgeDangerousOverrides: ack,

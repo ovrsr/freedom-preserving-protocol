@@ -33,6 +33,7 @@ const MANIFEST_DEFAULT_KEYS: (keyof FppPluginConfig)[] = [
   "strictModeStatePath",
   "respectTrustStrictMode",
   "knownCustomTools",
+  "outOfWorkspacePaths",
   "auditFailureBehavior",
   "receiptMaxPending",
   "receiptPendingTtlMs",

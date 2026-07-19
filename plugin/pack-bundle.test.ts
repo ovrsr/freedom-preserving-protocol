@@ -13,6 +13,7 @@ import {
   mkdirSync,
   readdirSync,
   writeFileSync,
+  readFileSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -120,6 +121,41 @@ describe("plugin pack-bundle", { concurrency: false }, () => {
       existsSync(join(pluginInstall, "node_modules/@ovrsr/fpp-enforcement-core/package.json")),
       "bundled enforcement-core must land under the installed plugin",
     );
+
+    const nestedCorePkg = JSON.parse(
+      readFileSync(
+        join(
+          pluginInstall,
+          "node_modules/@ovrsr/fpp-enforcement-core/package.json",
+        ),
+        "utf8",
+      ),
+    ) as { name: string; version: string };
+    assert.equal(nestedCorePkg.name, "@ovrsr/fpp-enforcement-core");
+    assert.equal(nestedCorePkg.version, "1.0.3");
+
+    const pluginPkg = JSON.parse(
+      readFileSync(join(pluginInstall, "package.json"), "utf8"),
+    ) as {
+      version: string;
+      dependencies?: Record<string, string>;
+    };
+    assert.equal(pluginPkg.version, "1.1.18");
+    assert.equal(
+      pluginPkg.dependencies?.["@ovrsr/fpp-enforcement-core"],
+      "1.0.3",
+    );
+
+    const actionDescriptorJs = readFileSync(
+      join(
+        pluginInstall,
+        "node_modules/@ovrsr/fpp-enforcement-core/dist/action-descriptor.js",
+      ),
+      "utf8",
+    );
+    assert.match(actionDescriptorJs, /"command"/);
+    assert.match(actionDescriptorJs, /params\?\.changes|extractStructuredChangeTargets/);
+    assert.match(actionDescriptorJs, /outOfWorkspacePaths/);
 
     // Script must live under the plugin package so Node resolves @ovrsr/* from there
     const importScript = join(pluginInstall, "check-import.mjs");

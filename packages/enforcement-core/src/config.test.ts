@@ -145,6 +145,28 @@ describe("mergeConfig", () => {
     assert.deepEqual(mergeConfig({}).knownCustomTools, []);
   });
 
+  it("defaults outOfWorkspacePaths to an empty exact-path map", () => {
+    assert.deepEqual(DEFAULT_CONFIG.outOfWorkspacePaths, {});
+    assert.deepEqual(mergeConfig({}).outOfWorkspacePaths, {});
+    assert.deepEqual(mergeConfig(undefined).outOfWorkspacePaths, {});
+  });
+
+  it("accepts an explicit outOfWorkspacePaths map without mutating the input", () => {
+    const external = "/home/op/.openclaw/openclaw.json";
+    const inputMap = { [external]: "harness/openclaw.json" };
+    const merged = mergeConfig({
+      outOfWorkspacePaths: inputMap,
+      knownCustomTools: ["my_org_tool"],
+    });
+    assert.deepEqual(merged.outOfWorkspacePaths, {
+      [external]: "harness/openclaw.json",
+    });
+    assert.deepEqual(inputMap, { [external]: "harness/openclaw.json" });
+    assert.notEqual(merged.outOfWorkspacePaths, inputMap);
+    assert.deepEqual(merged.knownCustomTools, ["my_org_tool"]);
+    assert.deepEqual(DEFAULT_CONFIG.outOfWorkspacePaths, {});
+  });
+
   it("absolutizes relative .openclaw/workspace path fields from manifest-style config", () => {
     const prev = process.env.FPP_WORKSPACE;
     delete process.env.FPP_WORKSPACE;

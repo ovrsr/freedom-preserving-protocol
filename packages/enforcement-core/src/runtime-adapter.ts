@@ -528,6 +528,7 @@ export function createEnforcementRuntime(
       classification: classification.classification,
       workspaceRoot,
       knownCustomTools: config.knownCustomTools,
+      outOfWorkspacePaths: config.outOfWorkspacePaths,
     });
     if (!liveMandate && stewardAction.liveMandate) {
       liveMandate = stewardAction.liveMandate;

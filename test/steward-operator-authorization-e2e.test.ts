@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 import * as openpgp from "openpgp";
 import {
@@ -217,6 +217,170 @@ describe("steward operator authorization E2E", () => {
       { toolCallId: "e2e-3" },
     );
     assert.notEqual(mismatch.action, "allow");
+  });
+
+  it("allows live-shaped external apply_patch once via outOfWorkspacePaths alias", async () => {
+    const root = mkdtempSync(join(tmpdir(), "fpp-steward-e2e-ext-"));
+    dirs.push(root);
+    const ledgerPath = join(root, "fpp-steward-authorization-ledger.jsonl");
+    const auditPath = join(root, "fpp-plugin-audit.jsonl");
+    const audience = "instance:e2e-ext";
+    const externalPath = resolve(root, "..", "openclaw.json");
+    const alias = "harness/openclaw.json";
+
+    const ledger = new StewardAuthorizationLedger({ path: ledgerPath });
+    assert.equal(
+      ledger.initialize({
+        instanceAudience: audience,
+        maxStandingLifetimeMs: 86_400_000,
+        maxStandingUses: 50,
+        maxOneShotLifetimeMs: 3_600_000,
+        allowedClockSkewMs: 300_000,
+      }).ok,
+      true,
+    );
+    const backends = createDefaultBackendRegistry([createOpenPgpBackend()]);
+    const registry = new StewardRegistry({ ledger, backends });
+    const key = await generateKey("e2e-ext");
+    const stewardId = mintStewardIdV1();
+    const attestation: StewardKeyAttestationV1 = {
+      schemaVersion: 1,
+      kind: "steward-key-attestation",
+      attestationId: "att-e2e-ext",
+      operation: "initial-bind",
+      stewardId,
+      audience,
+      subjectKey: {
+        algorithm: "openpgp",
+        keyRef: key.keyRef,
+        publicKeyArmored: key.publicKeyArmored,
+      },
+      issuedAt: new Date().toISOString(),
+      nonce: "j".repeat(32),
+      reason: "e2e external",
+    };
+    assert.equal(
+      (
+        await registry.admitKeyAttestation({
+          attestation,
+          format: "detached",
+          signaturesArmored: [await signDetached(attestation, key.privateKey)],
+          acceptTofu: true,
+        })
+      ).ok,
+      true,
+    );
+
+    const service = new AuthorizationService({ ledger, backends, registry });
+    const now = Date.now();
+    const grant: OperatorAuthorizationV1 = {
+      schemaVersion: 1,
+      kind: "operator-authorization",
+      authorizationId: "authz-e2e-ext",
+      stewardId,
+      signingKeyRef: key.keyRef,
+      audience,
+      mode: "one-shot",
+      scope: {
+        classifications: ["code.patch"],
+        toolNames: ["apply_patch"],
+        resourcePaths: [alias],
+      },
+      issuedAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + 120_000).toISOString(),
+      nonce: "k".repeat(32),
+      maxUses: 1,
+      reason: "e2e external one-shot",
+    };
+    assert.equal(
+      (
+        await service.admit({
+          authorization: grant,
+          format: "cleartext",
+          cleartextArmored: await signCleartext(grant, key.privateKey),
+        })
+      ).ok,
+      true,
+    );
+
+    const adapter: FppRuntimeAdapter = {
+      harnessId: "e2e",
+      getWorkspacePaths: () => ({ workspaceRoot: root }),
+    };
+    const runtime = createEnforcementRuntime(
+      {
+        auditLogPath: auditPath,
+        stewardAuthorizationLedgerPath: ledgerPath,
+        dispositionMode: "unattended",
+        approvalOn: ["code.patch"],
+        standingAllowOn: [],
+        outOfWorkspacePaths: { [externalPath]: alias },
+      },
+      adapter,
+    );
+
+    const command = [
+      "*** Begin Patch",
+      `*** Update File: ${externalPath}`,
+      "@@",
+      "-old",
+      "+new",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    const first = await runtime.onBeforeToolCall(
+      { toolName: "apply_patch", params: { command }, toolCallId: "e2e-ext-1" },
+      { toolCallId: "e2e-ext-1" },
+    );
+    assert.equal(first.action, "allow");
+
+    const auditLine = JSON.parse(
+      readFileSync(auditPath, "utf8").trim().split("\n").at(-1)!,
+    );
+    assert.equal(auditLine.authorizationId, "authz-e2e-ext");
+    assert.equal(auditLine.stewardId, stewardId);
+    assert.match(String(auditLine.stewardLedgerEventHash), /^[0-9a-f]{64}$/);
+
+    const ledgerEvents = readFileSync(ledgerPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.ok(
+      ledgerEvents.some((event) => event.kind === "authorization_consumed"),
+    );
+
+    const second = await runtime.onBeforeToolCall(
+      { toolName: "apply_patch", params: { command }, toolCallId: "e2e-ext-2" },
+      { toolCallId: "e2e-ext-2" },
+    );
+    assert.notEqual(second.action, "allow");
+
+    const missingMapRuntime = createEnforcementRuntime(
+      {
+        auditLogPath: join(root, "audit-miss.jsonl"),
+        stewardAuthorizationLedgerPath: ledgerPath,
+        dispositionMode: "unattended",
+        approvalOn: ["code.patch"],
+        standingAllowOn: [],
+        outOfWorkspacePaths: {},
+      },
+      adapter,
+    );
+    const missGrant: OperatorAuthorizationV1 = {
+      ...grant,
+      authorizationId: "authz-e2e-ext-miss",
+      nonce: "l".repeat(32),
+    };
+    await service.admit({
+      authorization: missGrant,
+      format: "detached",
+      signaturesArmored: [await signDetached(missGrant, key.privateKey)],
+    });
+    const missed = await missingMapRuntime.onBeforeToolCall(
+      { toolName: "apply_patch", params: { command }, toolCallId: "e2e-ext-3" },
+      { toolCallId: "e2e-ext-3" },
+    );
+    assert.notEqual(missed.action, "allow");
   });
 
   it("fails closed on hard-floor even with a matching steward grant", async () => {
