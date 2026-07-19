@@ -175,6 +175,20 @@ Signature valid:      YES
 
 If the signature does not verify, do not adopt. See `docs/TROUBLESHOOTING.md#4`.
 
+## In-place updates for other systems
+
+If you need to refresh already-installed skill/plugin/adapter assets on another host without doing a fresh release publish, use:
+
+```bash
+bash scripts/update-installed-assets.sh --dry-run
+```
+
+Docs:
+
+- `docs/runbooks/in-place-updates.md`
+- `docs/MAINTAINER_UPDATE_GUIDELINES.md`
+
+
 ### Continuous integration
 
 Pull requests and pushes to `main`/`master` run `.github/workflows/ci.yml` on Node `22.19`: constitution verification, classifier self-test, both plugin typecheck/test suites, and a package dry-run (`scripts/verify-pack.sh`) with no registry side effects.
