@@ -203,7 +203,7 @@ npm run verify:all
 
 That runs constitution verification, classifier fixtures, both plugin typechecks and tests, and package dry-run checks. Runtime pin: `.node-version` (`22.19`); root and both plugins require Node `>=22.19`.
 
-Coverage: `npm run test:coverage` enforces floor thresholds in `plugin/.c8rc.json` and `plugin-trust/.c8rc.json` (measured from the 2026-07-10 baseline). Raise thresholds only after new tests lift the measured floor — never lower them to hide regressions.
+Coverage: `npm run test:coverage` enforces floor thresholds in `plugin/.c8rc.json` and `plugin-trust/.c8rc.json` (measured from the 2026-07-10 baseline; trust branch/function floors re-measured 2026-07-19 after core extraction). Compatibility re-export shims that only forward `@ovrsr/fpp-*-core` are excluded — their logic is covered in the core packages. Raise thresholds only after new tests lift the measured floor — never lower them to hide regressions.
 
 ## Signing (for maintainers)
 

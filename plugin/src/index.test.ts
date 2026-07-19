@@ -2,8 +2,10 @@ import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { registerEnforcement, resetStrictModeCache, resetReceiptStore, getActiveReceiptStore } from "./index.js";
+import { registerEnforcement, resetStrictModeCache, resetReceiptStore, getActiveReceiptStore, getActiveReceiptSigner, buildSignedReceiptFromRecord, digestExecutionOutcome } from "./index.js";
 import { createHookCapture, createTempWorkspace } from "./test-helpers.js";
+import { mergeConfig } from "./config.js";
+import plugin from "./index.js";
 
 describe("enforcement hook integration", () => {
   const ws = createTempWorkspace("fpp-hook-");
@@ -533,5 +535,67 @@ describe("enforcement hook integration", () => {
     assert.equal(orphans.length, 1);
     assert.equal(orphans[0]!.outcome, "audit_gap_orphan");
     assert.equal(getActiveReceiptStore()!.pendingCount(), 0);
+  });
+
+  it("exposes receipt signer and can build a signed receipt from a record", () => {
+    setup({
+      receiptSigningEnabled: true,
+      receiptLogPath: join(ws.path, "signed-receipts.jsonl"),
+    });
+    const signer = getActiveReceiptSigner();
+    assert.ok(signer);
+    const config = mergeConfig({
+      auditLogPath,
+      respectTrustStrictMode: false,
+      receiptSigningEnabled: true,
+      identityKeyPath: join(ws.path, "agent.key"),
+      receiptLogPath: join(ws.path, "signed-receipts.jsonl"),
+    });
+    const signed = buildSignedReceiptFromRecord(
+      {
+        receiptId: "rcpt-test",
+        toolCallId: "call-sign",
+        correlationConfidence: "exact",
+        actionDigest: "a".repeat(64),
+        classification: "fs.read.workspace",
+        disposition: "allow",
+        decision: "allow",
+        proposedAt: new Date().toISOString(),
+        status: "finalized",
+        outcome: "executed",
+        finalizedAt: new Date().toISOString(),
+        authorization: "standing-allowlist",
+      },
+      config,
+      signer!,
+    );
+    assert.equal(signed.receiptId, "rcpt-test");
+    assert.ok(signed.signature);
+  });
+
+  it("digestExecutionOutcome domain-separates success vs error outcomes", () => {
+    const ok = digestExecutionOutcome({ hasResult: true, durationMs: 12 });
+    const err = digestExecutionOutcome({
+      hasResult: false,
+      error: "boom",
+      durationMs: 3,
+    });
+    const bare = digestExecutionOutcome({ hasResult: false });
+    assert.match(ok, /^[0-9a-f]{64}$/);
+    assert.match(err, /^[0-9a-f]{64}$/);
+    assert.notEqual(ok, err);
+    assert.notEqual(err, bare);
+  });
+
+  it("plugin entry register wires enforcement hooks", () => {
+    resetStrictModeCache();
+    resetReceiptStore();
+    const capture = createHookCapture({
+      auditLogPath: join(ws.path, "entry-audit.jsonl"),
+      respectTrustStrictMode: false,
+    });
+    assert.equal(typeof plugin.register, "function");
+    plugin.register!(capture.api as never);
+    assert.ok(capture.hooks.some((h) => h.event === "before_tool_call"));
   });
 });
