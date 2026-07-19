@@ -50,7 +50,8 @@ jobs:
       - name: Security regression suites
         run: |
           npx tsx --test plugin/src/security-regressions.test.ts
-          npx tsx --test plugin-trust/src/security-regressions.test.ts
+          # Moved with trust-core extraction (ccc10d3); keep this explicit CI gate.
+          npx tsx --test packages/trust-core/src/security-regressions.test.ts
 
       - name: Coverage thresholds
         run: npm run test:coverage
