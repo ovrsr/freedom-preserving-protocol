@@ -5,13 +5,35 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const publishScript = join(root, "scripts", "clawhub-publish.sh");
+
+/** PATH without clawhub, so dry-run cannot accidentally depend on a global install. */
+function envWithoutClawhub(
+  extra: Record<string, string> = {},
+): NodeJS.ProcessEnv {
+  // Use Node's platform delimiter only — splitting on ":" breaks Windows drive paths.
+  const raw = process.env.PATH ?? process.env.Path ?? "";
+  const parts = raw.split(delimiter).filter(Boolean);
+  const filtered = parts.filter(
+    (dir) =>
+      !existsSync(join(dir, "clawhub")) &&
+      !existsSync(join(dir, "clawhub.cmd")) &&
+      !existsSync(join(dir, "clawhub.exe")),
+  );
+  const pathValue = filtered.join(delimiter);
+  return {
+    ...process.env,
+    PATH: pathValue,
+    Path: pathValue,
+    ...extra,
+  };
+}
 
 describe("clawhub-publish fail-hard", () => {
   const src = readFileSync(publishScript, "utf8");
@@ -79,7 +101,7 @@ describe("clawhub-publish fail-hard", () => {
       {
         cwd: root,
         encoding: "utf8",
-        env: { ...process.env, FPP_ALLOW_SKIP_TESTS: "1" },
+        env: envWithoutClawhub({ FPP_ALLOW_SKIP_TESTS: "1" }),
       },
     );
     const out = `${result.stdout}\n${result.stderr}`;
@@ -88,6 +110,7 @@ describe("clawhub-publish fail-hard", () => {
     assert.match(out, /skill-dist|stage-skill/i);
     assert.match(out, /--name ["']?Freedom Preserving Protocol["']?/);
     assert.doesNotMatch(out, /published$/m);
+    assert.doesNotMatch(out, /clawhub CLI not found/i);
   });
 
   it("dry-run publish plugin and trust do not invoke clawhub", () => {
@@ -106,12 +129,13 @@ describe("clawhub-publish fail-hard", () => {
         {
           cwd: root,
           encoding: "utf8",
-          env: { ...process.env, FPP_ALLOW_SKIP_TESTS: "1" },
+          env: envWithoutClawhub({ FPP_ALLOW_SKIP_TESTS: "1" }),
         },
       );
       const out = `${result.stdout}\n${result.stderr}`;
       assert.equal(result.status, 0, `${target}: ${out}`);
       assert.match(out, /\[dry-run\]/);
+      assert.doesNotMatch(out, /clawhub CLI not found/i);
     }
   });
 

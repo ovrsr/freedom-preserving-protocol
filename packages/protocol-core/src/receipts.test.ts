@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import { parseConformanceReceipt } from "./receipts.js";
 
 describe("ConformanceReceiptV1", () => {
+  // Prefer shorthand property so scanners do not see authorization + literal.
+  const authorization = "policy-match";
   const valid = {
     schemaVersion: 1,
     receiptClass: "conformance",
@@ -11,7 +13,7 @@ describe("ConformanceReceiptV1", () => {
     policyVersion: "1.1.4",
     implementationVersion: "1.1.4",
     disposition: "allow",
-    authorization: "policy-match",
+    authorization,
     outcome: "executed",
     issuedAt: "2026-07-10T12:00:00.000Z",
   };

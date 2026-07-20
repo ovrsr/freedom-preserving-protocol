@@ -17,6 +17,7 @@ import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { resolveNpmSpawn } from "../scripts/package-reproducibility.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -31,10 +32,11 @@ function run(
   args: string[],
   cwd: string,
 ): { status: number | null; stdout: string; stderr: string } {
-  const r = spawnSync(cmd, args, {
+  const npm = cmd === "npm" ? resolveNpmSpawn() : null;
+  const r = spawnSync(npm ? npm.command : cmd, npm ? [...npm.prefixArgs, ...args] : args, {
     cwd,
     encoding: "utf8",
-    shell: process.platform === "win32",
+    shell: false,
   });
   return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
@@ -63,6 +65,10 @@ describe("adapter pack-bundle", { concurrency: false }, () => {
         pkg.bundledDependencies?.includes("@ovrsr/fpp-tool-proxy"),
         `${adapter.rel} must list tool-proxy in bundledDependencies`,
       );
+      assert.ok(
+        pkg.bundledDependencies?.includes("@ovrsr/fpp-steward-auth-core"),
+        `${adapter.rel} must list steward-auth-core in bundledDependencies (enforcement-core import)`,
+      );
 
       const build = run("npm", ["run", "build"], dir);
       assert.equal(build.status, 0, build.stderr || build.stdout);
@@ -85,6 +91,7 @@ describe("adapter pack-bundle", { concurrency: false }, () => {
       const listing = tarList(join(tmp, tgz!), tmp);
       assert.match(listing, /node_modules\/@ovrsr\/fpp-protocol-core\//);
       assert.match(listing, /node_modules\/@ovrsr\/fpp-enforcement-core\//);
+      assert.match(listing, /node_modules\/@ovrsr\/fpp-steward-auth-core\//);
       assert.match(listing, /node_modules\/@ovrsr\/fpp-tool-proxy\//);
       assert.match(listing, /dist\/index\.js/);
 
@@ -119,6 +126,12 @@ describe("adapter pack-bundle", { concurrency: false }, () => {
         existsSync(
           join(adapterInstall, "node_modules/@ovrsr/fpp-enforcement-core/package.json"),
         ),
+      );
+      assert.ok(
+        existsSync(
+          join(adapterInstall, "node_modules/@ovrsr/fpp-steward-auth-core/package.json"),
+        ),
+        "bundled steward-auth-core must land under the installed adapter",
       );
 
       const importScript = join(adapterInstall, "check-import.mjs");

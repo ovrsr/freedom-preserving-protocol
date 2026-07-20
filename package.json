@@ -38,7 +38,7 @@
     "test": "npm run test -w @ovrsr/fpp-protocol-core && npm run test -w @ovrsr/fpp-steward-auth-core && npm run test -w @ovrsr/fpp-enforcement-core && npm run test -w @ovrsr/fpp-trust-core && npm run test -w @ovrsr/fpp-tool-proxy && npm run test -w @ovrsr/fpp-gateway-reference && npm run test -w @ovrsr/fpp-adapter-cursor && npm run test -w @ovrsr/fpp-adapter-claude-code && npm run test -w @ovrsr/fpp-adapter-codex && npm run test -w @ovrsr/openclaw-fpp-plugin && npm run test -w @ovrsr/openclaw-fpp-trust",
     "test:coverage": "npm run test:coverage -w @ovrsr/openclaw-fpp-plugin && npm run test:coverage -w @ovrsr/openclaw-fpp-trust",
     "test:all": "npm test && npm run test:scripts && npm run test:interop && npm run test:corpus && npm run test:e2e && npm run self-test",
-    "test:scripts": "npx tsx --test \"scripts/**/*.test.ts\" \"docs/rfc/**/*.test.ts\" \"adapters/pack-bundle.test.ts\"",
+    "test:scripts": "npx tsx --test --test-concurrency=1 \"scripts/**/*.test.ts\" \"docs/rfc/**/*.test.ts\" \"adapters/pack-bundle.test.ts\"",
     "test:interop": "npx tsx --test \"test/protocol-core-interoperability.test.ts\" \"test/library-consumer-smoke.test.ts\"",
     "test:corpus": "npx tsx scripts/run-classifier-corpus.ts",
     "verify:all": "bash scripts/verify-all.sh",

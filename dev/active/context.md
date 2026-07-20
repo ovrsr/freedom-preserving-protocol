@@ -1,37 +1,36 @@
-# Project Context — 2026-07-17 internal tool classifier named classes
+# Project Context — Safe In-Place Asset Updates (VERIFIED 2026-07-19)
 
 ## Architecture & Design
-- Named low-risk classes replace opaque `unknown.unclassified` for high-volume OpenClaw internals: `internal.heartbeat`, `internal.read`, `gateway.inspect`.
-- Classifier order (after filesystem/exec/http/message/code.patch): heartbeat → internal.read → gateway tool → `fpp_*` → `knownCustomTools` → unknown.
-- `knownCustomTools` default is `[]` (operator extras only). Curated tools are first-class classes, not seed allowlist entries.
-- `exec.benign` removed from reversibility set → disposition `allow` (no staged ledger noise); workspace writes still `allow_staged`.
+- Ownership-aware sync replaces whole-tree deletion: staged files are copied; only paths in the prior `.fpp-updater-manifest.json` that are absent from the new staged inventory may be removed.
+- First update of a legacy target (no manifest) is additive — no inferred ownership.
+- `rsync` and `cp -a` backends share the same ownership rules; `rsync --delete` / `rm -rf "$dest"` must not return.
 
 ## Implementation Details
-- `packages/enforcement-core/src/risk-classifier.ts` — `classifyInternalHeartbeat`, `INTERNAL_READ_TOOLS` + `classifyInternalRead`, `classifyGatewayTool` (action/command/method/argv tokens; fail-closed on ambiguity).
-- `packages/enforcement-core/src/reversibility.ts` — reversible set includes new internal/gateway.inspect ids; excludes `exec.benign`.
-- `packages/enforcement-core/src/config.ts` — `knownCustomTools: []`.
-- Plugin consumes via workspace bundle: after core edits run `npm run build` in enforcement-core then `npm run bundle:deps` in plugin.
+- Entry: `scripts/update-installed-assets.sh`
+- Core sync: `sync_owned` (called from `sync_dir`); backups via `backup_dir` → `copy_trees`
+- Manifest name: `.fpp-updater-manifest.json` (`OWNED_MANIFEST_NAME`)
+- Test seam: `FPP_UPDATE_TEST_STAGE` injects a pre-staged tree (skips real pack/stage)
+- CI: root-only `npm ci` + `scripts/assert-workspace-links.test.ts` (nested plugin `npm ci` drops workspace links)
 
 ## Decisions & Trade-offs
-- Chose named classes over expanding `knownCustomTools` so audit ids are contestable (Law 6) and not `unknown.unclassified`.
-- Gateway inspect must not fail-open: missing/unknown action → `unknown.unclassified` / approval.
-- Heartbeat matches `/heartbeat_respond$/i` so mangled `openclawheartbeat_respond` works without seed.
+- Chose explicit ownership manifest over “delete everything not in stage” so operator state (`SOUL.md`, `MEMORY.md`, audit/trust, unknown local files) survives updates.
+- Manifest written only after successful sync; unsafe paths (`..`, absolute) abort before writes.
 
 ## Critical Code Locations
-- Entry: `packages/enforcement-core/src/risk-classifier.ts` (`classifyToolCall`)
-- Runtime hook: `packages/enforcement-core/src/runtime-adapter.ts` (~505 classify, ~546 reversible)
-- Disposition: `packages/enforcement-core/src/disposition-engine.ts`
-- Tests: `risk-classifier.test.ts`, `reversibility.test.ts`, `disposition-engine.test.ts`, `plugin/src/security-regressions.test.ts`
-- Program: `scripts/self-test.ts`, `scripts/run-classifier-corpus.ts`
+- Entry / sync: `scripts/update-installed-assets.sh`
+- Tests: `scripts/update-installed-assets.test.ts`, `scripts/assert-workspace-links.test.ts`
+- Docs: `docs/runbooks/in-place-updates.md`, `docs/MAINTAINER_UPDATE_GUIDELINES.md`, `README.md`
+- Plan: `docs/plans/2026-07-19-safe-in-place-asset-updates.md` (Status: VERIFIED)
 
 ## Gotchas & Solutions
-- Problem: plugin e2e still saw `unknown.unclassified` after core source change.
-  Cause: `plugin/node_modules/@ovrsr/fpp-enforcement-core` is a bundled copy, not the workspace symlink.
-  Fix: `cd packages/enforcement-core && npm run build && cd ../../plugin && npm run bundle:deps`.
-- Problem: intermittent `tsx --test` hangs on Windows when many node processes accumulate.
-  Cause: resource contention / stuck runners.
-  Fix: kill stray `node.exe`, re-run; prefer focused `--test-name-pattern` when debugging.
+- Problem: Nested `npm ci` in plugin dirs broke adapter resolution of `@ovrsr/fpp-tool-proxy`.
+  Cause: Nested install rewrites the tree and drops workspace links.
+  Fix: CI uses root `npm ci` only; assert with `scripts/assert-workspace-links.test.ts`.
+- Problem: ClawHub `suspicious.exposed_secret_literal` on `authorization: "fpp:v2:…"` domain separators (unrelated to this plan; uncommitted fix in protocol-core).
+  Cause: Scanner treats property name `authorization` + string literal as an API token.
+  Fix pattern (same as `AUTHZ.*` in disposition): rename key to `authz` / use shorthand properties.
 
 ## Testing Insights
-- Corpus fixtures: `test/fixtures/classifier-benign.json` + `classifier-adversarial.json`.
-- Self-test fixtures now cover heartbeat / internal.read / gateway.inspect ± negative / apply_patch.
+- Updater unit tests never run real `npm pack`/`stage-skill`; they rely on `FPP_UPDATE_TEST_STAGE`.
+- Force `cp` fallback in tests via env when validating non-rsync path.
+- E2E fixture: dry-run must leave target + stale owned file untouched; apply removes only stale owned paths and refreshes the manifest.

@@ -58,6 +58,17 @@ describe("stage-skill", () => {
     assert.equal(typeof mod.stageSkill, "function");
     assert.equal(typeof mod.readAllowlist, "function");
     assert.equal(typeof mod.assertNoForbiddenPaths, "function");
+    assert.equal(typeof mod.rmSyncRetry, "function");
+  });
+
+  it("rmSyncRetry removes a directory tree", async () => {
+    const { rmSyncRetry } = await import("./stage-skill.js");
+    const { mkdirSync, writeFileSync, existsSync } = await import("node:fs");
+    const dir = join(tmp, "rm-retry-target");
+    mkdirSync(join(dir, "nested"), { recursive: true });
+    writeFileSync(join(dir, "nested", "f.txt"), "x");
+    rmSyncRetry(dir, { recursive: true, force: true });
+    assert.equal(existsSync(dir), false);
   });
 
   it("stages required OpenClaw skill files and never includes forbidden paths", async () => {

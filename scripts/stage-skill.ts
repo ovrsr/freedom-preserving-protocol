@@ -24,6 +24,36 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(__dirname, "..");
 
+/** Windows often returns EBUSY while another handle still holds a directory. */
+export function rmSyncRetry(
+  path: string,
+  opts: { recursive?: boolean; force?: boolean } = {},
+  attempts = 8,
+): void {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      rmSync(path, opts);
+      return;
+    } catch (err) {
+      last = err;
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: unknown }).code)
+          : "";
+      if (code !== "EBUSY" && code !== "EPERM" && code !== "ENOTEMPTY") {
+        throw err;
+      }
+      const waitMs = 25 * (i + 1) * (i + 1);
+      const end = Date.now() + waitMs;
+      while (Date.now() < end) {
+        /* busy-wait: avoid async in sync staging path */
+      }
+    }
+  }
+  throw last;
+}
+
 export const FORBIDDEN_PATH_PREFIXES = [
   "adapters/",
   "plugin/",
@@ -163,7 +193,7 @@ export function stageSkill(opts: StageSkillOptions = {}): StageSkillResult {
     throw new Error("ALLOWLIST is empty");
   }
 
-  rmSync(outDir, { recursive: true, force: true });
+  rmSyncRetry(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
 
   for (const entry of entries) {

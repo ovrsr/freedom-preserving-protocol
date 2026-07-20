@@ -1,26 +1,25 @@
-# Wake-Up — 2026-07-17
+# Wake-Up — 2026-07-19
 
 ## Sunrise Checklist (run first next session)
 1. `git status --short`
 2. `npm run typecheck`
-3. `npm test -w @ovrsr/fpp-enforcement-core && npm test -w @ovrsr/openclaw-fpp-plugin`
+3. `npx tsx --test --test-concurrency=1 scripts/update-installed-assets.test.ts scripts/assert-workspace-links.test.ts`
 
 ## Sunset Checklist (just completed)
-- Implemented + verified named classifier classes: `internal.heartbeat`, `internal.read`, `gateway.inspect`
-- Demoted default `knownCustomTools` to `[]`; `memory_search` via `internal.read`
-- Stopped staging `exec.benign`; docs + corpus/self-test aligned
-- Plan status: **VERIFIED** — `docs/plans/2026-07-17-internal-tool-classifier-named-classes.md`
+- Verified safe in-place asset updates plan end-to-end (`docs/plans/2026-07-19-safe-in-place-asset-updates.md` → VERIFIED)
+- Ownership-aware updater preserves unowned files; removes only stale owned paths
+- CI workspace-link assertion in place; no nested plugin `npm ci`
 
 ## Pending Blockers
-- none
+- Uncommitted protocol-core ClawHub secret-literal false-positive fix (`STEWARD_DIGEST_DOMAINS.authz`) — needs commit + plugin republish for ClawHub audit to clear
 
 ## Handoff Schema
-- **session_goal:** Close underclassification of OpenClaw internal tools with named allow classes
-- **current_task:** VERIFIED — ready for commit / optional ClawHub bump (out of plan scope)
-- **blockers:** none
+- **session_goal:** Verify safe in-place asset updates; clear ClawHub false positive separately
+- **current_task:** Plan VERIFIED; next is commit/publish of protocol-core secret-literal fix if desired
+- **blockers:** none for the verified plan
 - **verification_commands:**
-  - `npm test` (553 across workspaces, 0 failed)
+  - `npm run test:all`
   - `npm run typecheck`
-  - `npx tsx scripts/self-test.ts` (16/16)
-  - `npx tsx scripts/run-classifier-corpus.ts` (54/54)
-- **next_command:** commit when requested, or start next plan
+  - `bash scripts/update-installed-assets.sh --help`
+  - `npx tsx --test --test-concurrency=1 scripts/update-installed-assets.test.ts`
+- **next_command:** commit protocol-core authz rename + republish ClawHub plugins when ready

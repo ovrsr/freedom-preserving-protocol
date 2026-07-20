@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -20,6 +21,38 @@ describe("manifest / runtime default parity", () => {
       true,
       result.mismatches.join("\n") || "manifest drift",
     );
+  });
+
+  it("validateManifestDefaults reports missing and mismatched defaults", () => {
+    const dir = mkdtempSync(join(tmpdir(), "fpp-manifest-"));
+    try {
+      const path = join(dir, "openclaw.plugin.json");
+      writeFileSync(
+        path,
+        JSON.stringify({
+          configSchema: {
+            properties: {
+              // omit most keys → missing-default path
+              dispositionMode: { default: "operator-present" }, // mismatch vs DEFAULT_CONFIG
+              auditLogPath: { default: ".openclaw/workspace/fpp-audit.jsonl" }, // path-equivalent OK
+            },
+          },
+        }),
+        "utf8",
+      );
+      const result = validateManifestDefaults(path);
+      assert.equal(result.ok, false);
+      assert.ok(
+        result.mismatches.some((m) => /missing default/i.test(m)),
+        result.mismatches.join("\n"),
+      );
+      assert.ok(
+        result.mismatches.some((m) => /dispositionMode:/.test(m)),
+        result.mismatches.join("\n"),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("diagnoseConfigSafety flags unsafe legacy-style settings", () => {
