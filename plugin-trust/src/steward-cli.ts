@@ -8,22 +8,34 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   canonicalizeV2,
+  containsOpenPgpSecretKeyArmor,
   mintStewardIdV1,
   parseOperatorAuthorization,
   parseOperatorAuthorizationRevocation,
+  parseStewardBootstrap,
   parseStewardKeyAttestation,
   workspaceFile,
   type OperatorAuthorizationRevocationV1,
   type OperatorAuthorizationV1,
+  type StewardBootstrapV1,
   type StewardKeyAttestationV1,
 } from "@ovrsr/fpp-protocol-core";
 import {
   AuthorizationService,
   StewardAuthorizationLedger,
+  StewardBootstrapService,
   StewardRegistry,
   createDefaultBackendRegistry,
   createOpenPgpBackend,
 } from "@ovrsr/fpp-steward-auth-core";
+import {
+  LEGACY_TOFU_WARNING,
+  assertLegacyTofuProfile,
+  formatBootstrapReview,
+  normalizeKeyRef,
+  requireInteractiveFingerprintConfirmation,
+  type BootstrapInteractiveDeps,
+} from "./steward-bootstrap.js";
 
 export type StewardCliCommand = {
   command(name: string): StewardCliCommand;
@@ -40,6 +52,8 @@ export type StewardCliDeps = {
   /** Default instance audience for init. */
   instanceAudience?: string | undefined;
   exit?: ((code: number) => void) | undefined;
+  /** Injectable TTY/prompt seams for secure bootstrap tests. */
+  bootstrapInteractive?: BootstrapInteractiveDeps | undefined;
 };
 
 function fail(
@@ -88,7 +102,7 @@ function createStack(ledgerPath: string) {
     backends,
     registry,
   });
-  return { ledger, registry, authorization };
+  return { ledger, registry, authorization, backends };
 }
 
 function envelopeFromOpts(opts: Record<string, unknown>): {
@@ -144,8 +158,17 @@ export function registerStewardCli(
   const defaultLedger =
     deps.ledgerPath ??
     workspaceFile("fpp-steward-authorization-ledger.jsonl");
-  const defaultAudience =
-    deps.instanceAudience ?? `instance:local-${mintStewardIdV1().slice(-8)}`;
+  const configuredAudience = deps.instanceAudience?.trim() || undefined;
+  const trustedAudience = (explicitAudience: string | undefined): string => {
+    const audience = explicitAudience?.trim() || configuredAudience;
+    if (!audience) {
+      fail(
+        "secure steward bootstrap requires a configured steward instance audience or an explicit --audience",
+        exit,
+      );
+    }
+    return audience;
+  };
 
   const steward = parent
     .command("steward")
@@ -156,18 +179,29 @@ export function registerStewardCli(
   steward
     .command("init")
     .description(
-      "Initialize steward ledger + mint steward ID (explicit local policy; no private-key signing)",
+      "LEGACY: Initialize steward ledger only (requires --bootstrap-profile legacy-tofu). Prefer bootstrap-admit.",
     )
-    .option("--audience <id>", "Instance audience bound into the ledger", defaultAudience)
+    .option(
+      "--audience <id>",
+      "Instance audience bound into the ledger",
+      configuredAudience,
+    )
     .option("--ledger <path>", "Ledger path", defaultLedger)
     .option("--max-standing-lifetime-ms <n>", "Standing max lifetime ms", "86400000")
     .option("--max-standing-uses <n>", "Standing max uses", "100")
     .option("--max-oneshot-lifetime-ms <n>", "One-shot max lifetime ms", "3600000")
     .option("--allowed-clock-skew-ms <n>", "Allowed clock skew ms", "300000")
+    .requiredOption(
+      "--bootstrap-profile <profile>",
+      "Must be legacy-tofu for this insecure compatibility path",
+    )
     .action((...args: unknown[]) => {
       const opts = (args[0] ?? {}) as Record<string, string>;
+      const profileGate = assertLegacyTofuProfile(opts.bootstrapProfile);
+      if (!profileGate.ok) fail(profileGate.reason, exit);
+      console.error(LEGACY_TOFU_WARNING);
       const ledgerPath = resolve(opts.ledger ?? defaultLedger);
-      const audience = opts.audience ?? defaultAudience;
+      const audience = trustedAudience(opts.audience);
       const ledger = new StewardAuthorizationLedger({ path: ledgerPath });
       const stewardId = mintStewardIdV1();
       const init = ledger.initialize({
@@ -189,13 +223,162 @@ export function registerStewardCli(
             stewardId,
             audience,
             ledgerPath,
-            note: "Sign key attestations and authorizations with external OpenPGP tooling. Local TOFU is not web-of-trust assurance.",
-            next: "steward key-template --steward-id … then steward key-admit --accept-tofu",
+            bootstrapProfile: "legacy-tofu",
+            note: "LEGACY PATH. Prefer steward bootstrap-template / bootstrap-admit. Local TOFU is not web-of-trust assurance.",
+            next: "steward key-template --operation initial-bind … then steward key-admit --accept-tofu --bootstrap-profile legacy-tofu",
           },
           null,
           2,
         ),
       );
+    });
+
+  steward
+    .command("bootstrap-template")
+    .description(
+      "Emit canonical StewardBootstrapV1 JSON for offline OpenPGP signing (secure genesis)",
+    )
+    .option("--steward-id <id>", "Steward ID (minted when omitted)")
+    .option(
+      "--audience <id>",
+      "Instance audience (defaults to configured host audience)",
+      configuredAudience,
+    )
+    .requiredOption("--key-ref <ref>", "openpgp:<fingerprint>")
+    .requiredOption("--public-key <path>", "Armored public key file")
+    .option("--max-standing-lifetime-ms <n>", "Standing max lifetime ms", "86400000")
+    .option("--max-standing-uses <n>", "Standing max uses", "100")
+    .option("--max-oneshot-lifetime-ms <n>", "One-shot max lifetime ms", "3600000")
+    .option("--allowed-clock-skew-ms <n>", "Allowed clock skew ms", "300000")
+    .option("--reason <text>", "Reason", "secure steward genesis")
+    .action((...args: unknown[]) => {
+      const opts = (args[0] ?? {}) as Record<string, string>;
+      const audience = trustedAudience(opts.audience);
+      const keyRef = normalizeKeyRef(requireOpt(opts, "keyRef", exit));
+      const publicKeyArmored = readTextFile(requireOpt(opts, "publicKey", exit));
+      if (containsOpenPgpSecretKeyArmor(publicKeyArmored)) {
+        fail(
+          "refusing OpenPGP secret key material — provide a public certificate only",
+          exit,
+        );
+      }
+      const stewardId = opts.stewardId?.trim() || mintStewardIdV1();
+      const issuedAt = new Date().toISOString();
+      const bootstrap: StewardBootstrapV1 = {
+        schemaVersion: 1,
+        kind: "steward-bootstrap",
+        bootstrapId: idToken("bootstrap"),
+        stewardId,
+        audience,
+        policy: {
+          instanceAudience: audience,
+          maxStandingLifetimeMs: Number(opts.maxStandingLifetimeMs ?? 86_400_000),
+          maxStandingUses: Number(opts.maxStandingUses ?? 100),
+          maxOneShotLifetimeMs: Number(opts.maxOneshotLifetimeMs ?? 3_600_000),
+          allowedClockSkewMs: Number(opts.allowedClockSkewMs ?? 300_000),
+        },
+        initialBinding: {
+          schemaVersion: 1,
+          kind: "steward-key-attestation",
+          attestationId: idToken("att"),
+          operation: "initial-bind",
+          stewardId,
+          audience,
+          subjectKey: {
+            algorithm: "openpgp",
+            keyRef,
+            publicKeyArmored,
+          },
+          issuedAt,
+          nonce: nonce(),
+          reason: opts.reason ?? "secure steward genesis",
+        },
+        issuedAt,
+        nonce: nonce(),
+      };
+      const parsed = parseStewardBootstrap(bootstrap);
+      if (!parsed.ok) fail(parsed.error, exit);
+      process.stdout.write(canonicalizeV2(bootstrap));
+    });
+
+  steward
+    .command("bootstrap-admit")
+    .description(
+      "Interactively admit a signed StewardBootstrapV1 (requires TTY + --expected-key-ref)",
+    )
+    .requiredOption("--payload <path>", "Canonical bootstrap JSON")
+    .requiredOption("--signature <path>", "Detached OpenPGP signature")
+    .requiredOption(
+      "--expected-key-ref <ref>",
+      "Independently supplied openpgp:<fingerprint>",
+    )
+    .option("--ledger <path>", "Ledger path", defaultLedger)
+    .option(
+      "--audience <id>",
+      "Expected instance audience (defaults to configured host audience)",
+    )
+    .action(async (...args: unknown[]) => {
+      const opts = (args[0] ?? {}) as Record<string, string>;
+      try {
+        const ledgerPath = resolve(opts.ledger ?? defaultLedger);
+        const expectedAudience = trustedAudience(opts.audience);
+        const expectedKeyRef = normalizeKeyRef(
+          requireOpt(opts, "expectedKeyRef", exit),
+        );
+        const raw = loadPayload(opts);
+        const parsed = parseStewardBootstrap(raw);
+        if (!parsed.ok) fail(parsed.error, exit);
+        const bootstrap = parsed.bootstrap;
+        const signatureArmored = readTextFile(requireOpt(opts, "signature", exit));
+        if (containsOpenPgpSecretKeyArmor(signatureArmored)) {
+          fail("refusing OpenPGP secret key material in --signature", exit);
+        }
+
+        console.error(
+          formatBootstrapReview({
+            stewardId: bootstrap.stewardId,
+            audience: bootstrap.audience,
+            expectedKeyRef,
+            policy: bootstrap.policy,
+          }),
+        );
+
+        const confirmed = await requireInteractiveFingerprintConfirmation(
+          expectedKeyRef,
+          deps.bootstrapInteractive ?? {},
+        );
+        if (!confirmed.ok) fail(confirmed.reason, exit);
+
+        const { ledger, registry, backends } = createStack(ledgerPath);
+        const service = new StewardBootstrapService({
+          ledger,
+          backends,
+          registry,
+        });
+        const result = await service.admitBootstrap({
+          bootstrap,
+          signatureArmored,
+          expectedKeyRef,
+          expectedAudience,
+        });
+        if (!result.ok) fail(result.reason, exit);
+        console.log(
+          JSON.stringify(
+            {
+              ok: true,
+              stewardId: result.stewardId,
+              eventHash: result.eventHash,
+              bootstrapProfile: "interactive-fingerprint",
+              trustModel:
+                "signed-bootstrap + interactive fingerprint confirmation (not MFA / not malware-proof)",
+            },
+            null,
+            2,
+          ),
+        );
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err), exit);
+      }
     });
 
   steward
@@ -219,8 +402,11 @@ export function registerStewardCli(
       }
       const audience = opts.audience ?? loaded.policy.instanceAudience;
       const publicKeyArmored = readTextFile(requireOpt(opts, "publicKey", exit));
-      if (/PRIVATE KEY/i.test(publicKeyArmored)) {
-        fail("refusing private key material — provide a public certificate only", exit);
+      if (containsOpenPgpSecretKeyArmor(publicKeyArmored)) {
+        fail(
+          "refusing OpenPGP secret key material — provide a public certificate only",
+          exit,
+        );
       }
       const attestation: StewardKeyAttestationV1 = {
         schemaVersion: 1,
@@ -249,13 +435,17 @@ export function registerStewardCli(
   steward
     .command("key-admit")
     .description(
-      "Admit a signed key attestation (detached --payload/--signature or --cleartext)",
+      "Admit a signed key attestation (detached --payload/--signature or --cleartext). Initial-bind requires --bootstrap-profile legacy-tofu.",
     )
     .requiredOption("--payload <path>", "Canonical attestation JSON")
     .option("--signature <path>", "Detached signature (repeatable)")
     .option("--cleartext <path>", "Clear-signed message")
     .option("--authorizer-key-ref <ref>", "Active authorizer for add/rotate/revoke")
     .option("--accept-tofu", "Required acknowledgement for initial-bind")
+    .option(
+      "--bootstrap-profile <profile>",
+      "Required legacy-tofu for initial-bind on this insecure path",
+    )
     .option("--ledger <path>", "Ledger path", defaultLedger)
     .action(async (...args: unknown[]) => {
       const opts = (args[0] ?? {}) as Record<string, unknown>;
@@ -264,6 +454,15 @@ export function registerStewardCli(
         const { registry } = createStack(ledgerPath);
         const attestation = parseStewardKeyAttestation(loadPayload(opts));
         if (!attestation.ok) fail(attestation.error, exit);
+        if (attestation.attestation.operation === "initial-bind") {
+          const profileGate = assertLegacyTofuProfile(
+            typeof opts.bootstrapProfile === "string"
+              ? opts.bootstrapProfile
+              : undefined,
+          );
+          if (!profileGate.ok) fail(profileGate.reason, exit);
+          console.error(LEGACY_TOFU_WARNING);
+        }
         const envelope = envelopeFromOpts(opts);
         const result = await registry.admitKeyAttestation({
           attestation: attestation.attestation,
@@ -287,6 +486,9 @@ export function registerStewardCli(
               stewardId: result.stewardId,
               eventHash: result.eventHash,
               trustModel: "local-tofu-or-signed-lifecycle (not OpenPGP WoT)",
+              ...(attestation.attestation.operation === "initial-bind"
+                ? { bootstrapProfile: "legacy-tofu" }
+                : {}),
             },
             null,
             2,

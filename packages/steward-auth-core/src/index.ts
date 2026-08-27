@@ -49,6 +49,11 @@ export {
 } from "./steward-registry.js";
 
 export {
+  StewardBootstrapService,
+  type AdmitBootstrapInput,
+} from "./bootstrap-service.js";
+
+export {
   matchesAuthorizationScope,
   type ActionDescriptor,
   type ScopeMatchReason,

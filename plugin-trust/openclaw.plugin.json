@@ -212,6 +212,12 @@
         "default": ".openclaw/workspace/fpp-steward-authorization-ledger.jsonl",
         "description": "Hash-chained OpenPGP steward authorization ledger (human CLI admit only; never agent-signed)."
       },
+      "stewardInstanceAudience": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": ".*\\S.*",
+        "description": "Stable deployment identifier independently trusted by secure steward bootstrap. Required unless --audience is supplied explicitly; not a secret or presence factor."
+      },
       "quorumStatePath": {
         "type": "string",
         "default": ".openclaw/workspace/fpp-quorum-sessions.json",

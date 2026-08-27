@@ -304,8 +304,12 @@ export class StewardRegistry {
           stewardId: attestation.stewardId,
           operation: attestation.operation,
           subjectKeyRef: attestation.subjectKey.keyRef,
-          acceptTofu:
-            attestation.operation === "initial-bind" ? true : undefined,
+          ...(attestation.operation === "initial-bind"
+            ? {
+                acceptTofu: true,
+                bootstrapProfile: "legacy-tofu",
+              }
+            : {}),
         },
         uniqueKeys: {
           attestationId: attestation.attestationId,

@@ -319,7 +319,13 @@ Human-signed operator grants live in `fpp-steward-authorization-ledger.jsonl` (c
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| No operator coverage / still requireApproval or abstain | Ledger absent, wrong audience, or grant not admitted | Run trust CLI `steward init` → key-admit (with `--accept-tofu` once) → authorization-admit; confirm instance audience matches |
+| No operator coverage / still requireApproval or abstain | Ledger absent, wrong audience, or grant not admitted | Prefer `steward bootstrap-template` → external sign → interactive `bootstrap-admit --expected-key-ref …`, then `authorization-admit`; confirm instance audience matches. Legacy: `steward init --bootstrap-profile legacy-tofu` → `key-admit --accept-tofu --bootstrap-profile legacy-tofu` |
+| `secure bootstrap requires an interactive TTY` | Non-interactive stdin/stdout | Run `bootstrap-admit` from a real terminal; do not pipe into automation for the secure path |
+| `fingerprint confirmation did not match` | Operator mistyped suffix, or wrong `--expected-key-ref` | Re-check the independently obtained fingerprint; abort if the displayed key is unexpected |
+| `bootstrap audience does not match expected audience` | Signed payload targets a different instance than the configured host audience (or explicit independent `--audience`) | Refuse admission; verify host configuration and regenerate/re-sign for the intended instance. The secure core never derives its expected audience from the payload |
+| `ledger unavailable: already initialized … explicit operator recovery` on first bootstrap | Hostile or prior complete genesis already wrote the ledger | Treat as compromise indicator: preserve ledger for audit; do not silently add a second genesis key; wipe/restore only as explicit recovery |
+| `initialized-only legacy state requires explicit operator recovery` | Legacy `init` exists without its first accepted binding | Preserve the one-event ledger, investigate the interrupted/hostile ceremony, and use explicit wipe/restore recovery; secure bootstrap will not append onto it |
+| `expectedKeyRef does not match` / wrong fingerprint | Payload key ≠ independently supplied expected key | Refuse admit; obtain the correct certificate/fingerprint out of band |
 | `ledger unavailable: lock held` | Crash left `*.jsonl.lock/` | **Do not** auto-delete in automation. Confirm no other process holds the lock, then remove the lock directory only as explicit operator recovery after backup |
 | Hash / sequence / malformed tail errors | Manual JSONL edits or truncated write | Restore from backup; never hand-edit the live chain |
 | Grant admitted but action still denied | Scope mismatch, ambiguous `apply_patch` paths, exhausted uses, revoked key, hard-floor, or missing `outOfWorkspacePaths` alias | Exact classifications/tools/paths; contained absolute paths resolve to workspace-relative targets; files outside `~/.openclaw/workspace` need an exact map entry whose alias matches the grant; hard floors cannot be overridden |
@@ -328,6 +334,8 @@ Human-signed operator grants live in `fpp-steward-authorization-ledger.jsonl` (c
 | Live Codex `apply_patch` always ambiguous / never consumes | Payload under `params.command` or structured `params.changes[]` not recognized by an old core; absolute external target without map | Upgrade `@ovrsr/fpp-enforcement-core` ≥ `1.0.3` / plugin ≥ `1.1.18`; configure `outOfWorkspacePaths`; **full gateway restart** after manifest schema changes (hot reload will not pick up new config fields) |
 | Enforcement hook missing after a diagnostic edit | Top-level `await` in plugin entry rejected by gateway loader | Remove top-level await; keep entry synchronous; restart gateway |
 | Installed build looks current but live behavior is old | `packageBuildHash` only hashes package metadata | Inspect packed nested `node_modules/@ovrsr/fpp-enforcement-core/dist/action-descriptor.js` for `command` / structured `changes` handling |
+
+The interactive suffix is a software attention check, not MFA and not a secret. Privileged local compromise remains outside this profile. FIDO2/WebAuthn, out-of-band second-device approval, and OS-auth/elevation-backed ceremonies are separate platform-specific work tracked in `docs/ROADMAP.md` §6.
 
 Coarse abstain diagnostics (no distinct `candidate.reason` in audit) are a tracked follow-up — see `docs/architecture/steward-operator-authorization.md`.
 
