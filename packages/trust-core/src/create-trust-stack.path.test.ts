@@ -3,6 +3,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { resolve } from "node:path";
 import { mergeTrustConfig } from "./create-trust-stack.js";
 
 describe("mergeTrustConfig path absolutization", () => {
@@ -15,6 +16,9 @@ describe("mergeTrustConfig path absolutization", () => {
         replayCachePath: ".openclaw/workspace/fpp-replay-cache.json",
         strictModeStatePath: ".openclaw/workspace/fpp-strict-sessions.json",
         quorumStatePath: ".openclaw/workspace/fpp-quorum-sessions.json",
+        stewardAuthorizationLedgerPath:
+          ".openclaw/workspace/fpp-steward-authorization-ledger.jsonl",
+        stewardInstanceAudience: "instance:path-test",
       });
       assert.match(
         cfg.trustGraphPath.replace(/\\/g, "/"),
@@ -36,6 +40,11 @@ describe("mergeTrustConfig path absolutization", () => {
         cfg.quorumStatePath.replace(/\\/g, "/"),
         /\/\.openclaw\/workspace\/fpp-quorum-sessions\.json$/,
       );
+      assert.match(
+        cfg.stewardAuthorizationLedgerPath.replace(/\\/g, "/"),
+        /\/\.openclaw\/workspace\/fpp-steward-authorization-ledger\.jsonl$/,
+      );
+      assert.equal(cfg.stewardInstanceAudience, "instance:path-test");
     } finally {
       if (prev === undefined) delete process.env.FPP_WORKSPACE;
       else process.env.FPP_WORKSPACE = prev;
@@ -64,5 +73,23 @@ describe("mergeTrustConfig path absolutization", () => {
       if (prev === undefined) delete process.env.FPP_WORKSPACE;
       else process.env.FPP_WORKSPACE = prev;
     }
+  });
+
+  it("preserves absolute steward ledger paths and rejects blank audiences", () => {
+    const absoluteLedger = resolve("fpp-steward-ledger.jsonl");
+    const cfg = mergeTrustConfig({
+      stewardAuthorizationLedgerPath: absoluteLedger,
+      stewardInstanceAudience: "instance:absolute-test",
+    });
+    assert.equal(
+      cfg.stewardAuthorizationLedgerPath.replace(/\\/g, "/"),
+      absoluteLedger.replace(/\\/g, "/"),
+    );
+    assert.equal(cfg.stewardInstanceAudience, "instance:absolute-test");
+
+    assert.throws(
+      () => mergeTrustConfig({ stewardInstanceAudience: "   " }),
+      /stewardInstanceAudience.*non-empty/i,
+    );
   });
 });

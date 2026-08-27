@@ -56,6 +56,8 @@ export interface FppTrustConfig {
   quorumProposalTtlMs: number;
   mandateStorePath: string;
   quorumStatePath: string;
+  stewardAuthorizationLedgerPath: string;
+  stewardInstanceAudience?: string | undefined;
   /** Migration diagnostics only — never used to rewrite operator config files. */
   migrationDiagnostics: TrustConfigDiagnostic[];
 }
@@ -123,6 +125,18 @@ export function mergeTrustConfig(
   const quorumStewardEligibleIds = Array.isArray(cfg.quorumStewardEligibleIds)
     ? (cfg.quorumStewardEligibleIds as string[])
     : [];
+  const stewardInstanceAudience =
+    typeof cfg.stewardInstanceAudience === "string"
+      ? cfg.stewardInstanceAudience.trim()
+      : undefined;
+  if (
+    cfg.stewardInstanceAudience !== undefined &&
+    !stewardInstanceAudience
+  ) {
+    throw new Error(
+      "stewardInstanceAudience must be a non-empty string when configured",
+    );
+  }
 
   // Unconditional quorum unreachable diagnostics (independent of enforcement
   // dispositionMode — trust-local only).
@@ -276,6 +290,14 @@ export function mergeTrustConfig(
         ? cfg.quorumStatePath
         : workspaceFile("fpp-quorum-sessions.json"),
     ),
+    stewardAuthorizationLedgerPath: path(
+      typeof cfg.stewardAuthorizationLedgerPath === "string"
+        ? cfg.stewardAuthorizationLedgerPath
+        : workspaceFile("fpp-steward-authorization-ledger.jsonl"),
+    ),
+    ...(stewardInstanceAudience !== undefined
+      ? { stewardInstanceAudience }
+      : {}),
     migrationDiagnostics,
   };
 }
