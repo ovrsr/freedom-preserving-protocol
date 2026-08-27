@@ -228,4 +228,216 @@ describe("ReceiptStore lifecycle", () => {
     assert.equal(expired[0]!.outcome, "audit_gap_timeout");
     assert.equal(store.pendingCount(), 0);
   });
+
+  it("retains captured governanceEpoch and governanceMode on propose", () => {
+    const store = new ReceiptStore({ maxPending: 8 });
+    const result = store.propose(
+      basePropose({
+        toolCallId: "call-gov",
+        decision: "allow",
+        governanceEpoch: 4,
+        governanceMode: "enabled",
+      }),
+    );
+    assert.equal(result.record.governanceEpoch, 4);
+    assert.equal(result.record.governanceMode, "enabled");
+    assert.equal(store.getPending("call-gov")?.governanceEpoch, 4);
+  });
+
+  it("transition reconciliation aborts only selected calls from the draining epoch", () => {
+    const store = new ReceiptStore({ maxPending: 8 });
+    store.propose(
+      basePropose({
+        toolCallId: "call-drain-ready",
+        decision: "allow",
+        governanceEpoch: 2,
+        governanceMode: "enabled",
+      }),
+    );
+    store.propose(
+      basePropose({
+        toolCallId: "call-drain-evaluating",
+        decision: "approval",
+        governanceEpoch: 2,
+        governanceMode: "enabled",
+      }),
+    );
+    store.propose(
+      basePropose({
+        toolCallId: "call-invoking",
+        decision: "allow",
+        governanceEpoch: 2,
+        governanceMode: "enabled",
+      }),
+    );
+    store.propose(
+      basePropose({
+        toolCallId: "call-other-epoch",
+        decision: "allow",
+        governanceEpoch: 1,
+        governanceMode: "enabled",
+      }),
+    );
+    store.propose(
+      basePropose({
+        toolCallId: "call-plugin",
+        decision: "allow",
+      }),
+    );
+    const aborted = store.abortPendingForGovernanceTransition(
+      "2026-07-20T12:00:05.000Z",
+      2,
+      new Set(["call-drain-ready", "call-drain-evaluating"]),
+    );
+    assert.equal(aborted.length, 2);
+    for (const record of aborted) {
+      assert.equal(record.status, "orphan");
+      assert.equal(record.outcome, "governance_transition_aborted");
+      assert.notEqual(record.outcome, "audit_gap_orphan");
+      assert.equal(record.governanceEpoch, 2);
+    }
+    assert.equal(store.getPending("call-drain-ready"), undefined);
+    assert.equal(store.getPending("call-drain-evaluating"), undefined);
+    assert.ok(store.getPending("call-invoking"));
+    assert.ok(store.getPending("call-other-epoch"));
+    assert.ok(store.getPending("call-plugin"));
+    assert.equal(store.pendingCount(), 3);
+  });
+
+  it("transition reconciliation is idempotent and rejects epoch mismatches", () => {
+    const store = new ReceiptStore({ maxPending: 8 });
+    store.propose(
+      basePropose({
+        toolCallId: "call-selected",
+        decision: "allow",
+        governanceEpoch: 7,
+        governanceMode: "enabled",
+      }),
+    );
+
+    const first = store.abortPendingForGovernanceTransition(
+      "2026-07-20T12:00:05.000Z",
+      7,
+      new Set(["call-selected"]),
+    );
+    const retry = store.abortPendingForGovernanceTransition(
+      "2026-07-20T12:00:06.000Z",
+      7,
+      new Set(["call-selected"]),
+    );
+    assert.equal(first.length, 1);
+    assert.equal(retry.length, 0);
+
+    store.propose(
+      basePropose({
+        toolCallId: "call-wrong-epoch",
+        decision: "allow",
+        governanceEpoch: 8,
+        governanceMode: "enabled",
+      }),
+    );
+    assert.throws(
+      () =>
+        store.abortPendingForGovernanceTransition(
+          "2026-07-20T12:00:07.000Z",
+          7,
+          new Set(["call-wrong-epoch"]),
+        ),
+      /epoch/i,
+    );
+    assert.ok(store.getPending("call-wrong-epoch"));
+  });
+
+  it("does not commit a transition abort until that record is persisted", () => {
+    const store = new ReceiptStore({ maxPending: 8 });
+    for (const toolCallId of ["call-persisted", "call-write-fails"]) {
+      store.propose(
+        basePropose({
+          toolCallId,
+          decision: "allow",
+          governanceEpoch: 9,
+          governanceMode: "enabled",
+        }),
+      );
+    }
+
+    assert.throws(
+      () =>
+        store.abortPendingForGovernanceTransition(
+          "2026-07-20T12:00:05.000Z",
+          9,
+          new Set(["call-persisted", "call-write-fails"]),
+          (candidate) => {
+            if (candidate.toolCallId === "call-write-fails") {
+              throw new Error("injected receipt persistence failure");
+            }
+          },
+        ),
+      /persistence failure/i,
+    );
+    assert.equal(
+      store.getFinalized("call-persisted")?.outcome,
+      "governance_transition_aborted",
+    );
+    assert.ok(store.getPending("call-write-fails"));
+    assert.equal(store.getFinalized("call-write-fails"), undefined);
+
+    const retry = store.abortPendingForGovernanceTransition(
+      "2026-07-20T12:00:06.000Z",
+      9,
+      new Set(["call-persisted", "call-write-fails"]),
+      () => undefined,
+    );
+    assert.deepEqual(
+      retry.map((record) => record.toolCallId),
+      ["call-write-fails"],
+    );
+    assert.equal(store.finalizedCount(), 2);
+  });
+
+  it("cancelled authorization is terminal and ignored by later transition abort", () => {
+    const store = new ReceiptStore({ maxPending: 4 });
+    store.propose(
+      basePropose({
+        toolCallId: "approval-held",
+        decision: "approval",
+        governanceEpoch: 2,
+        governanceMode: "enabled",
+      }),
+    );
+    assert.equal(
+      store.getPending("approval-held")?.status,
+      "pending_authorization",
+    );
+
+    const cancelled = store.recordAuthorization(
+      "approval-held",
+      "cancelled",
+      "2026-07-20T12:00:01.000Z",
+    );
+    assert.equal(cancelled?.status, "finalized");
+    assert.equal(cancelled?.outcome, "cancelled");
+    assert.equal(store.getPending("approval-held"), undefined);
+
+    const aborted = store.abortPendingForGovernanceTransition(
+      "2026-07-20T12:00:02.000Z",
+      2,
+      new Set(["approval-held"]),
+    );
+    assert.deepEqual(aborted, []);
+    assert.equal(store.getFinalized("approval-held")?.outcome, "cancelled");
+  });
+
+  it("rejects arbitrary orphan outcomes outside the allowlist", () => {
+    const store = new ReceiptStore({ maxPending: 4 });
+    store.propose(basePropose({ toolCallId: "call-x", decision: "allow" }));
+    assert.throws(
+      () =>
+        store.orphanAllPending(
+          "2026-07-20T12:00:00.000Z",
+          "caller_controlled_outcome" as "audit_gap_orphan",
+        ),
+      /allowlist|invalid.*outcome|governance_transition_aborted|audit_gap_orphan/i,
+    );
+  });
 });

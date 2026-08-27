@@ -216,13 +216,26 @@ export {
   collectTypedReceiptLeaves,
   getReceiptRoot,
   createTypedReceiptProof,
+  createTypedReceiptInclusionEvidence,
   verifyReceiptEvidence,
   digestReceiptSelective,
   RECEIPT_LOG_KIND,
+  INSTRUMENTED_BOUNDARY_DISPOSITION,
+  ReceiptLogValidationError,
 } from "./receipt-verifier.js";
 export type {
   ReceiptEvidenceReport,
+  ReceiptExpectedComparisons,
+  ReceiptExpectedField,
+  ReceiptFieldComparison,
+  ReceiptComparisonStatus,
+  TrustedContextComparison,
+  TrustedReceiptVerificationContext,
+  ReceiptAttestationEligibility,
+  ReceiptSignerVerification,
+  ReceiptInclusionVerification,
   SignedReceiptLike,
+  InstrumentedBoundaryDispositionAttestation,
 } from "./receipt-verifier.js";
 
 export { evaluateTrustPolicy, TRUST_POLICY_VERSION } from "./trust-policy.js";

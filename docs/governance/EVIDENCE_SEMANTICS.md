@@ -57,6 +57,68 @@ Every evidence bundle SHOULD expose:
 
 ---
 
+## 4a. Positive attestation: `instrumented-boundary-disposition`
+
+This is an **attestation kind** under the existing **Event** claim class — not a seventh top-level claim class.
+
+| Attestation | Claim class / uncertainty | Required evidence | Maximum conclusion | Prohibited conclusions / boundary ceiling |
+|-------------|---------------------------|-------------------|--------------------|------------------------------------------|
+| `instrumented-boundary-disposition` | `event`; `proven_under_assumptions` | Schema-valid signed receipt; valid signature with a self-certified signer key/identifier binding; independently supplied constitution hash, policy ID, and policy version all matched; every other requested expected-value comparison independently matched; when inclusion is requested, a versioned exact-entry bundle must be proof valid under the claimed root and that root must match an independently supplied checkpoint root | The signer recorded disposition D and authorization A against action digest H under the independently matched constitution and policy context plus semantically valid signed metadata present in the receipt; this is a self-presented cryptographic receipt whose signed content identifies an instrumented-boundary recording context | Signature validity is not signer trust and does not establish trusted key provenance or legal identity; proof validity under a claimed root is not independent root anchoring; does not independently establish trusted boundary traversal; `boundary_attested` requires trusted interception-boundary evidence beyond the self-presented receipt; does not prove exact downstream parameter equality, uninstrumented/bypass absence, completeness, uncompromised runtime, or behavioral compliance |
+
+The receipt supplies **cryptographic** evidence about signed bytes. A positive
+Event attestation additionally requires verifier-supplied constitution and policy
+context; omitting those expectations leaves the receipt cryptographically
+self-consistent but ineligible for the positive attestation. The receipt names an
+**interception-boundary** recording context, but that context is not independently
+trusted merely because the signer presented it.
+
+**Maximum justified conclusion:**
+
+> For this receipt, the self-certified signer key/identifier recorded
+> disposition D and authorization A against action digest H under the
+> independently matched constitution hash, policy ID, and policy version plus
+> semantically valid signed metadata actually present in the receipt. A supplied
+> signer identifier may separately match, but this does not establish trusted key
+> provenance or legal/person identity. The signed receipt identifies this as an
+> FPP instrumented-boundary record; it does not independently establish that the
+> call traversed a trusted boundary.
+
+**Assumptions (must remain visible):**
+
+- Signature verification and the self-certified key↔identifier binding are
+  trusted by the verifier as cryptographic consistency checks.
+- A matched supplied signer identifier does not establish trusted key provenance
+  or legal/person identity.
+- Constitution hash, policy ID, and policy version come from an independent
+  verifier context and all match the signed receipt.
+- The self-presented receipt truthfully identifies the signer's
+  instrumented-boundary recording context.
+- The digest represents parameters observed by that recording context.
+- Present signed policy / classifier / config metadata accurately name the
+  evaluation context; requested expected values are disclosed independently.
+
+**Distinguish three burdens (do not collapse them):**
+
+| Layer | What it establishes | What it still does not establish |
+|-------|---------------------|----------------------------------|
+| Byte / signature integrity | Schema-valid signed content; attribution to key | Truth of unsigned fields; runtime honesty |
+| Signer-asserted boundary record | The signer recorded disposition and authorization for digest H and identified an FPP instrumented-boundary context | Independent boundary traversal; exact equality of parameters as later executed downstream |
+| Exact-entry proof mathematics | The entry preimage, recomputed hash, leaf, and path are valid under the root carried by the evidence | That the carried root is independently trusted or authoritative |
+| Root anchoring | The carried root matches an independently obtained expected checkpoint | Log completeness; signer trust; absence of omitted or bypassed events |
+| Completeness | Only with independent trusted-boundary or external evidence | Merkle inclusion under a claimed root alone |
+
+**Prohibited conclusions for this attestation:**
+
+- Exact downstream parameter equality after the instrumented boundary
+- Absence of uninstrumented / bypass paths to the same side effect
+- Completeness of all actions in an interval
+- Uncompromised runtime
+- Behavioral compliance with Laws 1–5
+
+Cross-reference: `packages/trust-core` `verifyReceiptEvidence` / `ReceiptEvidenceReport.attestation`.
+
+---
+
 ## 5. Uncertainty labels
 
 Recommended labels for verifiers:

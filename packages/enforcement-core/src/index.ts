@@ -90,6 +90,8 @@ export {
 export {
   ReceiptStore,
   digestActionParams,
+  ALLOWED_ORPHAN_OUTCOMES,
+  type AllowedOrphanOutcome,
   type PendingReceiptRecord,
   type ReceiptStoreOptions,
 } from "./receipt-store.js";
@@ -108,7 +110,11 @@ export {
   verifyReceiptLog,
   collectReceiptLeaves,
   createReceiptProof,
+  createReceiptInclusionEvidence,
   RECEIPT_LOG_KIND,
+  type ReceiptLogEntry,
+  type ReceiptLogVerifyReport,
+  type ReceiptMerkleProof,
 } from "./receipt-log.js";
 
 export { StagedActionLedger } from "./staged-actions.js";
@@ -136,6 +142,7 @@ export {
 export {
   createEnforcementRuntime,
   legacyDecisionFromDisposition,
+  TransitionReceiptPersistenceError,
   type EnforcementRuntime,
   type EnforcementRuntimeOptions,
   type FppApprovalDecision,
@@ -145,4 +152,6 @@ export {
   type FppToolCallContext,
   type FppToolCallEvent,
   type FppWorkspacePaths,
+  type TransitionReceiptPersistenceRecord,
+  type TransitionReceiptReconciliationResult,
 } from "./runtime-adapter.js";

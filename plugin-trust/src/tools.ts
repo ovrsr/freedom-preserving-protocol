@@ -33,7 +33,7 @@ import type { GroupContextManager } from "@ovrsr/fpp-trust-core";
 import {
   verifyReceiptEvidence,
   getReceiptRoot,
-  createTypedReceiptProof,
+  createTypedReceiptInclusionEvidence,
   RECEIPT_LOG_KIND,
 } from "@ovrsr/fpp-trust-core";
 import {
@@ -646,8 +646,24 @@ export function executeSensitivityShareCheck(
 
 export const ReceiptVerifyParams = Type.Object({
   receiptJson: Type.String({ description: "JSON string of a ConformanceReceiptV1" }),
+  expectedActionDigest: Type.Optional(Type.String()),
+  expectedAgentId: Type.Optional(Type.String()),
+  expectedPolicyId: Type.Optional(Type.String()),
   expectedPolicyVersion: Type.Optional(Type.String()),
+  expectedImplementationVersion: Type.Optional(Type.String()),
+  expectedConstitutionHash: Type.Optional(Type.String()),
   expectedClassifierRulesetHash: Type.Optional(Type.String()),
+  expectedEffectiveConfigHash: Type.Optional(Type.String()),
+  inclusionEvidenceJson: Type.Optional(
+    Type.String({
+      description: "JSON string of ReceiptInclusionEvidenceV1",
+    }),
+  ),
+  expectedReceiptRoot: Type.Optional(
+    Type.String({
+      description: "Independently obtained trusted receipt-log checkpoint root",
+    }),
+  ),
 });
 
 export const ReceiptProofExportParams = Type.Object({
@@ -697,7 +713,7 @@ export const CapsuleOfferParams = Type.Object({
 
 export function executeReceiptVerify(
   params: Static<typeof ReceiptVerifyParams>,
-  _deps: ToolDependencies,
+  deps: ToolDependencies,
 ) {
   let receipt: unknown;
   try {
@@ -705,20 +721,77 @@ export function executeReceiptVerify(
   } catch {
     return failResult("receiptJson is not valid JSON");
   }
+  let inclusionEvidence: unknown;
+  if (params.inclusionEvidenceJson !== undefined) {
+    try {
+      inclusionEvidence = JSON.parse(params.inclusionEvidenceJson);
+    } catch {
+      return failResult("inclusionEvidenceJson is not valid JSON");
+    }
+  }
   const report = verifyReceiptEvidence({
     receipt,
+    expectedActionDigest: params.expectedActionDigest,
+    expectedAgentId: params.expectedAgentId,
+    expectedPolicyId: params.expectedPolicyId,
     expectedPolicyVersion: params.expectedPolicyVersion,
+    expectedImplementationVersion: params.expectedImplementationVersion,
+    expectedConstitutionHash:
+      params.expectedConstitutionHash ?? deps.constitutionHash,
     expectedClassifierRulesetHash: params.expectedClassifierRulesetHash,
+    expectedEffectiveConfigHash: params.expectedEffectiveConfigHash,
+    inclusionEvidence,
+    expectedRoot: params.expectedReceiptRoot,
   });
-  return textResult(
-    report.valid
-      ? `Receipt verified (${report.evidenceClass}). Ceiling=${report.confidenceCeiling}. Does NOT prove behavioral compliance or completeness.`
-      : `Receipt verification failed: ${report.reasons.join("; ")}`,
-    {
-      ...report,
-      rawLogDisclosed: false,
-    },
-  );
+  const inclusionSummary = report.inclusionVerification.requested
+    ? `Exact-entry proof valid under claimed root: ${report.inclusionVerification.proofValidUnderClaimedRoot ? "yes" : "no"}. ` +
+      `Root ${report.inclusionVerification.rootAnchored ? "independently anchored" : "is not independently anchored"}. ` +
+      `Anchored inclusion verified: ${report.inclusionVerification.inclusionVerified ? "yes" : "no"}. `
+    : "";
+  let text: string;
+  if (report.valid && report.attestation) {
+    const a = report.attestation;
+    const signerSummary =
+      report.signerVerification.expectedIdentifier.status === "matched"
+        ? "The supplied signer identifier matched; this does not establish trusted key provenance or legal identity. "
+        : "The signature establishes a self-certified signer key/identifier, not trusted key provenance or legal identity. ";
+    text =
+      `Instrumented-boundary-disposition attested from a self-presented signed receipt ` +
+      `(${a.claimClass}; ${a.uncertaintyLabel}). ` +
+      `${a.maximumConclusion} Ceiling=${report.confidenceCeiling}. ` +
+      signerSummary +
+      inclusionSummary +
+      `Checked: ${report.whatWasVerified.join("; ")}. ` +
+      `Assumptions: ${a.assumptions.join("; ")}. ` +
+      `Limitations: ${a.limitations.join("; ")}. ` +
+      `The receipt does not independently prove boundary traversal; boundary_attested ` +
+      `requires trusted boundary evidence beyond the self-presented receipt.`;
+  } else if (report.valid) {
+    text =
+      `Receipt cryptographic evidence is valid (${report.evidenceClass}). ` +
+      `Positive attestation withheld pending independent constitution hash, policy ID, ` +
+      `and policy version matching. ` +
+      `The signature establishes a self-certified signer key/identifier, not agent identity; ` +
+      `it does not establish trusted key provenance or legal identity. ` +
+      `Ceiling=${report.confidenceCeiling}. ` +
+      inclusionSummary +
+      `Checked: ${report.whatWasVerified.join("; ")}. ` +
+      `Does NOT prove behavioral compliance, completeness, or boundary traversal.`;
+  } else {
+    text =
+      `Receipt verification failed / evidence insufficient. ` +
+      `Ceiling=${report.confidenceCeiling}. Reasons: ${report.reasons.join("; ")}. ` +
+      `Signature valid: ${report.signerVerification.signatureValid ? "yes" : "no"}; ` +
+      `signer binding: ${report.signerVerification.selfCertifiedKeyIdentifier ? "self-certified signer key/identifier" : "not established"}. ` +
+      inclusionSummary +
+      `Checked: ${report.whatWasVerified.join("; ") || "none"}. ` +
+      `No positive disposition conclusion or boundary traversal is established. ` +
+      `This does not prove log completeness or signer trust.`;
+  }
+  return textResult(text, {
+    ...report,
+    rawLogDisclosed: false,
+  });
 }
 
 export function executeReceiptProofExport(
@@ -729,21 +802,38 @@ export function executeReceiptProofExport(
   if (!logPath) {
     return failResult("receiptLogPath not configured on trust plugin");
   }
-  const root = getReceiptRoot(logPath);
-  const proof = createTypedReceiptProof(logPath, params.index);
-  if (!proof) {
+  let root: ReturnType<typeof getReceiptRoot>;
+  let inclusionEvidence: ReturnType<
+    typeof createTypedReceiptInclusionEvidence
+  >;
+  try {
+    root = getReceiptRoot(logPath);
+    inclusionEvidence = createTypedReceiptInclusionEvidence(
+      logPath,
+      params.index,
+    );
+  } catch (error) {
+    return failResult(
+      `Receipt proof export failed closed: ${(error as Error).message}`,
+    );
+  }
+  if (!inclusionEvidence) {
     return failResult(
       `No receipt at index ${params.index} (log has ${root.entryCount} entries)`,
     );
   }
   return textResult(
-    `Receipt inclusion proof for index ${params.index} (logKind=${RECEIPT_LOG_KIND}). ` +
-      `Proves inclusion under claimed root only — not completeness.`,
+    `Receipt inclusion evidence for index ${params.index} (logKind=${RECEIPT_LOG_KIND}). ` +
+      `The locally calculated root is not an independently trusted checkpoint. ` +
+      `Proof mathematics establishes inclusion under that claimed root only — not completeness.`,
     {
       logKind: RECEIPT_LOG_KIND,
       root: root.root,
+      locallyCalculatedRoot: root.root,
+      trustedCheckpoint: null,
+      rootAuthoritative: false,
       entryCount: root.entryCount,
-      proof,
+      inclusionEvidence,
       rawLogDisclosed: false,
       discloseRawLogRequested: params.discloseRawLog === true,
       note:
