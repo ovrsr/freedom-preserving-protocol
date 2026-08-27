@@ -6,10 +6,12 @@ import {
   KeyRefSchema,
   OperatorAuthorizationRevocationV1Schema,
   OperatorAuthorizationV1Schema,
+  StewardBootstrapV1Schema,
   StewardKeyAttestationV1Schema,
   attestationSigningFields,
   authorizationRevocationSigningFields,
   authorizationSigningFields,
+  bootstrapSigningFields,
   buildStewardEvidenceDigest,
   buildStewardReplayDigest,
   isStewardIdV1,
@@ -17,10 +19,12 @@ import {
   parseKeyRef,
   parseOperatorAuthorization,
   parseOperatorAuthorizationRevocation,
+  parseStewardBootstrap,
   parseStewardIdV1,
   parseStewardKeyAttestation,
   validateOperatorAuthorizationBounds,
   type OperatorAuthorizationV1,
+  type StewardBootstrapV1,
   type StewardKeyAttestationV1,
 } from "./steward-authorization.js";
 
@@ -393,5 +397,284 @@ describe("steward evidence and replay digests", () => {
       ),
       false,
     );
+  });
+});
+
+describe("StewardBootstrapV1", () => {
+  const fingerprint = "b".repeat(40);
+  const publicKeyArmored = [
+    "-----BEGIN PGP PUBLIC KEY BLOCK-----",
+    "Version: test",
+    "",
+    "mDMEAAAAAAkB",
+    "-----END PGP PUBLIC KEY BLOCK-----",
+  ].join("\n");
+
+  const validInitialBinding: StewardKeyAttestationV1 = {
+    schemaVersion: 1,
+    kind: "steward-key-attestation",
+    attestationId: "att-bootstrap-001",
+    operation: "initial-bind",
+    stewardId: "fpp:steward:v1:aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    audience: "instance:local-1",
+    subjectKey: {
+      algorithm: "openpgp",
+      keyRef: `openpgp:${fingerprint}`,
+      publicKeyArmored,
+    },
+    issuedAt: "2026-07-20T12:00:00.000Z",
+    nonce: "n".repeat(32),
+    reason: "secure steward genesis",
+  };
+
+  const validBootstrap: StewardBootstrapV1 = {
+    schemaVersion: 1,
+    kind: "steward-bootstrap",
+    bootstrapId: "bootstrap-001",
+    stewardId: "fpp:steward:v1:aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    audience: "instance:local-1",
+    policy: {
+      instanceAudience: "instance:local-1",
+      maxStandingLifetimeMs: 86_400_000,
+      maxStandingUses: 100,
+      maxOneShotLifetimeMs: 3_600_000,
+      allowedClockSkewMs: 300_000,
+    },
+    initialBinding: validInitialBinding,
+    issuedAt: "2026-07-20T12:00:00.000Z",
+    nonce: "b".repeat(32),
+  };
+
+  it("accepts a valid bootstrap binding identity, key, audience, and policy caps", () => {
+    const result = parseStewardBootstrap(validBootstrap);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.bootstrap.bootstrapId, "bootstrap-001");
+    assert.equal(result.bootstrap.initialBinding.operation, "initial-bind");
+    assert.equal(result.bootstrap.policy.maxStandingUses, 100);
+    assert.ok(StewardBootstrapV1Schema);
+  });
+
+  it("rejects mismatched nested steward/audience values and non-initial-bind operations", () => {
+    assert.equal(
+      parseStewardBootstrap({
+        ...validBootstrap,
+        initialBinding: {
+          ...validInitialBinding,
+          stewardId: "fpp:steward:v1:bbbbbbbbbbbbbbbbbbbbbbbbbb",
+        },
+      }).ok,
+      false,
+    );
+    assert.equal(
+      parseStewardBootstrap({
+        ...validBootstrap,
+        initialBinding: {
+          ...validInitialBinding,
+          audience: "instance:other",
+        },
+      }).ok,
+      false,
+    );
+    assert.equal(
+      parseStewardBootstrap({
+        ...validBootstrap,
+        policy: {
+          ...validBootstrap.policy,
+          instanceAudience: "instance:other",
+        },
+      }).ok,
+      false,
+    );
+    assert.equal(
+      parseStewardBootstrap({
+        ...validBootstrap,
+        initialBinding: {
+          ...validInitialBinding,
+          operation: "add",
+          attestationId: "att-add",
+          nonce: "a".repeat(32),
+        },
+      }).ok,
+      false,
+    );
+  });
+
+  it("rejects malformed key refs, private-key material, invalid caps, unknown versions, and missing replay fields", () => {
+    assert.equal(
+      parseStewardBootstrap({
+        ...validBootstrap,
+        initialBinding: {
+          ...validInitialBinding,
+          subjectKey: {
+            ...validInitialBinding.subjectKey,
+            keyRef: "openpgp:not-a-fingerprint",
+          },
+        },
+      }).ok,
+      false,
+    );
+    assert.equal(
+      parseStewardBootstrap({
+        ...validBootstrap,
+        initialBinding: {
+          ...validInitialBinding,
+          subjectKey: {
+            ...validInitialBinding.subjectKey,
+            publicKeyArmored: [
+              "-----BEGIN PGP PRIVATE KEY BLOCK-----",
+              "mDMEAAAA",
+              "-----END PGP PRIVATE KEY BLOCK-----",
+            ].join("\n"),
+          },
+        },
+      }).ok,
+      false,
+    );
+    assert.equal(
+      parseStewardBootstrap({
+        ...validBootstrap,
+        policy: { ...validBootstrap.policy, maxStandingUses: 0 },
+      }).ok,
+      false,
+    );
+    assert.equal(
+      parseStewardBootstrap({
+        ...validBootstrap,
+        policy: { ...validBootstrap.policy, maxStandingLifetimeMs: -1 },
+      }).ok,
+      false,
+    );
+    assert.equal(
+      parseStewardBootstrap({
+        ...validBootstrap,
+        schemaVersion: 2,
+      }).ok,
+      false,
+    );
+    assert.equal(
+      parseStewardBootstrap({
+        ...validBootstrap,
+        kind: "steward-bootstrap-v2",
+      }).ok,
+      false,
+    );
+    const { nonce: _n, ...missingNonce } = validBootstrap;
+    assert.equal(parseStewardBootstrap(missingNonce).ok, false);
+    const { issuedAt: _i, ...missingIssuedAt } = validBootstrap;
+    assert.equal(parseStewardBootstrap(missingIssuedAt).ok, false);
+    assert.equal(
+      parseStewardBootstrap({ ...validBootstrap, nonce: "short" }).ok,
+      false,
+    );
+    assert.equal(
+      parseStewardBootstrap({ ...validBootstrap, issuedAt: "not-iso" }).ok,
+      false,
+    );
+    assert.equal(
+      parseStewardBootstrap({ ...validBootstrap, extra: true }).ok,
+      false,
+    );
+  });
+
+  it("rejects every recognized OpenPGP secret armor label and key algorithm/ref mismatch", () => {
+    for (const label of ["PRIVATE", "SECRET"]) {
+      const secretArmor = [
+        `-----BEGIN PGP ${label} KEY BLOCK-----`,
+        "mDMEAAAA",
+        `-----END PGP ${label} KEY BLOCK-----`,
+      ].join("\n");
+      const withSecretMaterial = {
+        ...validBootstrap,
+        initialBinding: {
+          ...validInitialBinding,
+          subjectKey: {
+            ...validInitialBinding.subjectKey,
+            publicKeyArmored: secretArmor,
+          },
+        },
+      };
+      assert.equal(
+        parseStewardBootstrap(withSecretMaterial).ok,
+        false,
+        `${label} armor must be rejected`,
+      );
+      assert.equal(
+        parseStewardKeyAttestation(withSecretMaterial.initialBinding).ok,
+        false,
+        `${label} armor must be rejected from attestations`,
+      );
+    }
+
+    const mismatchedAlgorithm = {
+      ...validBootstrap,
+      initialBinding: {
+        ...validInitialBinding,
+        subjectKey: {
+          ...validInitialBinding.subjectKey,
+          algorithm: "ed25519",
+        },
+      },
+    };
+    const parsed = parseStewardBootstrap(mismatchedAlgorithm);
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.ok ? "" : parsed.error, /algorithm.*key.*ref/i);
+  });
+
+  it("canonical signing bytes change when expected key, audience, or any policy cap changes", () => {
+    const base = canonicalizeV2(bootstrapSigningFields(validBootstrap));
+    assert.equal(base, canonicalizeV2(validBootstrap));
+
+    const keyChanged = {
+      ...validBootstrap,
+      initialBinding: {
+        ...validInitialBinding,
+        subjectKey: {
+          ...validInitialBinding.subjectKey,
+          keyRef: `openpgp:${"c".repeat(40)}`,
+        },
+      },
+    };
+    assert.notEqual(
+      canonicalizeV2(bootstrapSigningFields(keyChanged)),
+      base,
+    );
+
+    const audienceChanged = {
+      ...validBootstrap,
+      audience: "instance:other",
+      policy: {
+        ...validBootstrap.policy,
+        instanceAudience: "instance:other",
+      },
+      initialBinding: {
+        ...validInitialBinding,
+        audience: "instance:other",
+      },
+    };
+    assert.notEqual(
+      canonicalizeV2(bootstrapSigningFields(audienceChanged)),
+      base,
+    );
+
+    for (const cap of [
+      "maxStandingLifetimeMs",
+      "maxStandingUses",
+      "maxOneShotLifetimeMs",
+      "allowedClockSkewMs",
+    ] as const) {
+      const policyChanged = {
+        ...validBootstrap,
+        policy: {
+          ...validBootstrap.policy,
+          [cap]: validBootstrap.policy[cap] + 1,
+        },
+      };
+      assert.notEqual(
+        canonicalizeV2(bootstrapSigningFields(policyChanged)),
+        base,
+        `canonical bytes must change when ${cap} changes`,
+      );
+    }
   });
 });

@@ -191,6 +191,47 @@ export type StewardKeyAttestationParseResult =
   | { ok: true; attestation: StewardKeyAttestationV1 }
   | { ok: false; error: string };
 
+/** Immutable local ledger policy caps bound into a signed genesis bootstrap. */
+export const StewardBootstrapPolicyCapsV1Schema = Type.Object(
+  {
+    instanceAudience: Type.String({ minLength: 1 }),
+    maxStandingLifetimeMs: Type.Integer({ minimum: 1 }),
+    maxStandingUses: Type.Integer({ minimum: 1 }),
+    maxOneShotLifetimeMs: Type.Integer({ minimum: 1 }),
+    allowedClockSkewMs: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+export type StewardBootstrapPolicyCapsV1 = Static<
+  typeof StewardBootstrapPolicyCapsV1Schema
+>;
+
+/**
+ * Signed steward genesis bundle: policy caps + initial key binding.
+ * Signed bytes are canonicalizeV2 of the full object (no private keys).
+ */
+export const StewardBootstrapV1Schema = Type.Object(
+  {
+    schemaVersion: Type.Literal(1),
+    kind: Type.Literal("steward-bootstrap"),
+    bootstrapId: Type.String({ minLength: 1 }),
+    stewardId: Type.String({ minLength: 1 }),
+    audience: Type.String({ minLength: 1 }),
+    policy: StewardBootstrapPolicyCapsV1Schema,
+    initialBinding: StewardKeyAttestationV1Schema,
+    issuedAt: Type.String({ minLength: 1 }),
+    nonce: Type.String({ minLength: 1 }),
+  },
+  { additionalProperties: false },
+);
+
+export type StewardBootstrapV1 = Static<typeof StewardBootstrapV1Schema>;
+
+export type StewardBootstrapParseResult =
+  | { ok: true; bootstrap: StewardBootstrapV1 }
+  | { ok: false; error: string };
+
 const AuthorizationScopeSchema = Type.Object(
   {
     classifications: Type.Array(Type.String({ minLength: 1 }), {
@@ -349,6 +390,10 @@ function validateScope(
   return undefined;
 }
 
+export function containsOpenPgpSecretKeyArmor(value: string): boolean {
+  return /BEGIN PGP (?:PRIVATE|SECRET) KEY BLOCK/i.test(value);
+}
+
 export function parseStewardKeyAttestation(
   input: unknown,
 ): StewardKeyAttestationParseResult {
@@ -376,6 +421,24 @@ export function parseStewardKeyAttestation(
   if (attestation.subjectKey.algorithm.trim().length === 0) {
     return { ok: false, error: "subjectKey.algorithm required" };
   }
+  const subjectKeyRef = parseKeyRef(attestation.subjectKey.keyRef);
+  if (
+    !subjectKeyRef.ok ||
+    attestation.subjectKey.algorithm !== subjectKeyRef.keyRef.algorithm
+  ) {
+    return {
+      ok: false,
+      error: "subjectKey.algorithm must match the algorithm in subjectKey.keyRef",
+    };
+  }
+  if (
+    attestation.subjectKey.publicKeyArmored !== undefined &&
+    containsOpenPgpSecretKeyArmor(
+      attestation.subjectKey.publicKeyArmored,
+    )
+  ) {
+    return { ok: false, error: "OpenPGP secret key material is not accepted" };
+  }
   if (
     attestation.operation === "rotate" &&
     (attestation.replacesKeyRef === undefined ||
@@ -390,6 +453,74 @@ export function parseStewardKeyAttestation(
     return { ok: false, error: "invalid replacesKeyRef" };
   }
   return { ok: true, attestation };
+}
+
+export function parseStewardBootstrap(
+  input: unknown,
+): StewardBootstrapParseResult {
+  if (!Value.Check(StewardBootstrapV1Schema, input)) {
+    return {
+      ok: false,
+      error: firstTypeboxError(
+        StewardBootstrapV1Schema,
+        input,
+        "invalid StewardBootstrapV1",
+      ),
+    };
+  }
+  const bootstrap = input;
+  const shared = validateSharedIdentityFields({
+    stewardId: bootstrap.stewardId,
+    audience: bootstrap.audience,
+    nonce: bootstrap.nonce,
+    issuedAt: bootstrap.issuedAt,
+    keyRef: bootstrap.initialBinding.subjectKey.keyRef,
+  });
+  if (shared) {
+    return { ok: false, error: shared };
+  }
+  if (bootstrap.bootstrapId.trim().length === 0) {
+    return { ok: false, error: "bootstrapId must be non-empty" };
+  }
+  if (bootstrap.policy.instanceAudience !== bootstrap.audience) {
+    return {
+      ok: false,
+      error: "policy.instanceAudience must match bootstrap audience",
+    };
+  }
+  const binding = parseStewardKeyAttestation(bootstrap.initialBinding);
+  if (!binding.ok) {
+    return { ok: false, error: binding.error };
+  }
+  if (binding.attestation.operation !== "initial-bind") {
+    return {
+      ok: false,
+      error: "bootstrap initialBinding.operation must be initial-bind",
+    };
+  }
+  if (binding.attestation.stewardId !== bootstrap.stewardId) {
+    return {
+      ok: false,
+      error: "initialBinding.stewardId must match bootstrap stewardId",
+    };
+  }
+  if (binding.attestation.audience !== bootstrap.audience) {
+    return {
+      ok: false,
+      error: "initialBinding.audience must match bootstrap audience",
+    };
+  }
+  const armored = binding.attestation.subjectKey.publicKeyArmored;
+  if (armored === undefined || armored.trim().length === 0) {
+    return {
+      ok: false,
+      error: "initialBinding.subjectKey.publicKeyArmored is required",
+    };
+  }
+  if (containsOpenPgpSecretKeyArmor(armored)) {
+    return { ok: false, error: "OpenPGP secret key material is not accepted" };
+  }
+  return { ok: true, bootstrap };
 }
 
 export function parseOperatorAuthorization(
@@ -489,6 +620,12 @@ export function attestationSigningFields(
   attestation: StewardKeyAttestationV1,
 ): Record<string, unknown> {
   return { ...attestation };
+}
+
+export function bootstrapSigningFields(
+  bootstrap: StewardBootstrapV1,
+): Record<string, unknown> {
+  return { ...bootstrap };
 }
 
 export function authorizationSigningFields(
