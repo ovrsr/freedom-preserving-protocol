@@ -9,6 +9,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DIGEST_DOMAINS, digest } from "@ovrsr/fpp-protocol-core";
+import type {
+  DispositionDecision,
+  GovernanceMode,
+} from "@ovrsr/fpp-protocol-core";
 import {
   CONSERVATIVE_STRICT_APPROVAL_ON,
   mergeConfig,
@@ -46,7 +50,6 @@ import { buildRuntimeManifest, type PackageBuildInput } from "./runtime-manifest
 import { isReversibleClassification } from "./reversibility.js";
 import { StagedActionLedger } from "./staged-actions.js";
 import { EmergencyReviewLedger } from "./emergency-review.js";
-import type { DispositionDecision } from "@ovrsr/fpp-protocol-core";
 import {
   consumeStewardOperatorCoverage,
   isOperatorMandateId,
@@ -78,6 +81,10 @@ export type FppToolCallContext = {
   runId?: string | undefined;
   sessionKey?: string | undefined;
   toolCallId?: string | undefined;
+  /** Captured gateway governance epoch at admission (optional). */
+  governanceEpoch?: number | undefined;
+  /** Captured gateway governance mode at admission (optional). */
+  governanceMode?: GovernanceMode | undefined;
 };
 
 export type FppApprovalDecision =
@@ -134,6 +141,31 @@ export type EnforcementRuntimeOptions = {
     | undefined;
 };
 
+export type TransitionReceiptPersistenceRecord = {
+  toolCallId: string;
+  receiptId: string;
+  persisted: boolean;
+  error?: string | undefined;
+};
+
+export type TransitionReceiptReconciliationResult = {
+  aborted: PendingReceiptRecord[];
+  records: TransitionReceiptPersistenceRecord[];
+};
+
+export class TransitionReceiptPersistenceError extends Error {
+  readonly result: TransitionReceiptReconciliationResult;
+
+  constructor(
+    message: string,
+    result: TransitionReceiptReconciliationResult,
+  ) {
+    super(message);
+    this.name = "TransitionReceiptPersistenceError";
+    this.result = result;
+  }
+}
+
 export type EnforcementRuntime = {
   adapter: FppRuntimeAdapter;
   getConfig: () => FppPluginConfig;
@@ -148,6 +180,13 @@ export type EnforcementRuntime = {
   reset: () => void;
   getReceiptStore: () => ReceiptStore;
   reconcileOrphanedReceipts: (nowIso?: string) => PendingReceiptRecord[];
+  reconcileTransitionAbortedReceipts: (
+    input: {
+      governanceEpoch: number;
+      eligibleToolCallIds: ReadonlySet<string>;
+      nowIso?: string | undefined;
+    },
+  ) => TransitionReceiptReconciliationResult;
 };
 
 export function legacyDecisionFromDisposition(
@@ -376,14 +415,24 @@ export function createEnforcementRuntime(
       packageBuildHash: runtime.packageBuildHash,
       pluginApiCompat: runtime.pluginApiCompat,
       runtimeState: runtime.runtimeState,
+      ...(record.governanceEpoch !== undefined
+        ? { governanceEpoch: record.governanceEpoch }
+        : {}),
+      ...(record.governanceMode !== undefined
+        ? { governanceMode: record.governanceMode }
+        : {}),
     };
     return signReceiptPayload(payload, getReceiptSigner());
   }
 
+  function persistFinalizedReceiptOrThrow(record: PendingReceiptRecord): void {
+    const signed = buildSignedReceiptFromRecord(record);
+    appendSignedReceipt(config.receiptLogPath, signed);
+  }
+
   function persistFinalizedReceipt(record: PendingReceiptRecord): void {
     try {
-      const signed = buildSignedReceiptFromRecord(record);
-      appendSignedReceipt(config.receiptLogPath, signed);
+      persistFinalizedReceiptOrThrow(record);
     } catch (err) {
       if (err instanceof ReceiptLogCorruptionError) {
         emitAuditGap(
@@ -702,6 +751,8 @@ export function createEnforcementRuntime(
       runId: ctx.runId ?? event.runId,
       sessionKey: ctx.sessionKey,
       nowIso: new Date().toISOString(),
+      governanceEpoch: ctx.governanceEpoch,
+      governanceMode: ctx.governanceMode,
     });
     const receipt: PendingReceiptRecord = proposeResult.record;
     if (receipt.correlationConfidence === "reduced") {
@@ -770,6 +821,10 @@ export function createEnforcementRuntime(
                   ? "timeout"
                   : "cancelled";
           if (toolCallId) {
+            // Idempotent: a prior terminal resolution owns the durable receipt.
+            if (store.getFinalized(toolCallId)) {
+              return;
+            }
             const updated = store.recordAuthorization(
               toolCallId,
               outcome,
@@ -926,6 +981,63 @@ export function createEnforcementRuntime(
     return orphans;
   }
 
+  function reconcileTransitionAbortedReceipts(
+    input: {
+      governanceEpoch: number;
+      eligibleToolCallIds: ReadonlySet<string>;
+      nowIso?: string | undefined;
+    },
+  ): TransitionReceiptReconciliationResult {
+    const store = getReceiptStore();
+    const records: TransitionReceiptPersistenceRecord[] = [];
+    let aborted: PendingReceiptRecord[] = [];
+    try {
+      aborted = store.abortPendingForGovernanceTransition(
+        input.nowIso ?? new Date().toISOString(),
+        input.governanceEpoch,
+        input.eligibleToolCallIds,
+        (candidate) => {
+          const toolCallId = candidate.toolCallId;
+          if (!toolCallId) {
+            throw new Error(
+              `gateway transition receipt ${candidate.receiptId} lacks toolCallId`,
+            );
+          }
+          try {
+            persistFinalizedReceiptOrThrow(candidate);
+            records.push({
+              toolCallId,
+              receiptId: candidate.receiptId,
+              persisted: true,
+            });
+            emitAuditGap(
+              `governance transition aborted receipt ${candidate.receiptId} toolCallId=${toolCallId} outcome=${candidate.outcome}`,
+            );
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            records.push({
+              toolCallId,
+              receiptId: candidate.receiptId,
+              persisted: false,
+              error: message,
+            });
+            throw err;
+          }
+        },
+      );
+    } catch (err) {
+      throw new TransitionReceiptPersistenceError(
+        `governance transition receipt persistence failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        { aborted, records },
+      );
+    } finally {
+      store.drainOrphans();
+    }
+    return { aborted, records };
+  }
+
   return {
     adapter,
     getConfig: () => config,
@@ -943,5 +1055,6 @@ export function createEnforcementRuntime(
     },
     getReceiptStore,
     reconcileOrphanedReceipts,
+    reconcileTransitionAbortedReceipts,
   };
 }

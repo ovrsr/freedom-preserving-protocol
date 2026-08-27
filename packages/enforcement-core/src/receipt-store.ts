@@ -8,6 +8,7 @@
  */
 
 import { DIGEST_DOMAINS, digest } from "@ovrsr/fpp-protocol-core";
+import type { GovernanceMode } from "@ovrsr/fpp-protocol-core";
 
 export type CorrelationConfidence = "full" | "reduced";
 
@@ -26,6 +27,14 @@ export type ReceiptDisposition =
   | "allow_staged"
   | "allow_minimal";
 
+/** Allowlisted terminal outcomes for bulk orphan reconciliation. */
+export const ALLOWED_ORPHAN_OUTCOMES = [
+  "audit_gap_orphan",
+  "governance_transition_aborted",
+] as const;
+
+export type AllowedOrphanOutcome = (typeof ALLOWED_ORPHAN_OUTCOMES)[number];
+
 export type PendingReceiptRecord = {
   receiptId: string;
   toolCallId: string | null;
@@ -43,6 +52,10 @@ export type PendingReceiptRecord = {
   outcome?: string | undefined;
   status: ReceiptLifecycleStatus;
   finalizedAt?: string | undefined;
+  /** Captured gateway governance epoch when the call was admitted. */
+  governanceEpoch?: number | undefined;
+  /** Captured gateway governance mode when the call was admitted. */
+  governanceMode?: GovernanceMode | undefined;
 };
 
 export type ProposeInput = {
@@ -59,6 +72,8 @@ export type ProposeInput = {
   runId?: string | undefined;
   sessionKey?: string | undefined;
   nowIso: string;
+  governanceEpoch?: number | undefined;
+  governanceMode?: GovernanceMode | undefined;
 };
 
 export type ProposeResult = {
@@ -165,6 +180,14 @@ export class ReceiptStore {
   }
 
   propose(input: ProposeInput): ProposeResult {
+    if (
+      (input.governanceEpoch === undefined) !==
+      (input.governanceMode === undefined)
+    ) {
+      throw new Error(
+        "governanceEpoch and governanceMode must be supplied together",
+      );
+    }
     const key = this.correlationKey(input);
     const existingFinal = this.finalizedByKey.get(key);
     if (existingFinal) {
@@ -200,6 +223,12 @@ export class ReceiptStore {
           : input.decision === "approval"
             ? "pending_authorization"
             : "pending_execution",
+      ...(input.governanceEpoch !== undefined
+        ? { governanceEpoch: input.governanceEpoch }
+        : {}),
+      ...(input.governanceMode !== undefined
+        ? { governanceMode: input.governanceMode }
+        : {}),
     };
     if (correlationConfidence === "reduced") {
       record.fallbackCorrelationKey = `fallback:${fallbackKey(input)}`;
@@ -289,13 +318,71 @@ export class ReceiptStore {
   }
 
   /** Mark all remaining pending entries as orphans (shutdown/restart). */
-  orphanAllPending(nowIso: string, reason = "audit_gap_orphan"): PendingReceiptRecord[] {
+  orphanAllPending(
+    nowIso: string,
+    reason: AllowedOrphanOutcome = "audit_gap_orphan",
+  ): PendingReceiptRecord[] {
+    if (
+      !(ALLOWED_ORPHAN_OUTCOMES as readonly string[]).includes(reason)
+    ) {
+      throw new Error(
+        `invalid orphan outcome "${String(reason)}"; allowlist: ${ALLOWED_ORPHAN_OUTCOMES.join(", ")}`,
+      );
+    }
     const out: PendingReceiptRecord[] = [];
     for (const [key, record] of this.pending) {
       record.status = "orphan";
       record.outcome = reason;
       record.finalizedAt = nowIso;
       this.pending.delete(key);
+      this.finalizedByKey.set(key, record);
+      this.orphans.push(record);
+      out.push(record);
+    }
+    return out;
+  }
+
+  /**
+   * Transition-abort leftovers at a governance drain deadline.
+   * Distinct from generic shutdown orphans (`audit_gap_orphan`).
+   */
+  abortPendingForGovernanceTransition(
+    nowIso: string,
+    governanceEpoch: number,
+    eligibleToolCallIds: ReadonlySet<string>,
+    persist?: ((candidate: PendingReceiptRecord) => void) | undefined,
+  ): PendingReceiptRecord[] {
+    const selected: Array<
+      [string, PendingReceiptRecord, PendingReceiptRecord]
+    > = [];
+    for (const toolCallId of eligibleToolCallIds) {
+      const record = this.pending.get(toolCallId);
+      if (!record) continue;
+      if (record.governanceEpoch !== governanceEpoch) {
+        throw new Error(
+          `cannot transition-abort ${toolCallId}: expected governance epoch ${governanceEpoch}, got ${String(record.governanceEpoch)}`,
+        );
+      }
+      selected.push([
+        toolCallId,
+        record,
+        {
+          ...record,
+          status: "orphan",
+          outcome: "governance_transition_aborted",
+          finalizedAt: nowIso,
+        },
+      ]);
+    }
+
+    const out: PendingReceiptRecord[] = [];
+    for (const [key, record, candidate] of selected) {
+      // Persistence occurs before in-memory publication. If it throws, this
+      // record remains pending and can be retried without a duplicate terminal.
+      persist?.(candidate);
+      Object.assign(record, candidate);
+      this.pending.delete(key);
+      this.finalizedByKey.set(key, record);
       this.orphans.push(record);
       out.push(record);
     }

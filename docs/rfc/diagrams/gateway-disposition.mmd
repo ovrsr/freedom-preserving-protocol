@@ -9,19 +9,22 @@ sequenceDiagram
 
   Agent->>ToolRouter: tool request (name, params)
   alt governance disabled
-    ToolRouter->>Ledger: governance-disabled already on chain
+    ToolRouter->>Ledger: governance-disabled already on chain (epoch published)
+    Note over ToolRouter: ungated only after durable disable
     ToolRouter->>Tool: execute (ungated)
     Tool-->>Agent: result
   else governance enabled
+    ToolRouter->>ToolRouter: capture governance epoch N
     ToolRouter->>Engine: classifyToolCall
     Engine-->>ToolRouter: ClassificationResult
     ToolRouter->>Engine: resolveDisposition(...)
     Engine-->>ToolRouter: DispositionResult
-    ToolRouter->>Ledger: append disposition + constitutionHash + engineVersion
+    ToolRouter->>Ledger: append disposition + constitutionHash + engineVersion + epoch
     alt allow / allow_minimal
+      ToolRouter->>ToolRouter: recheck epoch N before invoke
       ToolRouter->>Tool: execute
       Tool-->>ToolRouter: result
-      ToolRouter->>Ledger: bind receipt (param digest, authorization)
+      ToolRouter->>Ledger: bind receipt (param digest, authorization, epoch)
       ToolRouter-->>Agent: result
     else allow_staged
       ToolRouter->>Ledger: register staged action
@@ -30,5 +33,16 @@ sequenceDiagram
       ToolRouter-->>Agent: hold for operator approval
     else deny / abstain
       ToolRouter-->>Agent: skip (deny or abstain recorded)
+    end
+  end
+  opt operator requests disable
+    ToolRouter->>ToolRouter: enter draining(epoch N); stop admission
+    Note over ToolRouter: deadline aborts only evaluating/ready call IDs from N
+    ToolRouter->>Ledger: persist governance_transition_aborted receipts
+    alt a call is still invoking at deadline
+      Note over ToolRouter,Ledger: disable fails; no governance-disabled event; return enabled(N)
+    else no invoking calls and receipt persistence succeeded
+      ToolRouter->>Ledger: atomically append governance-disabled(N+1)
+      Note over ToolRouter: publish disabled(N+1); ungated routing may begin
     end
   end

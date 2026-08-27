@@ -107,6 +107,12 @@ export function buildSignedReceiptFromRecord(
     packageBuildHash: runtime.packageBuildHash,
     pluginApiCompat: runtime.pluginApiCompat,
     runtimeState: runtime.runtimeState,
+    ...(record.governanceEpoch !== undefined
+      ? { governanceEpoch: record.governanceEpoch }
+      : {}),
+    ...(record.governanceMode !== undefined
+      ? { governanceMode: record.governanceMode }
+      : {}),
   };
   return signReceiptPayload(payload, signer);
 }
