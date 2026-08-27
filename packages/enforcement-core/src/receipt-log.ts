@@ -19,7 +19,10 @@ import {
   computeMerkleRootV2,
   createMerkleProofV2,
   digest,
+  parseConformanceReceipt,
+  parseReceiptInclusionEvidence,
   type MerkleProof,
+  type ReceiptInclusionEvidenceV1,
 } from "@ovrsr/fpp-protocol-core";
 import {
   verifyReceiptSignature,
@@ -58,27 +61,18 @@ function readPreviousHash(logPath: string): string {
   if (!existsSync(logPath)) return ZERO;
   const content = readFileSync(logPath, "utf-8").trim();
   if (!content) return ZERO;
-  const lines = content.split("\n").filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return ZERO;
-  const last = lines[lines.length - 1];
-  if (!last) return ZERO;
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(last) as Record<string, unknown>;
-  } catch (err) {
+  // Fail closed: never trust the tail hash alone — verify the full chain.
+  const report = verifyReceiptLog(logPath);
+  if (!report.ok) {
     throw new ReceiptLogCorruptionError(
-      `receipt log corruption: malformed JSON tail at ${logPath}: ${(err as Error).message}`,
+      `receipt log corruption: existing chain is invalid at ${logPath}: ${report.errors.join("; ")}`,
     );
   }
-  if (parsed.kind !== RECEIPT_LOG_KIND) {
-    throw new ReceiptLogCorruptionError(
-      `receipt log corruption: unexpected log kind ${String(parsed.kind)} at ${logPath}`,
-    );
+  if (typeof report.lastHash === "string" && /^[0-9a-f]{64}$/.test(report.lastHash)) {
+    return report.lastHash;
   }
-  const h = parsed.hash;
-  if (typeof h === "string" && /^[0-9a-f]{64}$/.test(h)) return h;
   throw new ReceiptLogCorruptionError(
-    `receipt log corruption: last entry missing valid 64-hex hash at ${logPath}`,
+    `receipt log corruption: verified chain missing valid terminal hash at ${logPath}`,
   );
 }
 
@@ -132,6 +126,7 @@ export function verifyReceiptLog(logPath: string): ReceiptLogVerifyReport {
   const lines = content.split("\n").filter((l) => l.trim().length > 0);
   let prevHash = ZERO;
   const leafHashes: string[] = [];
+  const seenHashes = new Set<string>();
 
   for (let i = 0; i < lines.length; i++) {
     let entry: Record<string, unknown>;
@@ -151,6 +146,15 @@ export function verifyReceiptLog(logPath: string): ReceiptLogVerifyReport {
       return report;
     }
 
+    if (
+      typeof entry.previousHash !== "string" ||
+      !/^[0-9a-f]{64}$/.test(entry.previousHash)
+    ) {
+      report.ok = false;
+      report.errors.push(
+        `line ${i + 1}: previousHash must be 64 lowercase hex characters`,
+      );
+    }
     if (entry.previousHash !== prevHash) {
       report.ok = false;
       report.errors.push(
@@ -159,6 +163,15 @@ export function verifyReceiptLog(logPath: string): ReceiptLogVerifyReport {
     }
 
     const { hash: claimed, ...rest } = entry;
+    if (typeof claimed !== "string" || !/^[0-9a-f]{64}$/.test(claimed)) {
+      report.ok = false;
+      report.errors.push(
+        `line ${i + 1}: hash must be 64 lowercase hex characters`,
+      );
+    } else if (seenHashes.has(claimed)) {
+      report.ok = false;
+      report.errors.push(`line ${i + 1}: duplicate entry hash ${claimed}`);
+    }
     const recomputed = hashReceiptEntry(rest);
     if (claimed !== recomputed) {
       report.ok = false;
@@ -166,27 +179,47 @@ export function verifyReceiptLog(logPath: string): ReceiptLogVerifyReport {
         `line ${i + 1}: hash mismatch (claimed ${String(claimed).slice(0, 16)}..., recomputed ${recomputed.slice(0, 16)}...)`,
       );
     }
+    if (
+      typeof entry.timestamp !== "string" ||
+      !Number.isFinite(Date.parse(entry.timestamp)) ||
+      new Date(Date.parse(entry.timestamp)).toISOString() !== entry.timestamp
+    ) {
+      report.ok = false;
+      report.errors.push(
+        `line ${i + 1}: timestamp must be canonical ISO-8601`,
+      );
+    }
 
     const receipt = entry.receipt as SignedReceipt | undefined;
     if (!receipt || typeof receipt !== "object") {
       report.ok = false;
       report.errors.push(`line ${i + 1}: missing receipt payload`);
-    } else if (receipt.signingStatus === "signed") {
-      const sig = verifyReceiptSignature(receipt);
-      if (!sig.valid) {
-        report.ok = false;
-        report.signatureFailures += 1;
-        report.errors.push(`line ${i + 1}: signature failure: ${sig.reason}`);
-      }
-    } else if (receipt.signingStatus === "unsigned-degraded") {
-      // Allowed but non-trust-elevating — do not count as signature failure.
     } else {
-      report.ok = false;
-      report.errors.push(`line ${i + 1}: missing signingStatus on receipt`);
+      const parsedReceipt = parseConformanceReceipt(receipt);
+      if (!parsedReceipt.ok) {
+        report.ok = false;
+        report.errors.push(
+          `line ${i + 1}: invalid receipt: ${parsedReceipt.error}`,
+        );
+      }
+      if (receipt.signingStatus === "signed") {
+        const sig = verifyReceiptSignature(receipt);
+        if (!sig.valid) {
+          report.ok = false;
+          report.signatureFailures += 1;
+          report.errors.push(`line ${i + 1}: signature failure: ${sig.reason}`);
+        }
+      } else if (receipt.signingStatus === "unsigned-degraded") {
+        // Structurally valid but non-trust-elevating.
+      } else {
+        report.ok = false;
+        report.errors.push(`line ${i + 1}: missing signingStatus on receipt`);
+      }
     }
 
     prevHash = String(claimed);
     leafHashes.push(prevHash);
+    if (typeof claimed === "string") seenHashes.add(claimed);
     report.entries += 1;
   }
 
@@ -196,7 +229,12 @@ export function verifyReceiptLog(logPath: string): ReceiptLogVerifyReport {
 }
 
 export function collectReceiptLeaves(logPath: string): string[] {
-  if (!existsSync(logPath)) return [];
+  const verification = verifyReceiptLog(logPath);
+  if (!verification.ok) {
+    throw new ReceiptLogCorruptionError(
+      `receipt log validation failed: ${verification.errors.join("; ")}`,
+    );
+  }
   const content = readFileSync(logPath, "utf-8").trim();
   if (!content) return [];
   const leaves: string[] = [];
@@ -225,4 +263,37 @@ export function createReceiptProof(
   const proof = createMerkleProofV2(leaves, index);
   if (!proof) return null;
   return { ...proof, logKind: RECEIPT_LOG_KIND };
+}
+
+export function createReceiptInclusionEvidence(
+  logPath: string,
+  index: number,
+): ReceiptInclusionEvidenceV1 | null {
+  const proof = createReceiptProof(logPath, index);
+  if (!proof) return null;
+
+  const content = readFileSync(logPath, "utf-8").trim();
+  const lines = content.split("\n").filter((line) => line.trim().length > 0);
+  const line = lines[index];
+  if (!line) return null;
+
+  let entry: unknown;
+  try {
+    entry = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  const candidate = {
+    evidenceVersion: 1 as const,
+    logKind: RECEIPT_LOG_KIND,
+    entry,
+    proof: {
+      leaf: proof.leaf,
+      index: proof.index,
+      path: proof.path,
+      root: proof.root,
+    },
+  };
+  const parsed = parseReceiptInclusionEvidence(candidate);
+  return parsed.ok ? parsed.evidence : null;
 }
