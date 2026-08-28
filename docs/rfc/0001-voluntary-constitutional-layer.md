@@ -61,9 +61,10 @@ boundary — not only interactive approval UIs.
 1. **Claiming upstream acceptance.** This draft does not assert Foundation
    intake, merge, or shipping status.
 2. **Changing seed constitution text or hash.** Hash `71bf60ad…` stays immutable.
-3. **Proving behavioral compliance.** Gateway gating proves tool-router
-   consultation occurred (when enabled), not that the model obeyed the Five Laws
-   in free text.
+3. **Proving behavioral compliance.** Gateway gating produces a disposition
+   record at the tool-router (when enabled) — an
+   `instrumented-boundary-disposition` Event-class observation — not proof that
+   the model obeyed the Five Laws in free text.
 4. **Removing operator disable.** Uncancellable gateway governance would violate
    Law 2.
 5. **Nonparticipant consent via gateway majority.** Adopter fleets cannot
@@ -165,6 +166,8 @@ the tool-router path**, not only as an optional plugin after routing.
 5. **Receipt / audit** — append disposition outcome with constitution hash and
    policy-engine version before side effects.
 6. **Execute or skip** according to the disposition table above.
+7. **Pre-invoke epoch check:** immediately before downstream invoke, re-compare
+   the captured governance epoch; reject stale epochs (see Governance transitions).
 
 Mermaid source: [`docs/rfc/diagrams/gateway-disposition.mmd`](diagrams/gateway-disposition.mmd)
 
@@ -179,18 +182,21 @@ sequenceDiagram
   Agent->>ToolRouter: tool request (name, params)
   alt governance disabled
     ToolRouter->>Ledger: governance-disabled already on chain
+    Note over ToolRouter: ungated only after durable disable + epoch publish
     ToolRouter->>Tool: execute (ungated)
     Tool-->>Agent: result
   else governance enabled
+    ToolRouter->>ToolRouter: capture governance epoch N
     ToolRouter->>Engine: classifyToolCall
     Engine-->>ToolRouter: ClassificationResult
     ToolRouter->>Engine: resolveDisposition(...)
     Engine-->>ToolRouter: DispositionResult
-    ToolRouter->>Ledger: append disposition + constitutionHash + engineVersion
+    ToolRouter->>Ledger: append disposition + constitutionHash + engineVersion + epoch
     alt allow / allow_minimal
+      ToolRouter->>ToolRouter: recheck epoch N before invoke
       ToolRouter->>Tool: execute
       Tool-->>ToolRouter: result
-      ToolRouter->>Ledger: bind receipt (param digest, authorization)
+      ToolRouter->>Ledger: bind receipt (param digest, authorization, epoch)
       ToolRouter-->>Agent: result
     else allow_staged
       ToolRouter->>Ledger: register staged action
@@ -201,7 +207,79 @@ sequenceDiagram
       ToolRouter-->>Agent: skip (deny or abstain recorded)
     end
   end
+  opt operator requests disable
+    ToolRouter->>ToolRouter: enter draining(epoch N); stop admission
+    Note over ToolRouter: deadline aborts only evaluating/ready call IDs from N
+    ToolRouter->>Ledger: persist governance_transition_aborted receipts
+    alt a call is still invoking at deadline
+      Note over ToolRouter,Ledger: disable fails; no governance-disabled event; return enabled(N)
+    else no invoking calls and receipt persistence succeeded
+      ToolRouter->>Ledger: atomically append governance-disabled(N+1)
+      Note over ToolRouter: publish disabled(N+1); ungated routing may begin
+    end
+  end
 ```
+
+## Governance transitions
+
+Law 2 requires a tamper-evident disable path, but disablement MUST define what
+happens to **pending**, **queued**, **approval-held**, and **in-flight** work.
+A conforming gateway owns a monotonic **governance epoch** and an explicit mode
+state machine:
+
+```text
+enabled(epoch=N)
+  -> disable requested
+draining(epoch=N)
+  -> stop admitting new governed calls
+  -> bounded drain (wait no longer than drainTimeout)
+  -> persist governance_transition_aborted for evaluating/ready calls from N
+  -> if any call is still invoking: fail disable; do not append an event
+  -> durably append governance-disabled(epoch=N+1)
+disabled(epoch=N+1)
+  -> ungated calls may execute; no synthetic allow receipts
+  -> enable requested
+  -> durably append governance-enabled(epoch=N+2)
+enabled(epoch=N+2)
+```
+
+### Normative rules
+
+1. **Admission stop:** When disable is requested, the gateway MUST enter
+   `draining` and MUST NOT admit new governed calls.
+2. **Bounded drain:** The drain MUST end by a configured deadline. Approval-held
+   and admitted-but-not-invoked calls are pending work and MUST NOT make drain
+   unbounded.
+3. **Transition abort evidence:** Calls from the draining epoch that are still
+   evaluating policy or ready immediately before invoke at the deadline MUST
+   have a durably persisted terminal outcome `governance_transition_aborted`
+   (distinct from shutdown/timeout/overflow gaps). Only those explicit call IDs
+   are eligible; unrelated runtime receipts and calls from other epochs MUST
+   remain untouched. Once selected, an aborted call MUST NOT resume even if the
+   disable attempt later fails.
+4. **Append-before-ungated:** The gateway MUST append and verify a
+   `governance-disabled` event (with the new epoch) before publishing `disabled`
+   and allowing ungated execution. Receipt persistence, reconciliation, or
+   governance-ledger append failure MUST fail closed (remain non-ungated), and
+   in-memory receipt mutation alone MUST NOT count as reconciliation success.
+5. **Epoch recheck:** Every governed invoke MUST compare the captured epoch at
+   the last responsible moment before downstream `invoke()`. A mismatch MUST
+   reject the call without side effects.
+6. **In-flight vs not-yet-invoked:** Work already executing inside a downstream
+   tool is outside gateway cancelability for this RFC and MUST retain its
+   eventual `executed` or `error` receipt. If any call is still invoking at the
+   deadline, the disable attempt MUST fail, governance MUST return to
+   `enabled(epoch=N)`, and the gateway MUST NOT append `governance-disabled` or
+   expose ungated routing. Admitted-but-not-invoked work from epoch N remains
+   abortable as specified above.
+7. **Re-enable:** Enable MUST append `governance-enabled` before admitting
+   governed calls under the next epoch. Enable failure MUST leave governance
+   disabled.
+8. **MUST NOT** wait indefinitely for approval-held calls, and MUST NOT emit
+   synthetic `disposition: allow` receipts while disabled.
+
+Local CI-only demonstration of these semantics (not production / not upstream):
+`packages/gateway-reference` (feature-flagged, non-default).
 
 ### OpenClaw and generic gateway term map
 
@@ -217,15 +295,13 @@ sequenceDiagram
 | Mandate / quorum-mandate | Standing mandate tools | Pre-authorized budget |
 | Plugin disable | `openclaw plugins disable` | Unload extension |
 | Gateway disable (this RFC) | Constitutional layer off + audit event | Governance kill-switch |
+| Governance epoch | Router generation counter | Policy generation / fence |
 
 **MUST:** Gateway binding does not require a human approval UI for unattended
 dispositions (`mandate`, `allow_staged`, `abstain`, emergency paths).
 
 **SHOULD:** Prefer the same `FppBeforeToolCallResult` / runtime adapter contract
 used by harness adapters so plugin, adapter, and gateway paths stay isomorphic.
-
-Local CI-only demonstration (not a production gateway):
-`packages/gateway-reference` (feature-flagged, non-default).
 
 ## Logging and disablement audit
 
@@ -245,6 +321,9 @@ interoperable.
 | `prevHash` | hex string | Hash of prior log entry (genesis uses a documented zero/sentinel) |
 | `entryHash` | hex string | Hash of this entry excluding `entryHash` / `signature` |
 | `signature` | object | Operator or gateway key signature over the entry |
+| `epoch` | non-negative integer | Published governance epoch after this transition (required on enable/disable) |
+| `previousMode` | string | Mode immediately before durable publication (`draining` on disable) |
+| `mode` | string | Resulting mode (`disabled` / `enabled`) |
 
 Disposition entries MUST additionally include:
 
@@ -258,10 +337,10 @@ Disposition entries MUST additionally include:
 
 ### Event kinds
 
-1. **`governance-enabled`** — constitutional layer turned on; records engine version and constitution hash.
-2. **`governance-disabled`** — Law 2 kill-switch; MUST be present on-chain before ungated tool execution resumes.
+1. **`governance-enabled`** — constitutional layer turned on; records engine version, constitution hash, and published epoch.
+2. **`governance-disabled`** — Law 2 kill-switch; MUST be present on-chain (verified append) before ungated tool execution resumes; records epoch after bounded drain.
 3. **`mandate-load`** — standing / quorum mandate material loaded or revoked (include `mandateId` when applicable).
-4. **`disposition`** — per-call outcome from `resolveDisposition`.
+4. **`disposition`** — per-call outcome from `resolveDisposition` (SHOULD bind `governanceEpoch` when governed).
 
 ### Example: governance-disabled
 
@@ -298,9 +377,10 @@ and verification claim classes in
 1. **No forced adoption** — installing or enabling the hook is voluntary.
 2. **No removal of operator disable** — Law 2 corrigibility stands.
 3. **No nonparticipant consent via gateway majority** — adopter fleets cannot bind outsiders by enabling a router hook.
-4. **No behavioral compliance proof** — consultation at the tool-router is an
-   *instrumented-boundary* observation, not proof the model obeyed the Five Laws
-   in free text (`docs/CAPABILITY_STATUS.md` verification claim classes).
+4. **No behavioral compliance proof** — a disposition record at the tool-router is an
+   *instrumented-boundary* observation (`instrumented-boundary-disposition`), not proof
+   the model obeyed the Five Laws in free text (`docs/CAPABILITY_STATUS.md` verification
+   claim classes).
 5. **No completeness claim** — logs prove recorded events when the layer was on;
    they do not prove every possible side channel was covered.
 6. **No seed-constitution change** — hash `71bf60ad…` remains immutable.
@@ -309,9 +389,14 @@ and verification claim classes in
 
 | If you observe… | You may claim… | You must not claim… |
 |-----------------|----------------|---------------------|
-| Disposition entry with constitution hash + engine version | Tool-router consulted policy while governance was enabled | Behavioral compliance with the Five Laws |
+| Schema-valid signed receipt with self-certified signer key/identifier binding; independent constitution hash, policy ID, and policy version matching; and, when supplied, an exact-entry inclusion proof valid under the claimed root plus a root matching an independent expected checkpoint (`instrumented-boundary-disposition`) | From this self-presented receipt: signer recorded disposition D and authorization A against action digest H under independently matched constitution/policy context and semantically valid signed metadata; the receipt identifies an instrumented-boundary recording context | Signature validity is not signer trust or trusted key provenance; proof validity under a claimed root is not independent root anchoring; does not establish trusted boundary traversal without independent trusted boundary evidence; does not prove exact downstream parameter equality; completeness; behavioral compliance; uncompromised runtime; uninstrumented/bypass absence |
+| Disposition entry with constitution hash + engine version | Tool-router evaluated policy and produced a disposition record while governance was enabled | Behavioral compliance with the Five Laws |
 | `governance-disabled` on the hash chain | Operator turned governance off (auditable) | That peers should treat the host as constitutionally gated |
 | Plugin disabled but no gateway event | Silent bypass of *plugin* enforcement | That gateway binding was active |
 | Quorum-mandate allow | Authorization class `quorum-mandate` for that call | Constitutional ratification or nonparticipant consent |
+
+Exact downstream parameters become claimable only if a future execute-time digest
+comparison is separately implemented and evidenced. Do not overstate current receipt
+evidence as an unqualified execution constraint.
 
 See also Non-goals (main body) and `docs/rfc/REVIEW_CHECKLIST.md` Law 1–5 table.

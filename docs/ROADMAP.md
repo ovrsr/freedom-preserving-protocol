@@ -38,11 +38,17 @@ AOS Phase 2 rather than competing with it (`docs/rfc/AOS-COORDINATION.md`).
   Plan 12 draft)*
 - Agreement on what the gateway logs: constitution hash + policy engine version
   in tamper-evident records. *(proposed in draft; upstream agreement pending)*
+- Upstream agreement on governance transition and epoch semantics (bounded
+  drain, filtered durable `governance_transition_aborted`, invoking-at-deadline
+  failure, append-before-ungated). *(specified in-repo under RFC § Governance
+  transitions and exercised by optional `packages/gateway-reference` CI tests —
+  upstream agreement still pending)*
 - Plans 8–11 disposition model, enforcement-core, and harness adapters
   available to inform the RFC. *(satisfied for drafting)*
 
 **Evidence needed:** an accepted or seriously-discussed RFC thread on
-`openclaw/openclaw` GitHub Discussions.
+`openclaw/openclaw` GitHub Discussions. Repository CI results for the optional
+reference router are **not** upstream acceptance or gateway-wide coverage.
 
 ## 2. Adoption telemetry
 
@@ -109,6 +115,16 @@ acceptable key/signature sizes for handshake payloads.
 
 **Evidence needed:** a migration design covering dual-signing during
 transition and how lineage survives the algorithm change.
+
+## 6. Platform-specific stronger steward-presence profiles
+
+**What:** Optional steward-genesis profiles that add one independently implemented presence factor: FIDO2/WebAuthn, out-of-band approval on a second device, or OS-auth/elevation-backed confirmation. These are separate profiles, not interchangeable labels for the existing typed fingerprint suffix.
+
+**Why deferred:** The shipped local bootstrap is intentionally software-only. Each stronger factor needs platform APIs, enrollment/recovery semantics, phishing/relay analysis, and a clear binding from the external approval to the exact `StewardBootstrapV1` digest. The user confirmed on 2026-07-20 that these require separate platform-specific development and are outside the genesis-race remediation.
+
+**Prerequisites:** choose one profile and supported platform set; define authenticator enrollment and loss recovery; bind challenge/audience/bootstrap digest without trusting the target payload; specify administrator/root compromise assumptions; preserve an explicit corrigibility/recovery path.
+
+**Evidence needed:** a profile-specific threat model plus end-to-end tests using the real platform authenticator or second-device boundary. TTY detection or a locally computed confirmation string is not sufficient evidence.
 
 ---
 

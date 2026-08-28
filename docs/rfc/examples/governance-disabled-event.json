@@ -3,6 +3,9 @@
   "schemaVersion": 1,
   "eventId": "evt_01JEXAMPLE0000000000000000",
   "ts": "2026-07-10T18:00:00.000Z",
+  "epoch": 1,
+  "previousMode": "draining",
+  "mode": "disabled",
   "actor": {
     "role": "operator",
     "id": "op_local_host"
@@ -10,6 +13,7 @@
   "constitutionHash": "71bf60ad00000000000000000000000000000000000000000000000000000000",
   "policyEngineVersion": "@ovrsr/fpp-enforcement-core@1.0.0",
   "prevHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "entryHash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
   "reason": "operator requested constitutional layer off (Law 2 corrigibility)",
   "signature": {
     "alg": "Ed25519",
@@ -20,6 +24,7 @@
     "Example only — not a live signed event.",
     "constitutionHash MUST match the adopted seed or descendant hash in use.",
     "prevHash chains to the prior gateway governance log entry (digest domain SHOULD align with fpp:v2:entry when using protocol-core digests).",
-    "After this event, tool-router MAY execute ungated until a governance-enabled event is appended."
+    "epoch is the published epoch after durable disable; previousMode is draining after the bounded quiesce.",
+    "Ungated execution MAY begin only after this event is appended and verified — never before."
   ]
 }

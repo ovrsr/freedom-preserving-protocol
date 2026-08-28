@@ -32,17 +32,25 @@ mean the Foundation accepted the RFC.
 - [ ] Unattended dispositions (`mandate`, `allow_staged`, `abstain`, emergency) are first-class
 - [ ] `require_approval` is not the only gated outcome
 - [ ] Logging requires `constitutionHash` + `policyEngineVersion`
-- [ ] Example `governance-disabled` event reviewed
+- [ ] Example `governance-disabled` event reviewed (includes `epoch` / `previousMode` / `mode`)
+- [ ] Governance transitions section reviewed (bounded drain, transition abort, append-before-ungated)
 - [ ] Seed constitution hash `71bf60ad…` is not amended
 
 ## Honesty / status
 
 - [ ] Status language is `PROPOSED` draft / `DEFERRED` upstream — not `SHIPPED`
 - [ ] No claim of Foundation intake or acceptance
-- [ ] `packages/gateway-reference` labeled CI-only / non-default
+- [ ] `packages/gateway-reference` labeled CI-only / non-default / non-production
+- [ ] Reference proves transition semantics in CI only — not upstream gateway enforcement
 - [ ] `docs/CAPABILITY_STATUS.md` and `docs/ROADMAP.md` §1 still accurate
 
 ## Claim classes (from `docs/CAPABILITY_STATUS.md`)
 
-- [ ] Reviewer understands gateway consultation ≠ behavioral compliance proof
+- [ ] Reviewer understands claim **strength** (what a valid receipt affirmatively supports: `instrumented-boundary-disposition`) and claim **ceiling** (what it must not imply)
+- [ ] Receipt claim row keeps required evidence, maximum conclusion, and prohibited conclusions together
+- [ ] Self-presented receipt signature is not described as independent proof that a call traversed a trusted boundary
+- [ ] Any claimed Merkle inclusion uses the versioned exact-entry bundle and an independently expected root; standalone proofs are insufficient
+- [ ] Failed receipt verification has zero/non-applicable confidence and no affirmative disposition language
+- [ ] Reviewer understands disposition attestation ≠ behavioral compliance proof
+- [ ] Reviewer understands action digest ≠ proven exact downstream parameter equality
 - [ ] Threat-model appendix aligned with `docs/governance/THREAT_MODEL_AND_RIGHTS_FLOOR.md` actors

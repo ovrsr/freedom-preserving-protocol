@@ -92,6 +92,87 @@ describe("FppRuntimeAdapter / createEnforcementRuntime", () => {
     assert.equal(runtime.getConfig().dispositionMode, "unattended");
   });
 
+  it("reports transition receipt persistence failure without committing failed records", async () => {
+    const receiptLogPath = join(ws.path, "receipts-transition-failure.jsonl");
+    const runtime = createEnforcementRuntime(
+      {
+        auditLogPath: join(ws.path, "audit-transition-failure.jsonl"),
+        receiptLogPath,
+        identityKeyPath: join(ws.path, "agent-transition-failure.key"),
+        mandateStorePath: join(ws.path, "mandates-transition-failure.json"),
+        strictModeStatePath: join(ws.path, "strict-transition-failure.json"),
+        dispositionMode: "unattended",
+      },
+      fakeAdapter("gateway-reference"),
+    );
+    await runtime.onBeforeToolCall(
+      {
+        toolName: "Shell",
+        params: { command: "echo pending" },
+        toolCallId: "transition-write-failure",
+      },
+      {
+        toolCallId: "transition-write-failure",
+        governanceEpoch: 3,
+        governanceMode: "enabled",
+      },
+    );
+    writeFileSync(receiptLogPath, "{corrupt-tail\n", "utf8");
+
+    let caught: unknown;
+    try {
+      runtime.reconcileTransitionAbortedReceipts({
+        governanceEpoch: 3,
+        eligibleToolCallIds: new Set(["transition-write-failure"]),
+        nowIso: "2026-07-20T12:00:05.000Z",
+      });
+    } catch (error) {
+      caught = error;
+    }
+    assert.ok(caught instanceof Error);
+    assert.match(caught.message, /receipt|persist|corrupt/i);
+    const report = (
+      caught as {
+        result?: {
+          records: Array<{
+            toolCallId: string;
+            persisted: boolean;
+            error?: string;
+          }>;
+        };
+      }
+    ).result;
+    assert.equal(report?.records.length, 1);
+    assert.equal(report?.records[0]?.toolCallId, "transition-write-failure");
+    assert.equal(report?.records[0]?.persisted, false);
+    assert.match(report?.records[0]?.error ?? "", /receipt|corrupt|persist/i);
+    assert.ok(runtime.getReceiptStore().getPending("transition-write-failure"));
+    assert.equal(
+      runtime.getReceiptStore().getFinalized("transition-write-failure"),
+      undefined,
+    );
+
+    writeFileSync(receiptLogPath, "", "utf8");
+    const retry = runtime.reconcileTransitionAbortedReceipts({
+      governanceEpoch: 3,
+      eligibleToolCallIds: new Set(["transition-write-failure"]),
+      nowIso: "2026-07-20T12:00:06.000Z",
+    });
+    assert.equal(retry.records.length, 1);
+    assert.equal(retry.records[0]?.persisted, true);
+    assert.equal(retry.aborted.length, 1);
+    const idempotentRetry = runtime.reconcileTransitionAbortedReceipts({
+      governanceEpoch: 3,
+      eligibleToolCallIds: new Set(["transition-write-failure"]),
+      nowIso: "2026-07-20T12:00:07.000Z",
+    });
+    assert.deepEqual(idempotentRetry, { aborted: [], records: [] });
+    assert.equal(
+      readFileSync(receiptLogPath, "utf8").trim().split("\n").length,
+      1,
+    );
+  });
+
   it("blocks hard-floor classifications via onBeforeToolCall", async () => {
     const runtime = createEnforcementRuntime(
       {
@@ -140,6 +221,86 @@ describe("FppRuntimeAdapter / createEnforcementRuntime", () => {
       { toolCallId: "tc-2" },
     );
     assert.equal(result.action, "require_approval");
+  });
+
+  it("onResolution cancelled produces one durable terminal receipt and blocks double finalize", async () => {
+    const runtime = createEnforcementRuntime(
+      {
+        auditLogPath: join(ws.path, "audit-approval-cancel.jsonl"),
+        receiptLogPath: join(ws.path, "receipts-approval-cancel.jsonl"),
+        identityKeyPath: join(ws.path, "agent-approval-cancel.key"),
+        mandateStorePath: join(ws.path, "mandates-approval-cancel.json"),
+        strictModeStatePath: join(ws.path, "strict-approval-cancel.json"),
+        dispositionMode: "operator-present",
+        approvalOn: ["fs.write.workspace"],
+      },
+      fakeAdapter("gateway-reference"),
+    );
+    const result = await runtime.onBeforeToolCall(
+      {
+        toolName: "filesystem_write",
+        params: { path: ".openclaw/workspace/notes.md", content: "x" },
+        toolCallId: "approval-cancel",
+      },
+      {
+        toolCallId: "approval-cancel",
+        governanceEpoch: 0,
+        governanceMode: "enabled",
+      },
+    );
+    assert.equal(result.action, "require_approval");
+    if (result.action !== "require_approval") return;
+
+    assert.equal(
+      runtime.getReceiptStore().getPending("approval-cancel")?.status,
+      "pending_authorization",
+    );
+
+    await result.onResolution("cancelled");
+
+    const finalized = runtime.getReceiptStore().getFinalized("approval-cancel");
+    assert.ok(finalized);
+    assert.equal(finalized.status, "finalized");
+    assert.equal(finalized.outcome, "cancelled");
+    assert.equal(
+      runtime.getReceiptStore().getPending("approval-cancel"),
+      undefined,
+    );
+    const receiptLinesAfterFirst = readFileSync(
+      join(ws.path, "receipts-approval-cancel.jsonl"),
+      "utf8",
+    )
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+    assert.equal(receiptLinesAfterFirst.length, 1);
+
+    // Calling resolution again must not create a second terminal outcome.
+    await result.onResolution("deny");
+    assert.equal(
+      runtime.getReceiptStore().getFinalized("approval-cancel")?.outcome,
+      "cancelled",
+    );
+    const receiptLinesAfterRetry = readFileSync(
+      join(ws.path, "receipts-approval-cancel.jsonl"),
+      "utf8",
+    )
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+    assert.equal(receiptLinesAfterRetry.length, 1);
+
+    // Transition reconciliation must not invent a second terminal receipt.
+    const reconciled = runtime.reconcileTransitionAbortedReceipts({
+      governanceEpoch: 0,
+      eligibleToolCallIds: new Set(["approval-cancel"]),
+      nowIso: "2026-07-20T12:00:10.000Z",
+    });
+    assert.deepEqual(reconciled, { aborted: [], records: [] });
+    assert.equal(
+      runtime.getReceiptStore().getFinalized("approval-cancel")?.outcome,
+      "cancelled",
+    );
   });
 
   it("does not call requestApproval in unattended mode for staged allows", async () => {

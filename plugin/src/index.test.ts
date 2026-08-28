@@ -573,6 +573,86 @@ describe("enforcement hook integration", () => {
     assert.ok(signed.signature);
   });
 
+  it("includes gateway governance context in signed receipts when present on the record", () => {
+    setup({
+      receiptSigningEnabled: true,
+      receiptLogPath: join(ws.path, "gov-signed-receipts.jsonl"),
+    });
+    const signer = getActiveReceiptSigner();
+    assert.ok(signer);
+    const config = mergeConfig({
+      auditLogPath,
+      respectTrustStrictMode: false,
+      receiptSigningEnabled: true,
+      identityKeyPath: join(ws.path, "agent.key"),
+      receiptLogPath: join(ws.path, "gov-signed-receipts.jsonl"),
+    });
+    const signed = buildSignedReceiptFromRecord(
+      {
+        receiptId: "rcpt-gov",
+        toolCallId: "call-gov-sign",
+        correlationConfidence: "full",
+        actionDigest: "a".repeat(64),
+        classification: "fs.read.workspace",
+        disposition: "allow",
+        decision: "allow",
+        proposedAt: new Date().toISOString(),
+        status: "finalized",
+        outcome: "executed",
+        finalizedAt: new Date().toISOString(),
+        authorization: "standing-allowlist",
+        governanceEpoch: 5,
+        governanceMode: "enabled",
+      },
+      config,
+      signer!,
+    );
+    assert.equal(signed.governanceEpoch, 5);
+    assert.equal(signed.governanceMode, "enabled");
+  });
+
+  it("omits governance fields for legacy plugin receipt records", () => {
+    setup({
+      receiptSigningEnabled: true,
+      receiptLogPath: join(ws.path, "legacy-signed-receipts.jsonl"),
+    });
+    const signer = getActiveReceiptSigner();
+    assert.ok(signer);
+    const config = mergeConfig({
+      auditLogPath,
+      respectTrustStrictMode: false,
+      receiptSigningEnabled: true,
+      identityKeyPath: join(ws.path, "agent.key"),
+      receiptLogPath: join(ws.path, "legacy-signed-receipts.jsonl"),
+    });
+    const signed = buildSignedReceiptFromRecord(
+      {
+        receiptId: "rcpt-legacy",
+        toolCallId: "call-legacy-sign",
+        correlationConfidence: "full",
+        actionDigest: "a".repeat(64),
+        classification: "fs.read.workspace",
+        disposition: "allow",
+        decision: "allow",
+        proposedAt: new Date().toISOString(),
+        status: "finalized",
+        outcome: "executed",
+        finalizedAt: new Date().toISOString(),
+        authorization: "standing-allowlist",
+      },
+      config,
+      signer!,
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(signed, "governanceEpoch"),
+      false,
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(signed, "governanceMode"),
+      false,
+    );
+  });
+
   it("digestExecutionOutcome domain-separates success vs error outcomes", () => {
     const ok = digestExecutionOutcome({ hasResult: true, durationMs: 12 });
     const err = digestExecutionOutcome({
