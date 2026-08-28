@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createTrustStack } from "./index.js";
+import plugin from "./index.js";
 import { resolveVerificationPolicy } from "./verification-policy.js";
 import { loadOrCreateIdentity } from "./identity.js";
 import { createTempWorkspace } from "./test-helpers.js";
@@ -164,6 +165,91 @@ describe("verification policy defaults", () => {
     assert.ok(
       manifest.contracts.tools.includes("fpp_emergency_override_submit"),
       `expected fpp_emergency_override_submit in ${manifest.contracts.tools.join(",")}`,
+    );
+  });
+
+  it("wires resolved steward ledger and audience config into production CLI registration", async () => {
+    const ledgerPath = join(ws.path, "configured-steward-ledger.jsonl");
+    type CapturedTool = {
+      name: string;
+      execute: (
+        toolCallId: string,
+        params: unknown,
+        signal?: AbortSignal,
+      ) => Promise<unknown>;
+    };
+    const tools = new Map<string, CapturedTool>();
+    let cliRegistration:
+      | ((ctx: { program: unknown }) => void)
+      | undefined;
+    const api = {
+      pluginConfig: {
+        constitutionHash: HASH,
+        trustGraphPath: join(ws.path, "plugin-config-graph.json"),
+        identityKeyPath: join(ws.path, "plugin-config-identity.key"),
+        auditLogPath: join(ws.path, "plugin-config-audit.jsonl"),
+        fallbackAuditLogPath: null,
+        receiptLogPath: join(ws.path, "plugin-config-receipts.jsonl"),
+        strictModeStatePath: join(ws.path, "plugin-config-strict.json"),
+        replayCachePath: join(ws.path, "plugin-config-replay.json"),
+        mandateStorePath: join(ws.path, "plugin-config-mandates.json"),
+        quorumStatePath: join(ws.path, "plugin-config-quorum.json"),
+        stewardAuthorizationLedgerPath: ledgerPath,
+        stewardInstanceAudience: "instance:production-config",
+      },
+      on() {},
+      registerTool(tool: CapturedTool) {
+        tools.set(tool.name, tool);
+      },
+      registerToolMetadata() {},
+      registerCli(callback: (ctx: { program: unknown }) => void) {
+        cliRegistration = callback;
+      },
+    };
+
+    plugin.register(api as never);
+    const exportTool = tools.get("fpp_attestation_export");
+    assert.ok(exportTool);
+    await exportTool.execute("call-config-wiring", {});
+    assert.ok(cliRegistration);
+
+    type FakeCommand = {
+      command(name: string): FakeCommand;
+      description(value: string): FakeCommand;
+      argument(...args: unknown[]): FakeCommand;
+      option(flags: string, description: string, defaultValue?: string): FakeCommand;
+      requiredOption(flags: string, description: string): FakeCommand;
+      action(fn: (...args: unknown[]) => unknown): FakeCommand;
+    };
+    const optionDefaults = new Map<string, unknown>();
+    const command = (name: string): FakeCommand => ({
+      command: (childName) => command(childName),
+      description() {
+        return this;
+      },
+      argument() {
+        return this;
+      },
+      option(flags, _description, defaultValue) {
+        optionDefaults.set(`${name}:${flags}`, defaultValue);
+        return this;
+      },
+      requiredOption() {
+        return this;
+      },
+      action() {
+        return this;
+      },
+    });
+
+    cliRegistration({ program: command("program") });
+    assert.equal(
+      String(optionDefaults.get("init:--ledger <path>")).replace(/\\/g, "/"),
+      ledgerPath.replace(/\\/g, "/"),
+    );
+    assert.equal(
+      optionDefaults.get("init:--audience <id>"),
+      "instance:production-config",
     );
   });
 });

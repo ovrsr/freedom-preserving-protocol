@@ -210,6 +210,13 @@ function initStack(api: OpenClawPluginApi): {
         requireFreshness: config.requireFreshness,
         quorum: stack.quorum,
         adoptionStatePath,
+        stewardLedgerPath:
+          config.stewardAuthorizationLedgerPath,
+        ...(typeof config.stewardInstanceAudience === "string"
+          ? {
+              stewardInstanceAudience: config.stewardInstanceAudience,
+            }
+          : {}),
         ...(soulPath ? { soulPath } : {}),
       });
     },
@@ -272,7 +279,8 @@ function initStack(api: OpenClawPluginApi): {
     toolName: "fpp_receipt_verify",
     displayName: "FPP Receipt Verify",
     description:
-      "Verify a conformance receipt signature/schema/policy binding. Does not prove behavioral compliance or completeness.",
+      "Verify receipt cryptography and independently supplied constitution/policy context. " +
+      "Does not establish signer identity, compliance, or completeness.",
     risk: "low",
     tags: ["fpp", "trust", "receipt"],
   });
@@ -458,8 +466,9 @@ export default defineToolPlugin({
       name: "fpp_receipt_verify",
       label: "FPP Receipt Verify",
       description:
-        "Verify a conformance receipt (schema, signature, optional policy hash). " +
-        "Names exactly what was verified. Does not prove behavioral compliance or completeness.",
+        "Verify a conformance receipt and match configured constitution plus " +
+        "caller-supplied policy context. Names exactly what was verified. " +
+        "Does not establish signer identity, behavioral compliance, or completeness.",
       parameters: ReceiptVerifyParams,
       execute(params, _config, ctx) {
         const { deps } = initStack(ctx.api);

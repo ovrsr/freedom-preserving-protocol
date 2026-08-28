@@ -10,7 +10,7 @@ A parallel **human steward** identity and signed **operator authorization** path
 
 - Steward ID: key-independent `fpp:steward:v1:<26 lowercase base32 chars>` (`mintStewardIdV1`)
 - Key refs: algorithm-qualified; V1 uses `openpgp:<lowercase fingerprint>`
-- Initial trust: explicit local TOFU (`--accept-tofu`), not OpenPGP web-of-trust
+- Initial trust: **secure default** is a signed `StewardBootstrapV1` admitted with an independently supplied `--expected-key-ref` and interactive fingerprint confirmation (`steward bootstrap-admit`). Legacy local TOFU (`steward init` + `key-admit --accept-tofu`) remains only behind `--bootstrap-profile legacy-tofu`. Neither path is OpenPGP web-of-trust.
 - Grants: `OperatorAuthorizationV1` (detached or clear-signed canonical JSON)
 - Coverage: normalized to `issuerClass: "operator"` / `AUTHZ.mandate` as `mandateId: "operator:<authorizationId>"`
 - Hard floors still win. Operator grants never become `approved`, `emergency`, or god mode.
@@ -27,16 +27,45 @@ A parallel **human steward** identity and signed **operator authorization** path
 
 Matching scope alone is therefore insufficient for a debit. Broad standing grants that include classes such as `exec.benign` do not lose uses on routine confirmations that ordinary policy already allows. Hard-floor denies remain unbypassable and leave matching grants unconsumed. Failed atomic consume recomputes without the operator grant (fail closed).
 
-## Local maintainer sequence
+## Local maintainer sequence (secure bootstrap)
 
-1. Initialize steward + ledger (CLI `steward init`) — records immutable local policy caps.
-2. Emit a canonical key attestation template (`steward key-template`).
-3. Sign the template with maintainer OpenPGP tooling (outside FPP — the plugin never holds private keys).
-4. Admit with explicit TOFU for the first binding (`steward key-admit --accept-tofu`).
-5. Create / sign / verify / admit an authorization (`steward authorization-*`) — admission records the grant; uses are unchanged until a required boundary debit.
-6. Exercise a gated tool that ordinary policy would block or hold for approval (e.g. `apply_patch` under `code.patch` without standing allow); enforcement consumes one use under lock only when the operator grant supplies the final allow.
-7. Inspect steward ledger + enforcement audit (`steward inspect`, audit JSONL fields `stewardId` / `authorizationId` / `signingKeyRef` / `stewardLedgerEventHash`). Routine already-allowed calls should leave `remainingUses` unchanged.
-8. Revoke authorization or key via signed lifecycle events when needed.
+1. Configure the trust plugin's `stewardAuthorizationLedgerPath` and `stewardInstanceAudience` keys exactly as declared in `plugin-trust/openclaw.plugin.json`, then restart the gateway process so it reloads the manifest schema:
+
+   ```json
+   {
+     "plugins": {
+       "entries": {
+         "openclaw-fpp-trust": {
+           "config": {
+             "stewardAuthorizationLedgerPath": ".openclaw/workspace/fpp-steward-authorization-ledger.jsonl",
+             "stewardInstanceAudience": "instance:operator-assigned-stable-identifier"
+           }
+         }
+       }
+     }
+   }
+   ```
+
+   Set `stewardInstanceAudience` to a stable, operator-assigned deployment identifier. It is not a secret, a hostname discovered from the target, or a presence factor. Store the ledger at the configured workspace-safe path; relative paths use the same resolution semantics as other trust-core paths.
+2. Obtain the steward OpenPGP fingerprint from an **independent** channel (key ceremony notes, hardware display, prior out-of-band delivery). Do **not** trust a fingerprint that only appears inside an untrusted payload file on the target host.
+3. Emit a canonical `StewardBootstrapV1` template (`steward bootstrap-template --key-ref openpgp:<fp> --public-key <cert.asc>`). The command uses configured `stewardInstanceAudience`; alternatively, supply `--audience` independently. With neither source it fails before emitting a template. The signed bundle binds steward ID, audience, immutable policy caps, and the initial OpenPGP public key.
+4. Sign the canonical JSON with the subject OpenPGP key **outside** FPP (the plugin never holds steward private keys).
+5. On the target host, run an **interactive** `steward bootstrap-admit --payload … --signature … --expected-key-ref openpgp:<fp>`. The CLI requires a TTY, displays steward ID / audience / policy / fingerprint, and asks the operator to type the last 8 hex characters of the expected fingerprint. Core admission also requires an independently supplied expected audience; the CLI uses configured `stewardInstanceAudience` by default, while `--audience` is an explicit operator-supplied override. It never derives the expected audience from the signed payload.
+6. On success the ledger commits `ledger_initialized` then `key_binding_accepted` under one lock (`bootstrapProfile: "interactive-fingerprint"`). The authoritative empty-ledger/policy check occurs inside that lock. The complete two-event file is written and file-fsynced before atomic rename; the parent directory is fsynced where the platform supports directory handles. There is no initialized-but-unbound window on this path.
+7. Create / sign / verify / admit an authorization (`steward authorization-*`) — admission records the grant; uses are unchanged until a required boundary debit.
+8. Exercise a gated tool that ordinary policy would block or hold for approval; enforcement consumes one use under lock only when the operator grant supplies the final allow.
+9. Inspect steward ledger + enforcement audit (`steward inspect`, audit JSONL fields `stewardId` / `authorizationId` / `signingKeyRef` / `stewardLedgerEventHash`). Routine already-allowed calls should leave `remainingUses` unchanged.
+10. Revoke authorization or key via signed lifecycle events when needed.
+
+### Assurance ceiling (honest limits)
+
+TTY fingerprint confirmation is a **software-only attention and race-hardening control**. It blocks accidental/non-interactive initialization and closes the local init/admit race. It is **not** MFA, not a secret challenge, not proof of human identity, **not** protection against malware or an administrator controlling the terminal/process/host, and **not** remote anti-rollback. FIDO2/WebAuthn, out-of-band second-device approval, and OS-auth/elevation-backed profiles each require separate platform-specific threat models and implementations; they are explicitly deferred in `docs/ROADMAP.md` §6.
+
+If `bootstrap-admit` reports the ledger is already initialized, or reports an initialized-only legacy state requiring explicit recovery, treat that as a **compromise indicator**: stop, preserve the ledger for audit, wipe/restore only as explicit recovery (that creates an audit discontinuity), and re-bootstrap from known-good media. A stale losing bootstrap never appends a second genesis pair.
+
+### Legacy TOFU compatibility (discouraged)
+
+`steward init` and initial `key-admit --accept-tofu` require `--bootstrap-profile legacy-tofu` and emit a high-visibility warning. Use only for existing automation that cannot yet adopt secure bootstrap. New deployments should not use this path.
 
 ## `apply_patch` descriptor boundary
 
@@ -102,4 +131,4 @@ Operator authorization does **not** manufacture affected-party or data-subject c
 | Contracts | `StewardKeyAttestationV1`, `OperatorAuthorizationV1`, `OperatorAuthorizationRevocationV1` |
 | Core | `StewardAuthorizationLedger`, `StewardRegistry`, `AuthorizationService`, `createOpenPgpBackend` |
 | Enforcement | `buildActionDescriptor`, `lookupStewardOperatorCoverage`, `consumeStewardOperatorCoverage` |
-| Config | `stewardAuthorizationLedgerPath`, `outOfWorkspacePaths` |
+| Config | `stewardAuthorizationLedgerPath`, `stewardInstanceAudience`, `outOfWorkspacePaths` |

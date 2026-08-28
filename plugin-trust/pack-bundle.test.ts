@@ -85,7 +85,22 @@ describe("plugin-trust pack-bundle", { concurrency: false }, () => {
     const listing = tarList(join(tmp, tgz!), tmp);
     assert.match(listing, /node_modules\/@ovrsr\/fpp-protocol-core\//);
     assert.match(listing, /node_modules\/@ovrsr\/fpp-trust-core\//);
+    assert.match(listing, /node_modules\/@ovrsr\/fpp-steward-auth-core\//);
     assert.match(listing, /dist\/index\.js/);
+    assert.match(listing, /dist\/steward-bootstrap\.js/);
+    assert.match(listing, /dist\/steward-cli\.js/);
+    assert.match(
+      listing,
+      /node_modules\/@ovrsr\/fpp-steward-auth-core\/dist\/bootstrap-service\.js/,
+    );
+    assert.match(
+      listing,
+      /node_modules\/@ovrsr\/fpp-steward-auth-core\/dist\/ledger\.js/,
+    );
+    assert.match(
+      listing,
+      /node_modules\/@ovrsr\/fpp-protocol-core\/dist\/steward-authorization\.js/,
+    );
 
     const isol = join(tmp, "isol");
     mkdirSync(isol, { recursive: true });

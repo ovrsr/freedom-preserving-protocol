@@ -15,7 +15,6 @@ import {
   readFileSync,
   renameSync,
   rmSync,
-  writeFileSync,
   writeSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -282,17 +281,91 @@ function parseAndVerifyChain(
 export type StewardAuthorizationLedgerOptions = {
   path: string;
   now?: () => Date;
+  durability?: Partial<StewardLedgerDurability>;
 };
+
+export type StewardLedgerDurability = {
+  write: (fd: number, payload: string) => void;
+  fsyncFile: (fd: number) => void;
+  rename: (source: string, target: string) => void;
+  fsyncParentDirectory: (path: string) => void;
+};
+
+function defaultFsyncParentDirectory(path: string): void {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, "r");
+    fsyncSync(fd);
+  } catch (err) {
+    const code =
+      err !== null && typeof err === "object" && "code" in err
+        ? String(err.code)
+        : "";
+    // Windows and some filesystems do not permit directory handles/fsync.
+    if (
+      code === "EISDIR" ||
+      code === "EINVAL" ||
+      code === "ENOTSUP" ||
+      code === "ENOSYS" ||
+      (process.platform === "win32" && (code === "EPERM" || code === "EACCES"))
+    ) {
+      return;
+    }
+    throw err;
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd);
+    }
+  }
+}
+
+const DEFAULT_DURABILITY: StewardLedgerDurability = {
+  write: (fd, payload) => {
+    writeSync(fd, payload, undefined, "utf8");
+  },
+  fsyncFile: (fd) => {
+    fsyncSync(fd);
+  },
+  rename: (source, target) => {
+    renameSync(source, target);
+  },
+  fsyncParentDirectory: defaultFsyncParentDirectory,
+};
+
+function genesisPreconditionError(
+  tx: LedgerTransaction,
+): StewardLedgerUnavailableError | undefined {
+  if (
+    tx.events.length === 1 &&
+    tx.events[0]!.kind === "ledger_initialized" &&
+    tx.policy !== undefined
+  ) {
+    return new StewardLedgerUnavailableError(
+      "ledger unavailable: initialized-only legacy state requires explicit operator recovery",
+    );
+  }
+  if (tx.events.length !== 0 || tx.policy !== undefined) {
+    return new StewardLedgerUnavailableError(
+      "ledger unavailable: already initialized; preserve the existing ledger and perform explicit operator recovery",
+    );
+  }
+  return undefined;
+}
 
 export class StewardAuthorizationLedger {
   readonly path: string;
   readonly lockPath: string;
   private readonly now: () => Date;
+  private readonly durability: StewardLedgerDurability;
 
   constructor(options: StewardAuthorizationLedgerOptions) {
     this.path = resolve(options.path);
     this.lockPath = `${this.path}.lock`;
     this.now = options.now ?? (() => new Date());
+    this.durability = {
+      ...DEFAULT_DURABILITY,
+      ...options.durability,
+    };
   }
 
   loadVerified(): LedgerLoadOk | LedgerLoadErr {
@@ -323,18 +396,12 @@ export class StewardAuthorizationLedger {
   ):
     | { ok: true; events: StewardLedgerEvent[]; policy: StewardLedgerPolicy }
     | { ok: false; error: StewardLedgerUnavailableError | Error } {
-    const loaded = this.loadVerified();
-    if (!loaded.ok) return loaded;
-    if (loaded.events.length > 0) {
-      return {
-        ok: false,
-        error: new StewardLedgerUnavailableError(
-          "ledger unavailable: already initialized",
-        ),
-      };
-    }
-    const result = this.transact((tx) =>
-      tx.append({
+    const result = this.transact((tx) => {
+      const preconditionError = genesisPreconditionError(tx);
+      if (preconditionError) {
+        return { ok: false as const, error: preconditionError };
+      }
+      return tx.append({
         kind: "ledger_initialized",
         evidenceDigest: digest({
           version: 2,
@@ -342,9 +409,12 @@ export class StewardAuthorizationLedger {
           value: policy,
         }),
         detail: { ...policy },
-      }),
-    );
+      });
+    });
     if (!result.ok) return result;
+    if (!result.value.ok) {
+      return { ok: false, error: result.value.error };
+    }
     const after = this.loadVerified();
     if (!after.ok) return after;
     if (!after.policy) {
@@ -352,6 +422,81 @@ export class StewardAuthorizationLedger {
         ok: false,
         error: new StewardLedgerUnavailableError(
           "ledger unavailable: missing policy after initialize",
+        ),
+      };
+    }
+    return { ok: true, events: after.events, policy: after.policy };
+  }
+
+  /**
+   * Secure genesis: write policy initialization and the first key binding
+   * under one lock, committed as a single atomic file replace.
+   */
+  initializeWithInitialBinding(
+    policy: StewardLedgerPolicy,
+    binding: AppendEventInput,
+  ):
+    | { ok: true; events: StewardLedgerEvent[]; policy: StewardLedgerPolicy }
+    | { ok: false; error: StewardLedgerUnavailableError | Error } {
+    if (binding.kind !== "key_binding_accepted") {
+      return {
+        ok: false,
+        error: new StewardLedgerUnavailableError(
+          "ledger unavailable: initial binding must be key_binding_accepted",
+        ),
+      };
+    }
+    if (
+      !binding.uniqueKeys?.attestationId ||
+      !binding.uniqueKeys?.nonce
+    ) {
+      return {
+        ok: false,
+        error: new StewardLedgerUnavailableError(
+          "ledger unavailable: initial binding requires attestationId and nonce unique keys",
+        ),
+      };
+    }
+
+    const result = this.transact((tx) => {
+      const preconditionError = genesisPreconditionError(tx);
+      if (preconditionError) {
+        return { ok: false as const, error: preconditionError };
+      }
+      const init = tx.append({
+        kind: "ledger_initialized",
+        evidenceDigest: digest({
+          version: 2,
+          domain: STEWARD_LEDGER_DIGEST_DOMAIN,
+          value: policy,
+        }),
+        detail: { ...policy },
+      });
+      if (!init.ok) return init;
+      const bound = tx.append(binding);
+      if (!bound.ok) return bound;
+      return { ok: true as const, events: [init.event, bound.event] };
+    });
+    if (!result.ok) return result;
+    if (!result.value.ok) {
+      return { ok: false, error: result.value.error };
+    }
+
+    const after = this.loadVerified();
+    if (!after.ok) return after;
+    if (!after.policy) {
+      return {
+        ok: false,
+        error: new StewardLedgerUnavailableError(
+          "ledger unavailable: missing policy after initializeWithInitialBinding",
+        ),
+      };
+    }
+    if (after.events.length !== 2) {
+      return {
+        ok: false,
+        error: new StewardLedgerUnavailableError(
+          "ledger unavailable: expected exactly two genesis events",
         ),
       };
     }
@@ -467,8 +612,7 @@ export class StewardAuthorizationLedger {
         const value = fn(tx);
 
         if (dirty) {
-          const newEvents = working.slice(loaded.events.length);
-          this.durableAppend(newEvents, loaded.events.length === 0);
+          this.durableReplace(working);
         }
         return { ok: true, value };
       } finally {
@@ -486,26 +630,50 @@ export class StewardAuthorizationLedger {
     }
   }
 
-  private durableAppend(
-    newEvents: StewardLedgerEvent[],
-    isCreate: boolean,
-  ): void {
-    if (newEvents.length === 0) return;
+  /**
+   * Atomically replace the ledger file via temp + fsync + rename.
+   * Avoids initialized-only windows and torn appends across multi-event commits.
+   */
+  private durableReplace(allEvents: StewardLedgerEvent[]): void {
     const payload =
-      newEvents.map((e) => JSON.stringify(e)).join("\n") + "\n";
-    const fd = openSync(this.path, isCreate ? "w" : "a");
+      allEvents.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    const tmpPath = `${this.path}.${process.pid}.tmp`;
+    mkdirSync(dirname(this.path), { recursive: true });
+    let renamed = false;
     try {
-      writeSync(fd, payload, undefined, "utf8");
-      fsyncSync(fd);
+      const fd = openSync(tmpPath, "w");
+      try {
+        this.durability.write(fd, payload);
+        this.durability.fsyncFile(fd);
+      } finally {
+        closeSync(fd);
+      }
+      try {
+        chmodSync(tmpPath, 0o600);
+      } catch {
+        // Windows and some FS may not support mode bits.
+      }
+      this.durability.rename(tmpPath, this.path);
+      renamed = true;
+      try {
+        chmodSync(this.path, 0o600);
+      } catch {
+        // Windows and some FS may not support mode bits.
+      }
+      try {
+        this.durability.fsyncParentDirectory(dirname(this.path));
+      } catch {
+        // The atomic rename already committed the ledger. Do not report this
+        // ceremony as uncommitted and invite a conflicting retry.
+      }
     } finally {
-      closeSync(fd);
+      if (!renamed) {
+        try {
+          rmSync(tmpPath, { force: true });
+        } catch {
+          // Best effort only; the authoritative ledger was not replaced.
+        }
+      }
     }
-    try {
-      chmodSync(this.path, 0o600);
-    } catch {
-      // Windows and some FS may not support mode bits.
-    }
-    void writeFileSync;
-    void renameSync;
   }
 }
