@@ -34,6 +34,33 @@
       "doesNotProve": ["no_other_events_occurred", "completeness"]
     },
     {
+      "class": "event",
+      "attestationKind": "instrumented-boundary-disposition",
+      "statement": "Valid signed ConformanceReceiptV1 records disposition deny for actionDigest H under policy P",
+      "evidence": ["ed25519_receipt_signature", "conformance_receipt_v1"],
+      "evidenceKinds": ["cryptographic", "interception_boundary"],
+      "requiredEvidence": [
+        "schema_valid",
+        "signature_valid",
+        "trusted_constitution_hash_matched",
+        "trusted_policy_id_matched",
+        "trusted_policy_version_matched",
+        "other_requested_expected_values_matched",
+        "exact_entry_proof_valid_under_claimed_root_if_requested",
+        "independent_receipt_root_matched_if_inclusion_requested"
+      ],
+      "maxConclusion": "Self-certified signer key/identifier recorded disposition deny and authorization policy-match against action digest H under independently matched constitution and policy context plus semantically valid signed metadata present in the receipt; the signed receipt identifies a self-presented instrumented-boundary recording context",
+      "uncertaintyLabel": "proven_under_assumptions",
+      "doesNotProve": [
+        "completeness",
+        "downstream_parameter_equality",
+        "uninstrumented_bypass",
+        "behavioral_compliance",
+        "uncompromised_runtime"
+      ],
+      "note": "A supplied signer identifier may match without establishing trusted key provenance or legal identity. Exact-entry proof validity under a claimed root is separate from matching an independently trusted root, and neither proves completeness. The self-presented receipt does not independently prove boundary traversal; use boundary_attested only when verifier has trusted boundary evidence beyond the receipt"
+    },
+    {
       "class": "completeness",
       "statement": "All tool calls in interval I hit the dispatcher boundary",
       "evidence": ["interception_boundary_attestation"],

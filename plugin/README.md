@@ -53,6 +53,7 @@ On every tool call your agent attempts, OpenClaw invokes this plugin's `before_t
    - **`dispositionMode: "unattended"`** → staged-allow (reversible), emergency allow-minimal, or **abstain** (`blockReason` prefixed `abstain:`) — never hangs on `requireApproval`.
    - New installs default to `unattended`. Existing configs missing `dispositionMode` migrate fail-safe to `operator-present` with a `DISPOSITION_MODE_MIGRATION` diagnostic.
 3. **Audits** the decision to `.openclaw/workspace/fpp-plugin-audit.jsonl` as a hash-chained entry (same format as the skill's audit log; cross-verifiable with `npm run audit:verify` in the parent package).
+4. **Emits signed conformance receipts** correlated on `after_tool_call`. A valid receipt supports Event-class attestation **`instrumented-boundary-disposition`**: the signer recorded disposition + authorization against an action digest under the semantically valid signed metadata present, and identified this dispatcher boundary as the recording context. Receipts remain `PARTIAL` coverage. A self-presented receipt does not independently prove trusted boundary traversal, downstream parameter equality, bypass absence, completeness, an uncompromised runtime, or behavioral compliance. See `docs/CAPABILITY_STATUS.md`.
 
 **Audit-write failure behavior:** default `auditFailureBehavior: "fail-closed"` blocks high-risk calls when the audit log cannot be written. See `docs/TROUBLESHOOTING.md`.
 

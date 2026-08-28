@@ -18,7 +18,11 @@ import {
 } from "../plugin/src/index.ts";
 import { createHookCapture } from "../plugin/src/test-helpers.ts";
 import { mergeConfig } from "../plugin/src/config.ts";
-import { verifyReceiptLog, createReceiptProof } from "../plugin/src/receipt-log.ts";
+import {
+  verifyReceiptLog,
+  createReceiptProof,
+} from "../plugin/src/receipt-log.ts";
+import { createReceiptInclusionEvidence } from "../packages/enforcement-core/src/receipt-log.ts";
 import { verifyReceiptEvidence } from "../plugin-trust/src/receipt-verifier.ts";
 import { loadOrCreateIdentity } from "../plugin-trust/src/identity.ts";
 import {
@@ -110,15 +114,53 @@ describe("conformance receipt e2e", () => {
     const proof = createReceiptProof(receiptLogPath, 0);
     assert.ok(proof);
     assert.equal(proof.logKind, "conformance-receipt");
+    const inclusionEvidence = createReceiptInclusionEvidence(receiptLogPath, 0);
+    assert.ok(inclusionEvidence);
+    assert.equal(inclusionEvidence.proof.leaf, inclusionEvidence.entry.hash);
 
     const firstReceipt = JSON.parse(raw.trim().split("\n")[0]!).receipt;
+    const claimedRootOnly = verifyReceiptEvidence({
+      receipt: firstReceipt,
+      inclusionEvidence,
+      expectedConstitutionHash: firstReceipt.constitutionHash,
+      expectedPolicyId: firstReceipt.policyId,
+      expectedPolicyVersion: firstReceipt.policyVersion,
+    });
+    assert.equal(
+      claimedRootOnly.inclusionVerification.proofValidUnderClaimedRoot,
+      true,
+    );
+    assert.equal(claimedRootOnly.inclusionVerification.rootAnchored, false);
+    assert.equal(claimedRootOnly.inclusionVerification.inclusionVerified, false);
+    assert.equal(claimedRootOnly.valid, false);
+    assert.equal(claimedRootOnly.confidenceCeiling, 0);
+
+    const unanchoredEvidence = verifyReceiptEvidence({
+      receipt: firstReceipt,
+      inclusionEvidence,
+      expectedRoot: inclusionEvidence.proof.root,
+    });
+    assert.equal(unanchoredEvidence.valid, true);
+    assert.equal(unanchoredEvidence.attestationEligibility.eligible, false);
+    assert.equal(unanchoredEvidence.attestation, undefined);
+
     const evidence = verifyReceiptEvidence({
       receipt: firstReceipt,
-      inclusionProof: proof,
-      expectedRoot: proof.root,
+      inclusionEvidence,
+      expectedRoot: inclusionEvidence.proof.root,
+      expectedConstitutionHash: firstReceipt.constitutionHash,
+      expectedPolicyId: firstReceipt.policyId,
+      expectedPolicyVersion: firstReceipt.policyVersion,
     });
     assert.equal(evidence.valid, true);
     assert.ok(evidence.whatWasNotProven.some((x) => /completeness|behavioral/i.test(x)));
+    assert.ok(evidence.attestation, "expected instrumented-boundary-disposition attestation");
+    assert.equal(evidence.attestation.kind, "instrumented-boundary-disposition");
+    assert.equal(evidence.attestation.claimClass, "event");
+    assert.equal(evidence.attestation.inclusionVerified, true);
+    assert.ok(
+      evidence.whatWasNotProven.some((x) => /downstream parameter equality/i.test(x)),
+    );
 
     // Capsule exchange
     const identity = loadOrCreateIdentity(identityKeyPath, "/");

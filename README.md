@@ -11,7 +11,7 @@ A modular constitutional framework for self-governing AI agents.
 
 All layers compose but each is independently adoptable. The skill teaches *why* to comply; adapters/plugins gate a classified subset of tool calls and emit signed **conformance receipts**; the trust plugin exchanges fresh **trust-state capsules**.
 
-Receipts prove what the instrumented boundary observed and signed. They do **not** prove completeness, an uncompromised runtime, or moral correctness of classifications. See [`docs/CAPABILITY_STATUS.md`](docs/CAPABILITY_STATUS.md).
+Valid signed receipts support an Event-class attestation named **`instrumented-boundary-disposition`**: the signer cryptographically bound a recorded disposition and authorization to an action digest plus the semantically valid signed metadata present, and identified an instrumented-boundary recording context. A self-presented receipt does **not** independently prove that the call traversed a trusted boundary; that requires additional trusted boundary evidence. It also does **not** prove exact downstream parameter equality, absence of bypass paths, completeness, an uncompromised runtime, or behavioral compliance. See [`docs/CAPABILITY_STATUS.md`](docs/CAPABILITY_STATUS.md) and [`docs/governance/EVIDENCE_SEMANTICS.md`](docs/governance/EVIDENCE_SEMANTICS.md).
 
 ## The Five Laws
 
